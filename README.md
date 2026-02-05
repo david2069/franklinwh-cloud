@@ -110,7 +110,6 @@ python -m franklinwh.cli --command discover --email user@example.com --password 
 - Warranty and throughput information
 
 Perfect for Home Assistant integration!
-
 ## 📚 API Reference
 
 ### Client Methods
