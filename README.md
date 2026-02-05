@@ -95,6 +95,33 @@ python3 test_library.py
 3. **Get Stats** - Real-time data retrieval (battery, solar, grid, loads)
 4. **Get Mode** - TOU schedule parsing and mode detection
 
+## 🛠️ CLI Utility
+
+A command-line utility for device discovery and Home Assistant config_flow setup:
+
+```bash
+python -m franklinwh.cli --command discover --email user@example.com --password xxx --gateway SERIAL
+```
+### Features:
+
+- Device discovery (aGate, aPower, accessories with manufacturer/model/firmware/serial)
+- HA config flow helper for device registry setup
+- Warranty and throughput information
+
+Perfect for Home Assistant integration!
+
+
+## Step 3: Commit and Push
+```bash
+cd /home/david/franklinwh-clean
+git add franklinwh/cli.py README.md
+git commit -m "Add CLI utility with device discovery for HA config_flow
+- Includes discover command for device registry setup
+- Gets aGate/aPower/accessory details (manufacturer, model, firmware, serials)
+- Updated README with CLI usage examples"
+git push
+```
+
 ## 📚 API Reference
 
 ### Client Methods
