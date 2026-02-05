@@ -1,0 +1,9 @@
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Test outputs
+test_output.log
+franklinwh.ini
