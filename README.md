@@ -15,6 +15,13 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 ### Installation
 
+**Recommended: Use a virtual environment**
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+**Install dependencies:**
 ```bash
 pip install httpx jsonschema
 ```
