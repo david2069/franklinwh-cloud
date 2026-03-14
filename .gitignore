@@ -4,6 +4,17 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Virtual environment
+venv/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
 # Test outputs
 test_output.log
 franklinwh.ini
