@@ -1,0 +1,9 @@
+{
+    "SW1ExpPower": 0.45,
+    "SW2ExpPower": 0.0,
+    "CarSWPower": 0.0,
+    "SW1ExpEnergy": 2.3,
+    "SW2ExpEnergy": 0.0,
+    "CarSWExpEnergy": 0.0,
+    "CarSWImpEnergy": 0.0
+}
