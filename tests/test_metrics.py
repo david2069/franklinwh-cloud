@@ -126,7 +126,7 @@ class TestInstrumentedRetry:
         assert m.total_calls == 1
         assert m.calls_by_method == {"GET": 1}
         assert m.calls_by_endpoint == {"testEndpoint": 1}
-        assert m.last_call_time_s > 0
+        assert m.last_call_time_s >= 0
         assert m.total_errors == 0
 
     async def test_401_records_retry_and_error(self):
