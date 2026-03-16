@@ -1,0 +1,10 @@
+{
+    "code": 200,
+    "message": "login success",
+    "result": {
+        "loginToken": "test-token-abc123",
+        "userId": "12345",
+        "email": "test@example.com"
+    },
+    "success": true
+}

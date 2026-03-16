@@ -4,13 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "franklinwh"
-version = "0.1.0"
+version = "0.1.1"
 description = "FranklinWH Cloud API client library"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "httpx",
+    "httpx[http2]",
     "jsonschema",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "respx>=0.21",
 ]
 
 [project.scripts]
@@ -18,3 +26,11 @@ franklinwh-cli = "franklinwh.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["franklinwh*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "live: requires real API credentials and aGate (deselect with '-m not live')",
+]
+

@@ -15,6 +15,9 @@ build/
 # macOS
 .DS_Store
 
+# Environment / secrets
+.env
+
 # Test outputs
 test_output.log
 franklinwh.ini
