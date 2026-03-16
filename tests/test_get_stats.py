@@ -95,6 +95,7 @@ class TestGetStatsResponseParsing:
             c.fetcher = None
             c.metrics = ClientMetrics()
             c.rate_limiter = None
+            c.stale_cache = None
             yield c
 
     @respx.mock
@@ -192,6 +193,7 @@ class TestGetStatsConditionalCalls:
             c.fetcher = None
             c.metrics = ClientMetrics()
             c.rate_limiter = None
+            c.stale_cache = None
             yield c
 
     @respx.mock
