@@ -50,7 +50,7 @@ The upstream [homeassistant-franklinwh](https://github.com/richo/homeassistant-f
 | **Layer** | Application (HA `DataUpdateCoordinator`) | HTTP client (inside `Client`) |
 | **Mechanism** | `update_interval` — fixed poll period (default 30s) | `RateLimiter` — sliding window with per-min/hr/daily budgets |
 | **Scope** | Controls one call (`get_stats()`) per interval | Covers **all** API calls (stats, TOU, mode, fetch, etc.) |
-| **Stale data** | `tolerate_stale_data` returns cached `Stats` on failure | Not yet implemented (planned) |
+| **Stale data** | `tolerate_stale_data` returns cached `Stats` on failure | `tolerate_stale_data=True` — per-endpoint TTL cache with hit/miss metrics |
 | **429 handling** | Not implemented — retries 3× on timeout/offline | Reactive — detects `429`, backs off per `Retry-After` header |
 | **Proactive throttle** | Poll interval prevents over-calling | Sliding window blocks when approaching limits |
 | **Daily budget** | No concept | Configurable — raises `RateLimitExceeded` when exhausted |
