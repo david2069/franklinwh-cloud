@@ -10,6 +10,7 @@ import respx
 import httpx
 
 from franklinwh.client import Client, Stats, Current, Totals
+from franklinwh.metrics import ClientMetrics
 
 
 # ── Sample Data ──────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ class TestGetStatsResponseParsing:
             c.token = "test-token"
             c.session = session
             c.fetcher = None
+            c.metrics = ClientMetrics()
             yield c
 
     @respx.mock
@@ -187,6 +189,7 @@ class TestGetStatsConditionalCalls:
             c.token = "test-token"
             c.session = session
             c.fetcher = None
+            c.metrics = ClientMetrics()
             yield c
 
     @respx.mock
