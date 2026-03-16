@@ -203,7 +203,6 @@ Key differences:
 | `get_geography_list(country)` | Geography/region data |
 | `smart_assistant(...)` | AI assistant queries |
 | `get_smart_circuits_info` | Smart circuit configuration |
-| `set_pcs_hint_info(...)` | PCS dispatch hint configuration |
 | `get_pcs_hintinfo(...)` | PCS hint information |
 
 ### Methods Only in Original
@@ -281,8 +280,159 @@ class ClientMetrics:
 
 ---
 
+## Upstream PR Compatibility Analysis
+
+*Reviewed: 2026-03-16*
+
+### richo/franklinwh-python — Open PRs
+
+#### PR #23 — `time_cached` for low-level APIs (jkt628, Feb 2026)
+
+> [!WARNING]
+> **WILL BREAK FORK** — Adds a `time_cached` decorator to `Client` methods. This touches `_get`, `_post`, and core API methods. The fork has heavily rewritten `_get`/`_post` (added `**kwargs`, `supressParams`/`supressGateway` flags, URL parsing). Merging this PR into upstream then syncing would produce **extensive merge conflicts** across the entire `Client` class.
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | Partial — fork uses conditional fetching in `get_stats` to reduce calls, but has no generic cache decorator |
+| **Useful concept?** | ✅ Yes — `time_cached` is a clean pattern worth adopting independently |
+| **Can close?** | ❌ No — different approach, would need fork-specific implementation |
+| **Conflict risk** | 🔴 **High** — touches `_get`, `_post`, `Client.__init__` |
+
+---
+
+#### PR #27 — Add login info to `get_info` (jkt628, Feb 2026)
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ✅ Fork already stores `self.info = self.fetcher.info` in `Client.__init__` and has `get_entrance_info()`, `get_site_and_device_info()` |
+| **Can close?** | ✅ **Yes** — fork already provides richer login/account info |
+| **Conflict risk** | 🟡 **Medium** — touches `TokenFetcher` which fork has rewritten (added `force_refresh`, `access_token` property, removed `HttpClientFactory` inheritance) |
+
+---
+
+#### PR #30 — Fix login (jkt628, Feb 2026)
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ⚠️ Need to verify — fork's `_login` is similar to original but adds error handling for missing token |
+| **Can close?** | ❓ **Maybe** — depends on what specific login bug it fixes |
+| **Conflict risk** | 🟡 **Medium** — `TokenFetcher._login` / `fetch_token` has diverged (fork uses `_login` static method, original uses `fetch_token` instance method) |
+
+---
+
+#### PR #31 — Some APIs don't require gateway (jkt628, Feb 2026)
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ✅ Fork already handles this via `supressGateway=True` kwargs on `_get`/`_post` |
+| **Can close?** | ✅ **Yes** — fork's `_get(..., supressGateway=True)` and multiple gateway-less methods (`get_home_gateway_list`, `siteinfo`, `get_site_and_device_info`) already solve this |
+| **Conflict risk** | 🔴 **High** — directly conflicts with fork's `_get`/`_post` rewrite |
+
+---
+
+### richo/homeassistant-franklinwh — Open PRs
+
+#### PR #41 — `franklin_wh.set_mode` HA service (j4m3z0r, Nov 2025) ⭐
+
+> [!IMPORTANT]
+> This is the **most significant PR** — battery operating mode control. You (david2069) participated actively in the discussion.
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ✅✅ Fork's `set_mode` is **260 lines** with full validation, backup-forever, duration, next-mode transitions — far exceeding PR #41's stateless mode+SoC setter |
+| **PR #41 limitation** | "Reading the current mode from the device is unreliable with the current library" — fork solves this with 200+ line `get_mode` |
+| **Sensors you proposed** | `currentWorkMode`, `run_status`, TOU schedule, grid state, PCS metrics, relay states — **all already in fork's `Current` dataclass** |
+| **Blocked on** | richo: "figuring out how to get a coherent config object into the service" (Jan 9, 2026) |
+| **Can close?** | ✅ **Yes** — fork provides a superset. If upstream adopted fork's library, PR #41 would be unnecessary |
+| **Conflict risk** | 🟢 **Low** (HA repo, not library) — but `set_mode` API signature is incompatible |
+
+**mtnears' requests from that thread** (all addressed by fork):
+- ✅ Timed Emergency Backup with auto-switch → `set_mode(backupForeverFlag, durationMinutes, nextWorkMode)`
+- ✅ `GRID_CHARGE` dispatch for TOU → `set_tou_schedule(touMode="GRID_CHARGE")`
+- ✅ TOU schedule persistence → `save_tou_dispatch()`, `backup_tou_schedule()`
+
+---
+
+#### PR #13 — Mode changing (richo, Jun 2024)
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ✅ Superseded by fork's `set_mode` and `get_mode` |
+| **Status** | Stale — richo described it as "flaky", no activity since Jun 2024 |
+| **Can close?** | ✅ **Yes** — fork's implementation is production-tested |
+| **Conflict risk** | 🟢 **Low** |
+
+---
+
+#### PR #74 — Introduce `SwitchState` (jkt628, Feb 2026)
+
+> [!WARNING]
+> **WILL BREAK FORK** — Fork removed the `SwitchState` class entirely.
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ❌ Fork removed `SwitchState`, uses raw tuples/lists for switch states |
+| **Can close?** | ❌ No — different design choice |
+| **Conflict risk** | 🔴 **High** — requires `SwitchState` class that fork deleted, depends on library PR #24 |
+
+---
+
+#### PR #58 — Client factory (richo)
+
+> [!WARNING]
+> **WILL BREAK FORK** — Fork removed `HttpClientFactory` entirely.
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ❌ Fork removed `HttpClientFactory`, uses direct `httpx.AsyncClient(http2=True)` |
+| **Can close?** | ❌ No — architectural divergence |
+| **Conflict risk** | 🔴 **High** — `TokenFetcher` no longer inherits factory, `Client` no longer inherits factory |
+
+---
+
+#### PR #21 — HACS support (richo)
+
+| Aspect | Detail |
+|--------|--------|
+| **Fork equivalent** | ❌ Not in scope — fork is a library, not an HA integration |
+| **Can close?** | N/A — HA integration concern |
+| **Conflict risk** | 🟢 **None** — doesn't touch library code |
+
+---
+
+### Conflict Summary
+
+| Risk Level | PRs | Impact |
+|:----------:|-----|--------|
+| 🔴 **High** | Library #23, #31 / HA #74, #58 | These PRs modify core classes (`_get`, `_post`, `Client`, `TokenFetcher`, `SwitchState`, `HttpClientFactory`) that the fork has **removed or fundamentally rewritten**. Merging upstream then syncing = guaranteed conflicts. |
+| 🟡 **Medium** | Library #27, #30 | Touch `TokenFetcher` which fork has modified but not completely rewritten. Manageable conflicts. |
+| 🟢 **Low/None** | HA #41, #13, #21 | Either in HA repo (not library), already superseded, or don't touch library code. |
+
+### Fork Closes These PRs
+
+The following upstream PRs are **fully addressed** by this fork's existing codebase:
+
+| PR | Why Fork Closes It |
+|----|-------------------|
+| HA #41 — Set device mode | Fork's `set_mode` (260 lines) + `get_mode` (200 lines) is a superset |
+| HA #13 — Mode changing | Superseded — fork has production-tested mode control |
+| Lib #27 — Login info | Fork stores login info and has `get_entrance_info()`, `get_site_and_device_info()` |
+| Lib #31 — Gateway-less APIs | Fork's `supressGateway` kwargs already handle this |
+
+### Not in Fork's Scope
+
+| PR | Why |
+|----|-----|
+| HA #21 — HACS | HA integration packaging, not library concern |
+| HA #74 — SwitchState | Fork intentionally removed this class |
+| HA #58 — Client factory | Fork intentionally removed `HttpClientFactory` |
+
+---
+
 ## Summary
 
 The fork is a **7× expansion** of the original library, transforming it from a minimal HA sensor poller into a comprehensive energy management API client with TOU scheduling, power control, storm watch, notifications, and deep device introspection. The `get_stats` function alone went from 11+11 fields to 45+17 fields, with smart conditional API calls to avoid unnecessary network traffic.
 
 The main areas for optimisation are: **parallelising API calls**, **adding metrics instrumentation**, and **modularising the 3,581-line monolith** into domain-focused modules.
+
+4 of 9 upstream PRs are already addressed by this fork. 4 PRs (library #23, #31 and HA #74, #58) would cause **high merge conflicts** if upstream merges them and the fork tries to sync — these touch classes the fork has removed or fundamentally rewritten.
