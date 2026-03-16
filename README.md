@@ -2,6 +2,8 @@
 
 A Python client library for interacting with FranklinWH energy storage systems via the cloud API.
 
+> 📊 **Fork of [richo/franklinwh-python](https://github.com/richo/franklinwh-python)** — see [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
+
 ## ✨ Features
 
 - **Authentication**: Automatic token management and refresh
