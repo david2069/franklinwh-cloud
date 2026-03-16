@@ -4,6 +4,8 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 > 📊 **Fork of [richo/franklinwh-python](https://github.com/richo/franklinwh-python)** — see [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
 
+> 🔒 **API Citizenship**: See [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) for rate limiting strategies, client identity headers, and how to prepare for authentication changes.
+
 ## ✨ Features
 
 - **Authentication**: Automatic token management and refresh
@@ -12,8 +14,10 @@ A Python client library for interacting with FranklinWH energy storage systems v
 - **TOU Schedules**: Manage Time-of-Use scheduling
 - **Device Info**: Gateway details, network status, device inventory
 - **API Metrics**: Automatic tracking of call counts, timing, and errors
+- **Client Identity**: Honest identification headers for responsible API citizenship
+- **Rate Limiting**: Opt-in client-side throttling with per-minute/hour/daily budgets
 - **Modular Architecture**: Domain-specific mixins (stats, modes, TOU, storm, power, devices, account)
-- **CLI Tool**: Subcommand-based CLI with debug tracing and JSON output
+- **CLI Tool**: Subcommand-based CLI with `fetch` for arbitrary endpoint access, debug tracing, JSON output
 
 ## 📦 Installation
 
