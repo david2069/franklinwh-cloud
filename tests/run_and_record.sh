@@ -105,6 +105,11 @@ ${PYTEST_OUTPUT}
 ═══════════════════════════════════════════════════════════
 EOF
 
+# ── Append to master test history log ────────────────────────────
+HISTORY_LOG="$RESULTS_DIR/test_history.log"
+RESULT_UPPER=$(echo "$RESULT" | tr '[:lower:]' '[:upper:]')
+echo "${TIMESTAMP} | ${ID_PART} | ${BRANCH}@${COMMIT} | ${RESULT_UPPER} | ${SUMMARY_LINE}" >> "$HISTORY_LOG"
+
 echo ""
 echo "═══════════════════════════════════════════════════════"
 echo " Result: ${RESULT_LABEL}"
