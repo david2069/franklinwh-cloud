@@ -11,24 +11,41 @@ A Python client library for interacting with FranklinWH energy storage systems v
 - **Mode Control**: Switch between operating modes (Time-of-Use, Self-Consumption, Emergency Backup)
 - **TOU Schedules**: Manage Time-of-Use scheduling
 - **Device Info**: Gateway details, network status, device inventory
-- **Comprehensive Logging**: DEBUG-level logging for troubleshooting
+- **API Metrics**: Automatic tracking of call counts, timing, and errors
+- **Modular Architecture**: Domain-specific mixins (stats, modes, TOU, storm, power, devices, account)
+- **CLI Tool**: Subcommand-based CLI with debug tracing and JSON output
 
-## 🚀 Quick Start
+## 📦 Installation
 
-### Installation
+### From wheel (recommended for downstream projects like FEM)
 
-**Recommended: Use a virtual environment**
 ```bash
+pip install dist/franklinwh-0.2.0-py3-none-any.whl
+```
+
+### From source (editable, for development)
+
+```bash
+git clone https://github.com/david2069/franklinwh-python.git
+cd franklinwh-python
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
+pip install -e .
 ```
 
-**Install dependencies:**
+### With test dependencies
+
 ```bash
-pip install httpx jsonschema
+pip install -e ".[test]"
 ```
 
-### Configuration
+### From GitHub (direct)
+
+```bash
+pip install git+https://github.com/david2069/franklinwh-python.git@main
+```
+
+## ⚙️ Configuration
 
 Create `franklinwh.ini` with your credentials:
 
@@ -43,160 +60,159 @@ serialno = YOUR_GATEWAY_SERIAL
 
 **Security Note**: The `.ini` file is in `.gitignore` to protect your credentials.
 
-### Basic Usage
+Alternatively, set environment variables:
+```bash
+export FRANKLIN_USERNAME="your.email@example.com"
+export FRANKLIN_PASSWORD="your_password"
+export FRANKLIN_GATEWAY="YOUR_GATEWAY_SERIAL"
+```
+
+## 🚀 Quick Start
+
+### Python API
 
 ```python
 import asyncio
 from franklinwh import Client, TokenFetcher
 
 async def main():
-    # Initialize client
     fetcher = TokenFetcher("email@example.com", "password")
     client = Client(fetcher, "YOUR_GATEWAY_SERIAL")
-    
+
     # Get real-time stats
     stats = await client.get_stats()
     print(f"Battery: {stats.current.battery_soc}%")
     print(f"Solar: {stats.current.solar_production} kW")
     print(f"Mode: {stats.current.work_mode_desc}")
 
+    # API metrics (automatic)
+    metrics = client.get_metrics()
+    print(f"API calls: {metrics['total_api_calls']}, avg {metrics['avg_response_time_s']:.3f}s")
+
 asyncio.run(main())
+```
+
+### CLI Tool
+
+```bash
+# System overview — power, SOC, batteries, weather, grid, metrics
+franklinwh-cli status
+
+# Device discovery — gateways, aPowers, warranty, accessories
+franklinwh-cli discover
+
+# Operating mode
+franklinwh-cli mode
+franklinwh-cli mode --set tou --soc 20
+
+# TOU schedule inspection
+franklinwh-cli tou --dispatch
+
+# Direct API passthrough (33 methods available)
+franklinwh-cli raw help
+franklinwh-cli raw get_power_info
+franklinwh-cli raw get_bms_info AP_SERIAL_NUMBER
+
+# API metrics
+franklinwh-cli metrics
+```
+
+**Output modes:**
+```bash
+franklinwh-cli status --json    # JSON output
+franklinwh-cli status --no-color  # disable ANSI colours
+```
+
+**Debug & tracing:**
+```bash
+franklinwh-cli status -v          # API call summaries
+franklinwh-cli status -vv         # + request/response headers
+franklinwh-cli status -vvv        # + full raw JSON payloads
+franklinwh-cli tou --trace tou    # only TOU mixin debug (46 log points!)
+franklinwh-cli status --trace all # everything
+franklinwh-cli status --api-trace # per-call timing
+franklinwh-cli status -vv --log-file debug.log
+```
+
+## 🏗️ Architecture
+
+```
+franklinwh/
+├── client.py            # Client class (inherits all mixins)
+├── models.py            # Stats, Current, Totals, GridStatus dataclasses
+├── exceptions.py        # 9 exception classes
+├── metrics.py           # ClientMetrics — API call instrumentation
+├── api.py               # Base API constants
+├── const/               # Operating modes, TOU, device constants
+│   ├── modes.py
+│   ├── tou.py
+│   ├── devices.py
+│   └── test_fixtures.py
+├── mixins/              # Domain-specific API method groups
+│   ├── stats.py         # get_stats, get_runtime_data, get_power_by_day
+│   ├── modes.py         # get_mode, set_mode, get_mode_info
+│   ├── tou.py           # get_tou_info, set_tou, get_gateway_tou_list
+│   ├── storm.py         # get_weather, get_storm_settings
+│   ├── power.py         # get_grid_status, get_power_control_settings
+│   ├── devices.py       # get_device_info, get_bms_info
+│   └── account.py       # siteinfo, get_warranty_info, get_alarm_codes_list
+├── cli.py               # CLI entry point (subcommands)
+├── cli_output.py        # Formatting + debug/tracing config
+└── cli_commands/        # CLI subcommand modules
+    ├── status.py, discover.py, mode.py, tou.py, raw.py
 ```
 
 ## 🧪 Testing
 
-A test script is provided to verify library functionality:
-
 ```bash
-python3 test_library.py
+# Unit tests only (no API credentials needed)
+pytest -m "not live" -q
+
+# Live API tests (requires franklinwh.ini or env vars)
+pytest -m live -v
+
+# All tests
+pytest -v
+
+# Record results for traceability (AP-11)
+./tests/run_and_record.sh CLI-refactor
+cat tests/results/test_history.log
 ```
 
-### Expected Output
+**Current coverage**: 107 tests (74 unit + 33 live across all 7 domains)
 
-```
-🔧 Testing franklinwh library...
-📍 Gateway: AGATE_SERIAL_NUMBER
-
-✅ Test 1: Token refresh...
-   Token obtained successfully!
-
-✅ Test 2: Get device info...
-   Gateway ID: AGATE_SERIAL_NUMBER
-   Time Zone: Australia/Sydney
-
-✅ Test 3: Get stats...
-   Battery SoC: 60.211%
-   Solar Production: 0.0 kW
-   Grid Use: -4.562 kW
-   Home Load: 0.359 kW
-   Work Mode: Time of Use
-
-✅ Test 4: Get current mode...
-   Mode info retrieved successfully (keys: ['currendId', 'workMode', 'modeName', 'name', 'run_status']...)
-
-🎉 All tests passed! Library is working correctly.
-```
-
-### What Tests Verify
-
-1. **Token Refresh** - API authentication working
-2. **Device Info** - Gateway communication established
-3. **Get Stats** - Real-time data retrieval (battery, solar, grid, loads)
-4. **Get Mode** - TOU schedule parsing and mode detection
-
-## 🛠️ CLI Utility
-
-A command-line utility for device discovery and Home Assistant config_flow setup:
-
-**Usage:**
-```bash
-python -m franklinwh.cli --command discover --email user@example.com --password xxx --gateway SERIAL
-```
-
-**Features:**
-- Device discovery (aGate, aPower, accessories with manufacturer/model/firmware/serial)
-- HA config flow helper for device registry setup
-- Warranty and throughput information
-
-Perfect for Home Assistant integration!
 ## 📚 API Reference
 
 ### Client Methods
 
-#### Authentication & Setup
-- `refresh_token()` - Obtain/refresh API token
-- `get_device_info()` - Get gateway information
-
-#### Real-time Data
-- `get_stats()` - Get current system statistics
-- `get_mode()` - Get current operating mode and TOU details
-- `get_battery_inventory()` - Get detailed battery information (on-demand)
-
-#### Mode Control
-- `set_mode(mode_id, soc)` - Switch operating mode
-- `get_gateway_tou_list()` - Get TOU schedule list
-
-#### TOU Schedule Management
-- `get_tou_schedule(schedule_id)` - Get specific TOU schedule
-- `set_tou_schedule(schedule)` - Update TOU schedule
+| Domain | Key Methods |
+|--------|-------------|
+| **Stats** | `get_stats()`, `get_runtime_data()`, `get_power_by_day(date)`, `get_power_details(type, date)` |
+| **Modes** | `get_mode()`, `set_mode(mode, soc)`, `get_mode_info()` |
+| **TOU** | `get_tou_info(type)`, `set_tou(schedule)`, `get_gateway_tou_list()`, `get_tou_dispatch_detail()` |
+| **Storm** | `get_weather()`, `get_storm_settings()`, `get_storm_list()` |
+| **Power** | `get_grid_status()`, `get_power_control_settings()`, `get_power_info()` |
+| **Devices** | `get_device_info()`, `get_bms_info(serial)`, `get_device_composite_info()` |
+| **Account** | `siteinfo()`, `get_warranty_info()`, `get_alarm_codes_list()`, `get_notification_settings()` |
+| **Metrics** | `get_metrics()` → `{total_api_calls, avg_response_time_s, calls_by_method, errors, ...}` |
 
 ### Data Structures
 
-#### Stats Object
 ```python
 stats.current.battery_soc          # Battery State of Charge (%)
 stats.current.solar_production     # Solar production (kW)
-stats.current.grid_use            # Grid usage (kW, negative = export)
-stats.current.home_load           # Home consumption (kW)
-stats.current.work_mode_desc      # Operating mode name
-stats.current.battery_use         # Battery charge/discharge (kW)
+stats.current.grid_use             # Grid usage (kW, negative = export)
+stats.current.home_load            # Home consumption (kW)
+stats.current.work_mode_desc       # Operating mode name
+stats.current.grid_status          # GridStatus enum (NORMAL/DOWN/OFF)
+stats.totals.solar                 # Daily solar production (kWh)
+stats.totals.grid_import           # Daily grid import (kWh)
+stats.totals.home_use              # Daily home consumption (kWh)
 ```
-
-## 🔧 Advanced Features
-
-### Debug Logging
-
-Enable detailed API logging:
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-This provides:
-- API endpoint calls
-- Request/response details
-- Authentication flow
-- Error diagnostics
-
-### Modular Constants
-
-The library includes organized constants in the `const` package:
-
-```python
-from franklinwh.const import (
-    MODE_TIME_OF_USE,
-    MODE_SELF_CONSUMPTION,
-    MODE_EMERGENCY_BACKUP,
-    OPERATING_MODES,
-    DISPATCH_CODES,
-)
-```
-
-See `const/` directory for:
-- `modes.py` - Operating modes and power control
-- `tou.py` - Time-of-Use scheduling constants
-- `devices.py` - Device models and metadata
-- `test_fixtures.py` - Example TOU schedules for testing
 
 ## 🤝 Contributing
 
-Contributions welcome! This library includes:
-
-- **API optimizations** - Reduced API calls by 99.7% through smart caching
-- **Enhanced logging** - DEBUG-level logging for production troubleshooting
-- **Pythonic code** - Type hints, dataclasses, proper structure
-- **Real-world testing** - Battle-tested in production environments
+See [MIGRATION.md](MIGRATION.md) for details on the recent modularization and how it affects downstream code. Contributions welcome!
 
 ## 📝 License
 
@@ -207,11 +223,6 @@ MIT License - see LICENSE file for details
 - **FranklinWH** - For innovative energy storage systems
 - **[richo](https://github.com/richo/franklinwh-python)** - Original library foundation
 - This project was developed with AI assistance (Claude, Gemini)
-
-## 📫 Issues & Support
-
-For issues related to mode switching and TOU schedules, see:
-- [Issue #25](https://github.com/richo/homeassistant-franklinwh/issues/25) - Change battery operating mode
 
 ---
 
