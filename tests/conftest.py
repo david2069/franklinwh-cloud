@@ -41,10 +41,12 @@ def minimal_client():
     needed for unit-testable methods like _build_payload, next_snno, etc.
     """
     from franklinwh.client import Client
+    from franklinwh.metrics import ClientMetrics
 
     c = Client.__new__(Client)
     c.gateway = "TEST-GW-001"
     c.snno = 0
     c.url_base = "https://energy.franklinwh.com/"
     c.token = "test-token-abc123"
+    c.metrics = ClientMetrics()
     return c
