@@ -21,3 +21,4 @@ build/
 # Test outputs
 test_output.log
 franklinwh.ini
+tests/results/test_history.log
