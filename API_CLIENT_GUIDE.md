@@ -149,6 +149,43 @@ franklinwh-cli metrics --json # machine-readable
 
 When a rate limiter is active, the metrics output includes a **Rate Limiting** section showing calls per time window and remaining budget.
 
+## 🔄 Compatibility with Upstream HA Integration
+
+This fork (`david2069/franklinwh-python`) is a **drop-in replacement** for the upstream `richo/franklinwh-python` library. All new parameters have backward-compatible defaults:
+
+```python
+# Existing code continues to work unchanged:
+client = franklinwh.Client(fetcher, gateway)
+# → identity headers ON, rate limiter OFF, stale cache OFF
+```
+
+### Can you use this fork under the HACS integration?
+
+**Yes — but you don't need our resilience features there.** The HACS integration already handles these concerns at the Home Assistant application layer:
+
+| Concern | HACS handles it in `sensor.py` | Our library handles it in `Client` |
+|---------|-------------------------------|-----------------------------------|
+| Poll rate | `DataUpdateCoordinator(update_interval=30)` | `RateLimiter` (disabled by default) |
+| Stale data | `StaleDataCache` + `tolerate_stale_data` | `StaleDataCache` (disabled by default) |
+| Retries | `for attempt in range(3)` loop | `instrumented_retry()` |
+
+If you enable `tolerate_stale_data` in **both** the HACS config and our library, you'd get double caching — redundant but harmless, not conflicting.
+
+### Who benefits from our library-level features?
+
+| Consumer | Benefit |
+|----------|---------|
+| **FEM** (Energy Manager) | Rate limiting + stale cache for the MQTT publish loop — no HA coordinator available |
+| **CLI users** | `franklinwh-cli` scripts get rate guardrails and identity headers automatically |
+| **Custom Python scripts** | Anyone importing `Client` directly gets production-grade resilience |
+| **Future official API** | When FranklinWH publishes rate limits, `RateLimiter` is ready |
+
+### Should you NOT mix and match?
+
+There is **no conflict** — the features are additive. However:
+- HACS users **don't need** to enable `rate_limiter` or `tolerate_stale_data` (HA already does this)
+- Non-HA users (FEM, CLI, scripts) **should consider** enabling them, since there's no outer framework doing it for you
+
 ## Credits
 
 - [richo/homeassistant-franklinwh](https://github.com/richo/homeassistant-franklinwh) — the original HA integration that pioneered polling control with `update_interval` and `tolerate_stale_data`
