@@ -1,4 +1,13 @@
-"""Operating mode set/get API methods."""
+"""Operating mode set/get API methods.
+
+Provides set_mode, get_mode, update_soc, and get_mode_info for controlling
+the FranklinWH aGate operating mode via the Cloud API.
+
+API URL parameter reference (from richo/franklinwh-python original):
+    Time of Use:        currendId=9322&gatewayId=___&lang=EN_US&oldIndex=3&soc=15&stromEn=1&workMode=1
+    Self Consumption:   currendId=9323&gatewayId=___&lang=EN_US&oldIndex=2&soc=20&stromEn=1&workMode=2
+    Emergency Backup:   currendId=9324&gatewayId=___&lang=EN_US&oldIndex=1&soc=100&stromEn=1&workMode=3
+"""
 
 import logging
 from datetime import datetime, timedelta
@@ -15,28 +24,77 @@ logger = logging.getLogger("franklinwh_cloud")
 
 
 class ModesMixin:
-    """Operating mode control — set_mode, get_mode, update_soc, get_mode_info."""
+    """Operating mode control — set_mode, get_mode, update_soc, get_mode_info.
+
+    Controls the FranklinWH aGate operating mode via the Cloud API.
+    Three modes are supported:
+
+        1 = Time of Use (TOU)        — schedule-based battery dispatch
+        2 = Self Consumption          — maximise solar self-consumption
+        3 = Emergency Backup          — reserve battery for grid outages
+
+    Each mode has a currendId (TOU list entry ID), workMode, oldIndex, and SOC setpoint.
+    The API endpoint is ``hes-gateway/terminal/tou/updateTouModeV2``.
+    """
 
     async def set_mode(self, requestedOperatingMode, requestedSOC, reqbackupForeverFlag, reqnextWorkMode, reqdurationMinutes):
         """Set the Operating Work Mode.
 
+        Switch from current to requestedOperatingMode value.
+
         Parameters
         ----------
         requestedOperatingMode : int or str
-            1=Time of Use, 2=Self Consumption, 3=Emergency Backup
+            The requested operating mode:
+                1 = Time of Use
+                2 = Self Consumption
+                3 = Emergency Backup
+
+            Extended TOU aliases (all map to mode 1 internally):
+                'tou_battery_import' — Force battery to import from grid
+                'tou_battery_export' — Force battery to export to grid
+                'tou_custom'         — Pre-defined custom TOU schedules
+                'tou_json'           — User-defined TOU schedule as JSON payload
+
+        TOU and Self-Consumption modes:
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         requestedSOC : int, optional
-            Reserved SOC percentage (0-100)
-        reqbackupForeverFlag : int
-            0=Fixed time, 1=Indefinitely (Emergency Backup only)
-        reqnextWorkMode : int
-            Next work mode after Emergency Backup
-        reqdurationMinutes : int
-            Duration in minutes for Emergency Backup (30-4320)
+            Change reserved State of Charge percentage (0-100).
+            If not specified, the existing SOC value is retained.
+            Accepts: int, str digits, str with '%' suffix, None.
+
+        Emergency Backup mode only:
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        reqbackupForeverFlag : int (MANDATORY)
+            1 = Indefinitely (backup until manually changed)
+            2 = Fixed duration (requires reqdurationMinutes)
+        reqnextWorkMode : int (MANDATORY)
+            The next work mode after Emergency Backup ends:
+                1 = Time of Use
+                2 = Self Consumption
+        reqdurationMinutes : int (MANDATORY if reqbackupForeverFlag=2)
+            Duration in minutes for Emergency Backup (30–4320, i.e. 30 min to 3 days)
+
+        Returns
+        -------
+        bool
+            True if mode was switched successfully, False otherwise.
+
+        Note
+        ----
+        In theory only the target mode is really needed for TOU or
+        Self-Consumption. Emergency Backup requires additional params
+        to control duration and what happens after backup ends.
         """
         logger.info(f"set_mode: Requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
         validate_mode = str(requestedOperatingMode).lower().replace(' ', '_').replace('-', '_')
         tou_mode = None
 
+        # These are custom aliases for TOU mode — they all map to the same working mode
+        #   tou_battery_import | Force battery to import from grid (if configured)
+        #   tou_battery_export | Force battery to export to grid (if configured)
+        #   tou_custom         | Pre-defined custom TOU schedules built-in to set_tou_schedule()
+        #   tou_json           | User-defined TOU schedule provided as JSON payload
         logger.info(f"set_mode: Validating requested Operating Mode: {validate_mode}")
         match validate_mode:
             case "tou_battery_import" | "tou_battery_export" | "tou_custom" | "tou_json":
@@ -58,6 +116,7 @@ class ModesMixin:
                     reqbackupForeverFlag = int(reqbackupForeverFlag)
                 if reqdurationMinutes is not None:
                     reqdurationMinutes = int(reqdurationMinutes)
+                # 1 = Indefinite emergency backup, 2 = fixed number of minutes (30 min to 4320 max)
                 if reqbackupForeverFlag == "2" and reqdurationMinutes is not None:
                     reqdurationMinutes = int(reqdurationMinutes)
                     if reqdurationMinutes < 30 or reqdurationMinutes > 4320:
