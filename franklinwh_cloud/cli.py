@@ -158,6 +158,10 @@ def build_parser() -> argparse.ArgumentParser:
     subs.add_parser("diag", aliases=["diagnostic"],
                     help="Diagnostic report — system, auth, device, power, API health")
 
+    # bms
+    subs.add_parser("bms", aliases=["battery"],
+                    help="Battery Management System — cell telemetry, pack health, bus topology")
+
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
     sub_fetch.add_argument("http_method", choices=["GET", "POST", "get", "post"],
@@ -336,6 +340,10 @@ async def async_main():
             case "diag" | "diagnostic":
                 from franklinwh_cloud.cli_commands import diag
                 await diag.run(client, json_output=args.json)
+
+            case "bms" | "battery":
+                from franklinwh_cloud.cli_commands import bms
+                await bms.run(client, json_output=args.json)
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
