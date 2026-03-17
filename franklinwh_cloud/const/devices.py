@@ -12,15 +12,25 @@ NETWORK_TYPES = {
 }
 
 # aGate Health Status
+# Note: 1=Normal verified against live system (deviceStatus=1 with healthy operation)
+# Previously had 0=Normal/1=Fault which was inverted.
 AGATE_STATE = {
-    0: "Normal",
-    1: "Fault"
+    0: "Fault",
+    1: "Normal",
 }
 
 # aGate Activity Status
 AGATE_ACTIVE = {
     0: "Inactive",
     1: "Active"
+}
+
+# SIM Card Status
+SIM_STATUS = {
+    0: "Not Installed",
+    1: "Installed (Inactive)",
+    2: "Active",
+    3: "Error",
 }
 
 # Country Identifiers

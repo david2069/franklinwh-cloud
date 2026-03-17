@@ -42,7 +42,8 @@ from .devices import (
     NETWORK_TYPES,
     AGATE_STATE,
     AGATE_ACTIVE,
-    COUNTRY_ID
+    COUNTRY_ID,
+    SIM_STATUS,
 )
 
 # Test fixtures - re-exported for backward compatibility (used by cli.py)
@@ -71,7 +72,7 @@ __all__ = [
     "tou_json_schema", "valid_tou_modes",
     # Devices
     "FRANKLINWH_MODELS", "FRANKLINWH_ACCESSORIES",
-    "NETWORK_TYPES", "AGATE_STATE", "AGATE_ACTIVE", "COUNTRY_ID",
+    "NETWORK_TYPES", "AGATE_STATE", "AGATE_ACTIVE", "COUNTRY_ID", "SIM_STATUS",
     # Test fixtures (exported for cli.py)
     "tou_predefined_builtin",
     "gap_schedule", "export_to_grid_always", "export_to_grid_peak2",
