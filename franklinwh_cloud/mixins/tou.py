@@ -1,4 +1,14 @@
-"""Time-of-Use (TOU) schedule API methods."""
+"""Time-of-Use (TOU) schedule API methods.
+
+Provides get/set TOU schedule, dispatch management, and schedule backup
+for the FranklinWH aGate operating mode via the Cloud API.
+
+MANDATORY USER SETUP: Default Time of Use Tariff setup. May not work
+if user has defined 'Flat' or 'Tiered' rate plans.
+
+NOTE: Does not yet support multiple seasons, week/weekends, etc.
+(must only use one season configuration).
+"""
 
 import json
 import logging
@@ -22,7 +32,14 @@ logger = logging.getLogger("franklinwh_cloud")
 
 
 class TouMixin:
-    """TOU schedule management — get/set schedules, dispatch, backup."""
+    """TOU schedule management — get/set schedules, dispatch, backup.
+
+    Key methods:
+        set_tou_schedule() — Set a custom or predefined TOU schedule
+        get_tou_info()     — Retrieve current/next TOU schedule items
+        save_tou_dispatch() — Submit a TOU dispatch template to the aGate
+        backup_tou_schedule() — Write TOU schedule to a backup file
+    """
 
     async def get_gateway_tou_list(self):
         """Get TOU Schedule to extract current operating mode and details."""
@@ -101,12 +118,26 @@ class TouMixin:
         return result
 
     async def get_tou_info(self, option):
-        """Get TOU Schedule information.
+        """Get TOU Schedule information from the aGate.
 
         Parameters
         ----------
         option : int
-            0 = raw payload, 1 = Current and next items, 2 = Full schedule
+            0 = Raw payload from get_tou_dispatch_detail
+            1 = Current and next scheduled items only (active + upcoming TOU entry)
+            2 = Full schedule (past, current and future) in detailVolist format (raw)
+
+        Returns
+        -------
+        dict or list
+            JSON payload containing the TOU Schedule information.
+
+        Note
+        ----
+        Intended to return full or only current/future TOU schedule for use in HA.
+        This is NOT necessary for switching modes — it is used to learn how the
+        API constructs/processes the TOU schedule and to display TOU status in
+        dashboards and automations.
         """
         logger.info(f"get_tou_info: option = {option}")
         res = await self.get_tou_dispatch_detail()
@@ -371,20 +402,73 @@ class TouMixin:
         return results
 
     async def set_tou_schedule(self, touMode: str, touSchedule: list = None, operation: int = 0, default_mode: str = "SELF", default_tariff: str = "OFF_PEAK"):
-        """Set the TOU Work Mode Schedule.
+        """Set the Custom or Predefined Time-of-Use Work Mode Schedule.
+
+        Once inputs are validated, the schedule is submitted to the aGate.
+        It will schedule execution and set touSendStatus=1 to indicate a
+        new schedule is pending. Generally applied immediately, but the
+        aGate may take a few minutes. touSendStatus=1 may persist as a
+        false positive even after the schedule is applied.
 
         Parameters
         ----------
         touMode : str
-            CUSTOM, PREDEFINED, HOME, STANDBY, SELF, SOLAR, GRID_EXPORT, GRID_CHARGE
-        touSchedule : list, optional
-            Schedule entries
+            Can be one of the following strings:
+                'CUSTOM'       — User-defined TOU schedule provided as JSON list via touSchedule
+                'PREDEFINED'   — Pre-defined schedule name from built-in fixtures
+                'HOME'         — Prioritise home loads, then charge battery, then export
+                'STANDBY'      — Battery on standby, solar powers home, export excess
+                'SELF'         — Prioritise self-consumption: solar → battery → grid
+                'SOLAR'        — Charge battery from solar only, grid supports home
+                'GRID_EXPORT'  — Force battery to export to grid (if configured)
+                'GRID_CHARGE'  — Force battery to import from grid (if configured)
+
+        touSchedule : list or dict, optional
+            Schedule entries — required for CUSTOM and PREDEFINED modes.
+
+            For CUSTOM mode: a list of dicts (or single dict) with keys:
+                startHourTime, endHourTime, waveType, name, dispatchId
+            Schedule must cover exactly 24 hours (1440 min). Gaps are auto-filled
+            using default_mode/default_tariff values.
+
+            For PREDEFINED mode: a string name of a built-in fixture, e.g.:
+                'charge_from_grid', 'export_to_grid_always',
+                'export_to_grid_peakonly', 'standby_schedule',
+                'power_home_only', 'charge_from_solar', 'self_schedule'
+
         operation : int
-            0=overwrite, 1=insert, 2=delete, 3=prices
+            Type of operation (currently only 0 is implemented):
+                0 = Overwrite all (replace entire schedule)
+                1 = Insert entry (adjust existing times accordingly)
+                2 = Delete entry by id (adjust remaining times)
+                3 = Update tariff pricing rates
+
         default_mode : str
-            Default TOU dispatch mode for gap-filling
+            TOU dispatch mode for gap-filling when schedule < 24 hours
+            (default: 'SELF')
         default_tariff : str
-            Default tariff for gap-filling
+            Default tariff type for gap-filling (default: 'OFF_PEAK')
+
+        Returns
+        -------
+        dict
+            API response from saveTouDispatch.
+
+        Raises
+        ------
+        InvalidTOUScheduleOption
+            If touMode or touSchedule is invalid.
+        ValidationError
+            If schedule doesn't cover exactly 24 hours or API call fails.
+
+        Note
+        ----
+        When using CUSTOM mode with set_mode(), the flow is:
+            1. set_mode('tou_custom', ...) or set_mode(1, ...)
+            2. set_tou_schedule('CUSTOM', touSchedule=[...list of entries...])
+
+        The touSchedule list format matches the FranklinWH saveTouDispatch API.
+        See const/test_fixtures.py for example schedule formats.
         """
         logger.info(f"set_tou_schedule:  touMode = '{touMode}' for aGate {self.gateway}")
         validate_tou_mode = touMode.upper().replace(' ', '_').replace('-', '_')
