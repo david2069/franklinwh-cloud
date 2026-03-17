@@ -321,7 +321,12 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             Max age of cached data in seconds. Default 300s (5 minutes).
             Only used when tolerate_stale_data=True.
         """
-        from franklinwh_cloud.metrics import ClientMetrics, EdgeTracker, RateLimiter, StaleDataCache, get_default_client_headers
+        from franklinwh_cloud.metrics import ClientMetrics, DISCLAIMER, EdgeTracker, RateLimiter, StaleDataCache, get_default_client_headers
+
+        # Log legal disclaimer once per process
+        if not getattr(Client, '_disclaimer_logged', False):
+            logging.getLogger("franklinwh_cloud").info(DISCLAIMER)
+            Client._disclaimer_logged = True
 
         self.fetcher = fetcher
         self.gateway = gateway

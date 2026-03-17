@@ -20,6 +20,15 @@ logger = logging.getLogger("franklinwh_cloud")
 # Library version — kept in sync with pyproject.toml
 __version__ = "0.2.0"
 
+# Legal disclaimer — logged once at Client init
+DISCLAIMER = (
+    f"franklinwh-cloud-client v{__version__} | UNOFFICIAL · NOT AFFILIATED WITH FRANKLINWH "
+    "| NO WARRANTY · PROVIDED AS-IS · USE AT YOUR OWN RISK "
+    "| This software may break without notice due to upstream API changes, "
+    "outages, or authentication changes by FranklinWH. "
+    "| MIT License — see LICENSE for details."
+)
+
 
 def get_default_client_headers() -> dict:
     """Return default client identification headers.

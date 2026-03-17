@@ -247,6 +247,19 @@ MIT License - see LICENSE file for details
 - **[richo](https://github.com/richo/franklinwh-python)** - Original library foundation
 - This project was developed with AI assistance (Claude, Gemini)
 
----
+## ⚖️ Disclaimer
 
-**Note**: This is an unofficial community project and is not affiliated with FranklinWH.
+> **UNOFFICIAL SOFTWARE — NOT AFFILIATED WITH FRANKLINWH**
+>
+> This software is provided **AS-IS**, without warranty of any kind, express or implied,
+> including but not limited to the warranties of merchantability, fitness for a particular
+> purpose, and non-infringement. Use entirely at your own risk.
+>
+> This library interacts with FranklinWH's undocumented cloud API, which may change,
+> break, or become unavailable without notice. The authors accept no liability for
+> service interruptions, data loss, equipment damage, or any other consequences
+> arising from the use of this software.
+>
+> **MIT License** — see [LICENSE](LICENSE) for details.
+
+This disclaimer is also logged once at startup by the library for audit trail purposes.
