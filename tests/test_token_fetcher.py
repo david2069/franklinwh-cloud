@@ -4,7 +4,7 @@ import pytest
 import respx
 import httpx
 
-from franklinwh.client import (
+from franklinwh_cloud.client import (
     TokenFetcher,
     AccountLockedException,
     InvalidCredentialsException,

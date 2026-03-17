@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""franklinwh-cli — Command-line interface for the FranklinWH Cloud API.
+
+Usage:
+    franklinwh-cli status                  # live system overview
+    franklinwh-cli discover                # device enumeration
+    franklinwh-cli mode                    # current operating mode
+    franklinwh-cli tou                     # TOU schedule info
+    franklinwh-cli raw <method>            # direct API passthrough
+    franklinwh-cli metrics                 # API call metrics
+
+Credentials are loaded from franklinwh_cloud.ini (or --email/--password/--gateway).
+"""
+
+import argparse
+import asyncio
+import configparser
+import os
+import sys
+
+from franklinwh_cloud.client import Client, TokenFetcher
+from franklinwh_cloud.cli_output import (
+    configure_logging, disable_color, print_error, print_warning,
+    print_header, print_kv, print_json_output, print_section,
+    TRACEABLE_MODULES,
+)
+
+
+__version__ = "2.0.0"
+
+
+# ── Credential loading ───────────────────────────────────────────────
+
+def load_credentials(config_path: str | None = None,
+                     email: str | None = None,
+                     password: str | None = None,
+                     gateway: str | None = None):
+    """Load credentials with priority: CLI args > franklinwh.ini.
+
+    Returns (email, password, gateway) tuple.
+    """
+    # CLI args take priority if all provided
+    if email and password and gateway:
+        return email, password, gateway
+
+    # Try .ini file
+    ini_paths = [config_path] if config_path else ["franklinwh.ini", "franklinwh/franklinwh.ini"]
+    for ini_path in ini_paths:
+        if ini_path and os.path.exists(ini_path):
+            config = configparser.ConfigParser()
+            config.read(ini_path)
+            try:
+                ini_email = config.get("energy.franklinwh.com", "email")
+                ini_password = config.get("energy.franklinwh.com", "password")
+                ini_gateway = config.get("gateways.enabled", "serialno", fallback=None)
+                return (email or ini_email, password or ini_password, gateway or ini_gateway)
+            except (configparser.NoSectionError, configparser.NoOptionError):
+                try:
+                    ini_email = config.get("FranklinWH", "email")
+                    ini_password = config.get("FranklinWH", "password")
+                    ini_gateway = config.get("FranklinWH", "gateway", fallback=None)
+                    return (email or ini_email, password or ini_password, gateway or ini_gateway)
+                except (configparser.NoSectionError, configparser.NoOptionError):
+                    pass
+
+    # Fall back to env vars
+    return (
+        email or os.environ.get("FRANKLIN_USERNAME", ""),
+        password or os.environ.get("FRANKLIN_PASSWORD", ""),
+        gateway or os.environ.get("FRANKLIN_GATEWAY", ""),
+    )
+
+
+# ── Argument parsing ─────────────────────────────────────────────────
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser with subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="franklinwh-cli",
+        description="Command-line interface for the FranklinWH Cloud API.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
+    # Global options
+    auth = parser.add_argument_group("credentials")
+    auth.add_argument("--config", "-c", metavar="PATH", help="Path to franklinwh.ini config file")
+    auth.add_argument("--email", "-e", metavar="EMAIL", help="FranklinWH account email")
+    auth.add_argument("--password", "-p", metavar="PASS", help="FranklinWH account password")
+    auth.add_argument("--gateway", "-g", metavar="SN", help="aGate serial number")
+
+    # Output options
+    output = parser.add_argument_group("output")
+    output.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    output.add_argument("--no-color", action="store_true", help="Disable ANSI colour output")
+
+    # Debug options
+    debug = parser.add_argument_group("debug")
+    debug.add_argument("-v", "--verbose", action="count", default=0,
+                       help="Increase verbosity (-v info, -vv debug, -vvv trace)")
+    debug.add_argument("--trace", metavar="MODULES",
+                       help=f"Enable debug for specific modules (comma-sep: {','.join(TRACEABLE_MODULES)},client,all)")
+    debug.add_argument("--api-trace", action="store_true",
+                       help="Show per-call API trace with timing")
+    debug.add_argument("--log-file", metavar="PATH",
+                       help="Write debug output to file")
+
+    # Subcommands
+    subs = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # status
+    sub_status = subs.add_parser("status", aliases=["st"],
+                                 help="Live system overview (power, SOC, mode, weather, metrics)")
+
+    # discover
+    sub_discover = subs.add_parser("discover", aliases=["disc"],
+                                    help="Gateway, device, warranty, and accessory enumeration")
+    sub_discover.add_argument("--no-warranty", action="store_true", help="Skip warranty info")
+    sub_discover.add_argument("--no-accessories", action="store_true", help="Skip accessories")
+
+    # mode
+    sub_mode = subs.add_parser("mode", help="Get or set operating mode")
+    sub_mode.add_argument("--set", dest="set_mode", metavar="MODE",
+                          help="Set mode (tou, self_consumption, emergency_backup, or 1/2/3)")
+    sub_mode.add_argument("--soc", type=int, metavar="PCT",
+                          help="Set SOC percentage (used with --set)")
+
+    # tou
+    sub_tou = subs.add_parser("tou", help="Time-of-Use schedule inspection")
+    sub_tou.add_argument("--dispatch", action="store_true",
+                         help="Show full dispatch detail including strategies")
+
+    # raw
+    sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
+    sub_raw.add_argument("method", nargs="?", default="help",
+                         help="API method name (use 'help' to list all)")
+    sub_raw.add_argument("values", nargs="*",
+                         help="Arguments to pass to the method")
+
+    # metrics
+    subs.add_parser("metrics", help="Show API call metrics from current session")
+
+    # fetch (arbitrary endpoint)
+    sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
+    sub_fetch.add_argument("http_method", choices=["GET", "POST", "get", "post"],
+                           help="HTTP method")
+    sub_fetch.add_argument("path", help="API path (e.g. /hes-gateway/common/getPowerCapConfigList)")
+    sub_fetch.add_argument("--data", "-d", metavar="JSON",
+                           help="Inline JSON POST body")
+    sub_fetch.add_argument("--data-file", "-f", metavar="PATH",
+                           help="JSON file for POST body (use '-' for stdin)")
+    sub_fetch.add_argument("--params", "-P", nargs="*", metavar="KEY=VAL",
+                           help="Query parameters (key=value pairs)")
+    sub_fetch.add_argument("--output", "-o", metavar="PATH",
+                           help="Save response to JSON file")
+    sub_fetch.add_argument("--no-gateway", action="store_true",
+                           help="Don't auto-inject gatewayId into payload")
+    sub_fetch.add_argument("--inject-user", action="store_true",
+                           help="Auto-inject userId into payload")
+
+    return parser
+
+
+# ── Main ─────────────────────────────────────────────────────────────
+
+async def async_main():
+    """Async entrypoint."""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return
+
+    # Output config
+    if args.no_color:
+        disable_color()
+
+    # Debug config
+    trace_modules = args.trace.split(",") if args.trace else None
+    configure_logging(
+        verbosity=args.verbose,
+        trace_modules=trace_modules,
+        api_trace=args.api_trace,
+        log_file=args.log_file,
+    )
+
+    # Load credentials
+    email, password, gateway = load_credentials(
+        config_path=args.config,
+        email=args.email,
+        password=args.password,
+        gateway=args.gateway,
+    )
+
+    if not email or not password:
+        print_error("No credentials found. Provide --email/--password, set up franklinwh.ini, or set FRANKLIN_USERNAME/FRANKLIN_PASSWORD env vars.")
+        sys.exit(1)
+
+    # Connect
+    try:
+        fetcher = TokenFetcher(email, password)
+        await fetcher.get_token()
+    except Exception as e:
+        print_error(f"Login failed: {e}")
+        sys.exit(1)
+
+    # Gateway discovery if not specified
+    if not gateway:
+        info = fetcher.info or {}
+        gateway_list = info.get("gatewayList", [])
+        if not gateway_list:
+            # Try get_home_gateway_list via a temporary client
+            temp_client = Client(fetcher, "")
+            try:
+                res = await temp_client.get_home_gateway_list()
+                gateway_list = res.get("result", [])
+            except Exception:
+                pass
+        if gateway_list:
+            gateway = gateway_list[0].get("sn", gateway_list[0].get("id", ""))
+            print_warning(f"No gateway specified, using: {gateway}")
+        else:
+            print_error("No gateway found. Specify --gateway or add serialno to franklinwh.ini")
+            sys.exit(1)
+
+    client = Client(fetcher, gateway)
+
+    # Dispatch to command
+    try:
+        match args.command:
+            case "status" | "st":
+                from franklinwh_cloud.cli_commands import status
+                await status.run(client, json_output=args.json)
+
+            case "discover" | "disc":
+                from franklinwh_cloud.cli_commands import discover
+                await discover.run(client, json_output=args.json,
+                                   show_warranty=not args.no_warranty,
+                                   show_accessories=not args.no_accessories)
+
+            case "mode":
+                from franklinwh_cloud.cli_commands import mode
+                await mode.run(client, json_output=args.json,
+                               set_mode=args.set_mode, soc=args.soc)
+
+            case "tou":
+                from franklinwh_cloud.cli_commands import tou
+                await tou.run(client, json_output=args.json,
+                              show_dispatch=args.dispatch)
+
+            case "raw":
+                from franklinwh_cloud.cli_commands import raw
+                await raw.run(client, args.method, args.values,
+                              json_output=args.json)
+
+            case "metrics":
+                metrics = client.get_metrics()
+                if args.json:
+                    # Include rate limiter state in JSON output
+                    if client.rate_limiter:
+                        metrics["rate_limiter"] = client.rate_limiter.snapshot()
+                    # Include edge tracker in JSON output
+                    if hasattr(client, 'edge_tracker') and client.edge_tracker:
+                        metrics["edge_tracker"] = client.edge_tracker.snapshot()
+                    print_json_output(metrics)
+                else:
+                    print_header("API Metrics")
+                    print_kv("Total Calls", metrics["total_api_calls"])
+                    print_kv("Avg Response", f'{metrics["avg_response_time_s"]:.3f}s')
+                    print_kv("Min / Max", f'{metrics["min_response_time_s"]:.3f}s / {metrics["max_response_time_s"]:.3f}s')
+                    print_kv("By Method", str(metrics["calls_by_method"]))
+                    print_kv("Endpoints", len(metrics["calls_by_endpoint"]))
+                    print_kv("Errors", metrics["total_errors"])
+                    print_kv("Rate Limits (429)", metrics["total_rate_limits"])
+                    print_kv("Throttle Waits", metrics["total_throttle_waits"])
+                    print_kv("Retries", metrics["retry_count"])
+                    print_kv("Uptime", f'{metrics["uptime_s"]:.1f}s')
+                    if metrics["calls_by_endpoint"]:
+                        print_section("📊", "Endpoints")
+                        for ep, count in sorted(metrics["calls_by_endpoint"].items()):
+                            print_kv(ep, f"{count} calls")
+                    # Rate limiter state
+                    if client.rate_limiter:
+                        rl = client.rate_limiter.snapshot()
+                        print_section("⏱️", "Rate Limiting")
+                        print_kv("Calls (last min)", f'{rl["calls_last_minute"]} / {rl["limit_per_minute"]}')
+                        print_kv("Calls (last hr)", f'{rl["calls_last_hour"]} / {rl["limit_per_hour"] or "∞"}')
+                        print_kv("Calls (today)", f'{rl["calls_today"]} / {rl["daily_budget"] or "∞"}')
+                        if rl["remaining_daily"] is not None:
+                            print_kv("Remaining", rl["remaining_daily"])
+                        print_kv("Throttled", "Yes ⚠️" if rl["is_throttled"] else "No")
+                    # CloudFront edge tracker
+                    if hasattr(client, 'edge_tracker') and client.edge_tracker and client.edge_tracker.total_requests > 0:
+                        et = client.edge_tracker.snapshot()
+                        print_section("☁️", "CloudFront Edge")
+                        print_kv("Current PoP", et["current_pop"] or "—")
+                        print_kv("Requests", et["total_cf_requests"])
+                        print_kv("Cache Rate", et["cache_hit_rate"])
+                        if et["pop_distribution"]:
+                            for pop, cnt in sorted(et["pop_distribution"].items()):
+                                print_kv(f"  {pop}", f"{cnt} requests")
+                        if et["edge_transitions"] > 0:
+                            print_kv("⚠️ Transitions", et["edge_transitions"])
+                            for t in et["transition_log"]:
+                                print_kv(f"  {t['from']} → {t['to']}", t.get("at_iso", ""))
+                        if et["distribution_ids"]:
+                            print_kv("Distribution", ", ".join(et["distribution_ids"]))
+                    print()
+
+            case "fetch":
+                from franklinwh_cloud.cli_commands import fetch
+                await fetch.run(client, args.http_method, args.path,
+                                data=args.data,
+                                data_file=args.data_file,
+                                params=args.params,
+                                output_file=args.output,
+                                json_output=args.json,
+                                inject_gateway=not args.no_gateway,
+                                inject_user=args.inject_user)
+
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        sys.exit(130)
+    except Exception as e:
+        print_error(f"Command failed: {e}")
+        if args.verbose >= 2:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
+def main():
+    """Synchronous entrypoint for console_scripts."""
+    asyncio.run(async_main())
+
+
+if __name__ == "__main__":
+    main()

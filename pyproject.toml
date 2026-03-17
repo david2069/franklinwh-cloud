@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "franklinwh"
+name = "franklinwh-cloud-client"
 version = "0.2.0"
-description = "FranklinWH Cloud API client library"
+description = "FranklinWH Cloud API client library — performance monitoring, rate limiting, edge tracking"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,10 +22,10 @@ test = [
 ]
 
 [project.scripts]
-franklinwh-cli = "franklinwh.cli:main"
+franklinwh-cli = "franklinwh_cloud.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["franklinwh*"]
+include = ["franklinwh_cloud*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -33,4 +33,3 @@ testpaths = ["tests"]
 markers = [
     "live: requires real API credentials and aGate (deselect with '-m not live')",
 ]
-

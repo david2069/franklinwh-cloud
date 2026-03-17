@@ -9,8 +9,8 @@ import pytest
 import respx
 import httpx
 
-from franklinwh.client import Client, Stats, Current, Totals
-from franklinwh.metrics import ClientMetrics
+from franklinwh_cloud.client import Client, Stats, Current, Totals
+from franklinwh_cloud.metrics import ClientMetrics
 
 
 # ── Sample Data ──────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ class TestGetStatsResponseParsing:
     @respx.mock
     async def test_empty_result_returns_empty_stats(self, mock_client):
         """Empty API result should return empty_stats() fallback."""
-        from franklinwh.client import empty_stats
+        from franklinwh_cloud.client import empty_stats
 
         respx.get(
             "https://energy.franklinwh.com/hes-gateway/terminal/getDeviceCompositeInfo"

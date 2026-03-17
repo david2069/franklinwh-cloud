@@ -5,11 +5,11 @@ Tests validation logic without needing live API calls.
 
 import pytest
 
-from franklinwh.client import (
+from franklinwh_cloud.client import (
     InvalidOperatingMode,
     InvalidOperatingModeOption,
 )
-from franklinwh.const import OPERATING_MODES
+from franklinwh_cloud.const import OPERATING_MODES
 
 
 class TestSetModeValidation:

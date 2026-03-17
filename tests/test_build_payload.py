@@ -9,7 +9,7 @@ import zlib
 
 import pytest
 
-from franklinwh.client import to_hex
+from franklinwh_cloud.client import to_hex
 
 
 SAMPLE_DATA = {"opt": 1, "refreshData": 1}
