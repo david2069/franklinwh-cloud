@@ -218,6 +218,21 @@ stats.totals.grid_import           # Daily grid import (kWh)
 stats.totals.home_use              # Daily home consumption (kWh)
 ```
 
+## 🗺️ Roadmap
+
+### Installer Account Support (CLI-only, read-only)
+
+The FranklinWH Cloud API supports **installer accounts** — these are privileged accounts used by solar installers to manage fleets of customer aGate gateways. The login endpoint (`appUserOrInstallerLogin`) already supports both account types via a `type` parameter (currently hardcoded to `1` = user).
+
+**Planned scope:**
+- CLI `--installer` flag to authenticate as an installer
+- `discover` command to list all customer gateways in the installer's fleet
+- `status` command with `--gateway SN` to view any customer's system
+- **Read-only only** — no write operations (mode changes, TOU updates) via installer CLI
+- Per-gateway selection required (no fleet-wide operations)
+
+> ⚠️ Installer accounts can access and modify multiple customer sites. This library intentionally **limits installer support to read-only CLI operations** as a matter of responsible API citizenship. Developers who fork this library assume their own responsibility for write operations.
+
 ## 🤝 Contributing
 
 See [MIGRATION.md](MIGRATION.md) for details on the recent modularization and how it affects downstream code. Contributions welcome!
