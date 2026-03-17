@@ -1,7 +1,8 @@
 """TOU command — Time-of-Use schedule inspection.
 
 Shows tariff configuration, the actual dispatch schedule (matching FEM),
-rate information, and charge power estimates.
+rate information, and charge power estimates. Supports multiple seasons,
+day types (weekday/weekend/every day), and pricing tiers.
 
 Usage:
     franklinwh-cli tou                # schedule overview with dispatch blocks
@@ -23,7 +24,6 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False)
         output = {}
         output["tou_list"] = await client.get_gateway_tou_list()
         output["dispatch_detail"] = await client.get_tou_dispatch_detail()
-        output["schedule_blocks"] = await client.get_tou_info(2)
         output["charge_power"] = await client.get_charge_power_details()
         print_json_output(output)
         return
@@ -55,13 +55,23 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False)
     except Exception as e:
         print_warning(f"Could not retrieve TOU list: {e}")
 
-    # ── Tariff Plan ──────────────────────────────────────────────
+    # ── Full Schedule (all seasons, day types, periods) ──────────
     dispatch_result = None
     try:
         res = await client.get_tou_dispatch_detail()
         dispatch_result = res.get("result", {})
         template = dispatch_result.get("template", {})
+        strategies = dispatch_result.get("strategyList", [])
 
+        # Build dispatch lookup from detailDefaultVo
+        dispatch_lookup = {}
+        default_vo = dispatch_result.get("detailDefaultVo", {})
+        tou_dispatch_list = default_vo.get("touDispatchList", [])
+        for d in tou_dispatch_list:
+            if d.get("id") is not None:
+                dispatch_lookup[d["id"]] = d
+
+        # ── Tariff Plan ──────────────────────────────────────────
         print_section("🏷️", "Tariff Plan")
         plan_name = template.get("name", template.get("tariffName", "?"))
         print_kv("Plan", plan_name)
@@ -78,96 +88,91 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False)
         nem_names = {0: "NEM 2.0", 1: "NEM 3.0 (Net Billing)", 2: "No NEM"}
         print_kv("NEM Type", nem_names.get(nem_type, f"Unknown ({nem_type})"))
 
-        # Rates from strategyList
-        strategies = dispatch_result.get("strategyList", [])
-        if strategies:
-            for season in strategies:
+        bat_cap = dispatch_result.get("batteryRatedCapacity")
+        if bat_cap:
+            print_kv("Battery Capacity", f"{bat_cap} kWh")
+
+        # ── Iterate seasons ──────────────────────────────────────
+        if not strategies:
+            print_warning("No TOU schedules configured.")
+        else:
+            total_blocks = 0
+            for season_idx, season in enumerate(strategies):
+                season_name = season.get("seasonName", f"Season {season_idx + 1}")
+                months = season.get("month", "")
+                month_display = _format_months(months)
+
+                print_section("📅", f"{season_name} — {month_display}")
+
                 day_types = season.get("dayTypeVoList", [])
-                for day_type in day_types:
+                if not day_types:
+                    print_warning("No day types configured for this season.")
+                    continue
+
+                # ── Iterate day types ────────────────────────────
+                for dt_idx, day_type in enumerate(day_types):
+                    day_name = day_type.get("dayName", "?")
+                    dt_code = day_type.get("dayType", 0)
+                    day_label = _day_type_label(dt_code, day_name)
+
+                    # Show day type header if multiple
+                    if len(day_types) > 1:
+                        print(f"\n  {c('bold', f'▸ {day_label}')}")
+
+                    # ── Rates for this day type ──────────────────
                     rates = _extract_rates(day_type)
                     if rates:
+                        print()
                         for rate_name, buy, sell in rates:
-                            if buy is not None:
-                                sell_str = f"  Sell: ${sell:.2f}" if sell is not None else ""
-                                print_kv(f"  {rate_name}", f"Buy: ${buy:.2f}{sell_str}")
+                            sell_str = f"  Sell: ${sell:.4f}" if sell is not None else ""
+                            print_kv(f"  💰 {rate_name}", f"Buy: ${buy:.4f}{sell_str}")
+                        print()
+
+                    # ── Dispatch periods ─────────────────────────
+                    periods = day_type.get("detailVoList", [])
+                    if periods:
+                        # Table header
+                        print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'SOL CO'}")
+                        print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6}")
+
+                        for block in periods:
+                            start = block.get("startHourTime", "?")
+                            end = block.get("endHourTime", "?")
+                            name = block.get("name", "?")
+                            dispatch_id = block.get("dispatchId", 0)
+                            wave_type = block.get("waveType", 0)
+                            max_soc = block.get("maxChargeSoc")
+                            min_soc = block.get("minDischargeSoc")
+                            solar_cutoff = block.get("solarCutoff", 0)
+
+                            # Resolve dispatch name
+                            disp_display = _resolve_dispatch(dispatch_id, dispatch_lookup)
+                            # Truncate long names
+                            if len(disp_display) > 22:
+                                disp_display = disp_display[:20] + "…"
+
+                            wave_name = WAVE_TYPES.get(wave_type, f"Wave {wave_type}")
+                            disp_color = _dispatch_color(disp_display)
+
+                            max_str = f"{max_soc}%" if max_soc else "—"
+                            min_str = f"{min_soc}%" if min_soc else "—"
+                            solar_str = str(solar_cutoff) if solar_cutoff else "0"
+
+                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{max_str:<9}{min_str:<9}{solar_str}")
+
+                        total_blocks += len(periods)
+                        print()
+                    else:
+                        print_warning("  No dispatch periods configured for this day type.")
+
+            print_kv("Total", f"{total_blocks} time blocks across {len(strategies)} season(s)")
 
     except Exception as e:
-        print_warning(f"Could not retrieve dispatch template: {e}")
-
-    # ── Active Schedule (from get_tou_info option=2) ─────────────
-    print_section("📅", "Dispatch Schedule")
-    try:
-        detail_list = await client.get_tou_info(2)
-
-        if detail_list:
-            # Build dispatch lookup from detailDefaultVo
-            dispatch_lookup = {}
-            if dispatch_result:
-                default_vo = dispatch_result.get("detailDefaultVo", {})
-                tou_dispatch_list = default_vo.get("touDispatchList", [])
-                for d in tou_dispatch_list:
-                    if d.get("id") is not None:
-                        dispatch_lookup[d["id"]] = d
-
-            # Header
-            print(f"  {'START':<12}{'END':<12}{'NAME':<14}{'DISPATCH':<22}{'WAVE':<12}{'MAX SoC':<10}{'MIN SoC':<10}{'SOLAR CO'}")
-            print(f"  {'─'*11}  {'─'*11}  {'─'*13} {'─'*21} {'─'*11} {'─'*9} {'─'*9} {'─'*8}")
-
-            for block in detail_list:
-                start = block.get("startHourTime", "?")
-                end = block.get("endHourTime", "?")
-                name = block.get("name", "?")
-                dispatch_id = block.get("dispatchId", 0)
-                wave_type = block.get("waveType", 0)
-                max_soc = block.get("maxChargeSoc")
-                min_soc = block.get("minDischargeSoc")
-                solar_cutoff = block.get("solarCutoff", 0)
-
-                # Look up dispatch name
-                dispatch_info = dispatch_lookup.get(dispatch_id, {})
-                dispatch_title = dispatch_info.get("title", "")
-                dispatch_code = dispatch_info.get("dispatchCode", "")
-                if dispatch_title:
-                    disp_display = f"{dispatch_title}"
-                elif dispatch_code:
-                    disp_display = DISPATCH_CODES.get(dispatch_code, dispatch_code)
-                else:
-                    disp_display = f"ID {dispatch_id}"
-
-                wave_name = WAVE_TYPES.get(wave_type, f"Wave {wave_type}")
-
-                # Color code dispatch
-                if "Charge" in disp_display or "charge" in str(dispatch_code):
-                    disp_color = "cyan"
-                elif "Export" in disp_display or "export" in str(dispatch_code):
-                    disp_color = "yellow"
-                elif "Self" in disp_display or "self" in str(dispatch_code).lower():
-                    disp_color = "green"
-                elif "Standby" in disp_display:
-                    disp_color = "dim"
-                else:
-                    disp_color = "dim"
-
-                max_str = f"{max_soc}%" if max_soc else "—"
-                min_str = f"{min_soc}%" if min_soc else "—"
-                solar_str = str(solar_cutoff) if solar_cutoff else "0"
-
-                print(f"  {start:<12}{end:<12}{name:<14}{c(disp_color, f'{disp_display:<22s}')}{wave_name:<12}{max_str:<10}{min_str:<10}{solar_str}")
-
-            print()
-            print_kv("Blocks", f"{len(detail_list)} time blocks configured")
-        else:
-            print_warning("No schedule blocks found.")
-
-    except Exception as e:
-        print_warning(f"Could not retrieve schedule blocks: {e}")
+        print_warning(f"Could not retrieve dispatch detail: {e}")
 
     # ── Raw Dispatch Detail ──────────────────────────────────────
     if show_dispatch and dispatch_result:
         print_section("⚙️", "Raw Dispatch Detail")
-        default_vo = dispatch_result.get("detailDefaultVo", {})
-        tou_dispatch_list = default_vo.get("touDispatchList", [])
-
         print_kv("PTO Date", dispatch_result.get("ptoDate", "—"))
         print_kv("Battery Savings", dispatch_result.get("batterySavingsFlag", "—"))
         print_kv("aPower Count", dispatch_result.get("apowerCount", "—"))
@@ -235,8 +240,36 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False)
 
 # ── Helpers ──────────────────────────────────────────────────────
 
+def _format_months(months_str: str) -> str:
+    """Convert '1,2,3,...,12' to human-readable month range."""
+    if not months_str:
+        return "?"
+    months = sorted(int(m) for m in months_str.split(",") if m.strip())
+    if months == list(range(1, 13)):
+        return "All Year"
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    if len(months) == 1:
+        return month_names[months[0] - 1]
+    if len(months) <= 3:
+        return ", ".join(month_names[m - 1] for m in months)
+
+    # Check for contiguous range
+    if months == list(range(months[0], months[-1] + 1)):
+        return f"{month_names[months[0] - 1]}–{month_names[months[-1] - 1]}"
+
+    return ", ".join(month_names[m - 1] for m in months)
+
+
+def _day_type_label(day_type: int, day_name: str) -> str:
+    """Convert day type code to readable label."""
+    labels = {1: "Weekdays (Mon–Fri)", 2: "Weekends (Sat–Sun)", 3: "Every Day", 4: "Custom"}
+    return labels.get(day_type, day_name)
+
+
 def _extract_rates(day_type: dict) -> list:
-    """Extract rate tiers from day type data."""
+    """Extract non-zero rate tiers from day type data."""
     rates = []
     tiers = [
         ("On-Peak", "eleticRatePeak", "eleticSellPeak"),
@@ -251,3 +284,31 @@ def _extract_rates(day_type: dict) -> list:
         if buy is not None and buy != 0:
             rates.append((name, buy, sell))
     return rates
+
+
+def _resolve_dispatch(dispatch_id: int, dispatch_lookup: dict) -> str:
+    """Resolve dispatch ID to display name using lookup table."""
+    info = dispatch_lookup.get(dispatch_id, {})
+    title = info.get("title", "")
+    code = info.get("dispatchCode", "")
+    if title:
+        return title
+    if code:
+        return DISPATCH_CODES.get(code, code)
+    return f"ID {dispatch_id}"
+
+
+def _dispatch_color(name: str) -> str:
+    """Pick ANSI color based on dispatch mode name."""
+    lower = name.lower()
+    if "charge" in lower or "grid" in lower:
+        return "cyan"
+    if "export" in lower:
+        return "yellow"
+    if "self" in lower:
+        return "green"
+    if "standby" in lower or "idle" in lower:
+        return "dim"
+    if "home" in lower:
+        return "magenta"
+    return "dim"
