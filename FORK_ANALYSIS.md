@@ -15,7 +15,7 @@
 | Exception classes | 4 | **10** |
 | Constants/modes | inline in client.py | Extracted to `const/` package |
 | Modules | `client.py`, `api.py`, `caching_thread.py` | `client.py`, `api.py`, `cli.py`, `const/`, `endpoints.py`, `metrics.py`, `mixins/` (7 modules) |
-| Pip package | `franklinwh` | `franklinwh-cloud-client` |
+| Pip package | `franklinwh` (on PyPI) | `franklinwh-cloud-client` (not yet on PyPI) |
 | Import path | `from franklinwh import Client` | `from franklinwh_cloud import Client` |
 | Performance Monitoring | None | EdgeTracker, RateLimiter, StaleDataCache, ClientMetrics |
 | Client Identity | Anonymous | `franklinwh-cloud-client/0.2.0` headers |

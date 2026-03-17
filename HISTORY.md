@@ -38,7 +38,7 @@ Forked in early 2026 to support the **FranklinWH Energy Manager** (FEM) — a Ho
 As the fork grew, a structural problem emerged:
 
 - The **repo name** `franklinwh-python` implied we were richo's library
-- The **PyPI package** was `franklinwh-cloud-client` with `from franklinwh_cloud import ...`
+- The **package name** was `franklinwh-cloud-client` with `from franklinwh_cloud import ...`
 - The **`franklinwh/` directory** (richo's original code) was dead weight, confusing AI agents
 - **Upstream PRs** required richo's approval — a dependency we couldn't control
 
@@ -50,7 +50,7 @@ On **17 March 2026**, the project migrated to its own identity:
 
 ```
 Repository:    david2069/franklinwh-cloud
-PyPI package:  franklinwh-cloud-client
+Package name:  franklinwh-cloud-client  (not yet on PyPI — install from source/GitHub)
 Import path:   from franklinwh_cloud import Client
 ```
 
