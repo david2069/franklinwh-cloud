@@ -289,25 +289,36 @@ When triggered, logs: `WARNING: Serving stale data for getDeviceCompositeInfo (a
 
 ### CLI Metrics
 
+One-shot API probe with full performance and edge data:
+
 ```bash
-franklinwh-cli metrics        # pretty print — includes CloudFront Edge section
+franklinwh-cli metrics        # pretty print — probe call + metrics + CloudFront
 franklinwh-cli metrics --json # machine-readable — includes edge_tracker object
 ```
+
+The `metrics` command makes a single probe API call (`get_stats()`) so it shows
+real data even on a fresh CLI invocation. For continuous monitoring, use `monitor`.
 
 Sample CLI output:
 ```
 ═══ API Metrics ═══
-          Total Calls: 3
-         Avg Response: 0.845s
-            Min / Max: 0.089s / 1.456s
-               Errors: 0
+               Probe: 845ms (get_stats)
+
+📊 API Calls
+         Total Calls: 3
+        Avg Response: 0.845s
+           Min / Max: 0.089s / 1.456s
+              Errors: 0
 
 ☁️ CloudFront Edge
-          Current PoP: SYD62-P1
-             Requests: 3
-           Cache Rate: 0%
+         Current PoP: SYD62-P1
+         CF Requests: 3
+      Cache Hit Rate: 0%
             SYD62-P1: 3 requests
-         Distribution: 8bec1389...cloudfront.net
+    Edge Transitions: 0 (stable)
+    CDN Distribution: 8bec1389...
+
+  For continuous monitoring: franklinwh-cli monitor -d <minutes>
 ```
 
 When a rate limiter is active, the output additionally includes a **Rate Limiting** section showing calls per time window and remaining budget.
