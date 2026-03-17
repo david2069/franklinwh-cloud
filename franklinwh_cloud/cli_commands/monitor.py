@@ -82,7 +82,9 @@ def _grid_status_display(status_name: str) -> str:
 # ── Display Renderers ────────────────────────────────────────────────
 
 def render_full(stats, mode_desc: str, elapsed: float, interval: int,
-                iteration: int, api_calls: int, edge_pop: str | None) -> str:
+                iteration: int, api_calls: int, edge_pop: str | None,
+                poll_time_ms: float = 0, avg_response_ms: float = 0,
+                edge_snapshot: dict | None = None) -> str:
     """Render full dashboard view."""
     cur = stats.current
     tot = stats.totals
@@ -129,17 +131,33 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
             lines.append(f"  │  V2L:       {cur.v2l_use:>6.0f} W")
         lines.append("")
 
+    # API Performance
+    lines.append(f"  {BOLD}📡 API{RESET}")
+    resp_color = GREEN if poll_time_ms < 2000 else YELLOW if poll_time_ms < 5000 else RED
+    avg_color = GREEN if avg_response_ms < 2000 else YELLOW if avg_response_ms < 5000 else RED
+    lines.append(f"  │  Response: {resp_color}{poll_time_ms:>5.0f}ms{RESET}   Avg: {avg_color}{avg_response_ms:>5.0f}ms{RESET}   Calls: {api_calls}")
+    if edge_snapshot:
+        pop = edge_snapshot.get('current_pop', '?')
+        cache_rate = edge_snapshot.get('cache_hit_rate', 0)
+        transitions = edge_snapshot.get('edge_transitions', 0)
+        dist_ids = edge_snapshot.get('distribution_ids', [])
+        lines.append(f"  │  Edge PoP: {CYAN}{pop}{RESET}   Cache: {cache_rate:.0%}   Transitions: {transitions}")
+        if dist_ids:
+            lines.append(f"  │  CDN: {', '.join(d[:12] + '…' for d in dist_ids)}")
+    elif edge_pop:
+        lines.append(f"  │  Edge PoP: {CYAN}{edge_pop}{RESET}")
+    lines.append("")
+
     # Footer
     mins = int(elapsed // 60)
     secs = int(elapsed % 60)
-    edge_str = f"  Edge: {edge_pop}" if edge_pop else ""
-    lines.append(f"  {DIM}Refresh: {interval}s │ Uptime: {mins}m{secs:02d}s │ Polls: {iteration} │ API: {api_calls}{edge_str}{RESET}")
+    lines.append(f"  {DIM}Refresh: {interval}s │ Uptime: {mins}m{secs:02d}s │ Polls: {iteration}{RESET}")
     lines.append(f"  {DIM}Press Ctrl+C to exit{RESET}")
 
     return "\n".join(lines)
 
 
-def render_compact(stats, iteration: int) -> str:
+def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
     """Render single-line compact view."""
     cur = stats.current
     now = datetime.now().strftime("%H:%M:%S")
@@ -151,7 +169,8 @@ def render_compact(stats, iteration: int) -> str:
         f"🔋 {cur.battery_soc:>3.0f}% {batt_dir}{abs(cur.battery_use):>5.0f}W  "
         f"⚡ {grid_sym} {cur.grid_use:>+6.0f}W  "
         f"🏠 {cur.home_load:>5.0f}W  "
-        f"│ {cur.work_mode_desc}"
+        f"│ {cur.work_mode_desc}  "
+        f"{DIM}{poll_time_ms:.0f}ms{RESET}"
     )
 
 
@@ -196,10 +215,13 @@ async def run(client, *, json_output: bool = False, interval: int = 30,
             if end_time and time.time() >= end_time:
                 break
 
-            # Fetch data
+            # Fetch data with timing
             try:
+                poll_start = time.time()
                 stats = await client.get_stats()
+                poll_time_ms = (time.time() - poll_start) * 1000
             except Exception as e:
+                poll_time_ms = 0
                 if compact:
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠ Error: {e}")
                 else:
@@ -211,35 +233,43 @@ async def run(client, *, json_output: bool = False, interval: int = 30,
             # Get mode description
             mode_desc = getattr(stats.current, 'work_mode_desc', 'Unknown')
 
-            # Get metrics for footer
+            # Get metrics
             metrics = client.get_metrics()
             api_calls = metrics.get("total_api_calls", 0)
+            avg_response_ms = metrics.get("avg_response_time_s", 0) * 1000
 
-            # Edge tracker
+            # Edge tracker snapshot
             edge_pop = None
+            edge_snapshot = None
             if hasattr(client, 'edge_tracker') and client.edge_tracker and client.edge_tracker.total_requests > 0:
                 edge_pop = client.edge_tracker.current_pop
+                edge_snapshot = client.edge_tracker.snapshot()
 
             # Render
             if json_output:
                 output = {
                     "timestamp": datetime.now().isoformat(),
                     "iteration": iteration,
+                    "poll_time_ms": round(poll_time_ms, 1),
+                    "avg_response_ms": round(avg_response_ms, 1),
                     "current": dataclasses.asdict(stats.current),
                     "totals": dataclasses.asdict(stats.totals),
                     "metrics": metrics,
                 }
-                if edge_pop:
+                if edge_snapshot:
+                    output["edge"] = edge_snapshot
+                elif edge_pop:
                     output["edge_pop"] = edge_pop
                 print_json_output(output)
 
             elif compact:
-                print(render_compact(stats, iteration))
+                print(render_compact(stats, iteration, poll_time_ms))
 
             else:
                 output = render_full(
                     stats, mode_desc, elapsed, interval,
-                    iteration, api_calls, edge_pop
+                    iteration, api_calls, edge_pop,
+                    poll_time_ms, avg_response_ms, edge_snapshot
                 )
                 sys.stdout.write(output)
                 sys.stdout.flush()
