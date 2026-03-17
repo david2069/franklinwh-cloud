@@ -13,9 +13,11 @@ A Python client library for interacting with FranklinWH energy storage systems v
 - **Mode Control**: Switch between operating modes (Time-of-Use, Self-Consumption, Emergency Backup)
 - **TOU Schedules**: Manage Time-of-Use scheduling
 - **Device Info**: Gateway details, network status, device inventory
-- **API Metrics**: Automatic tracking of call counts, timing, and errors
+- **Performance Monitoring**: API call metrics, response timing (min/avg/max), error rates, and CloudFront edge tracking
+- **CloudFront Edge Tracking**: Automatic PoP location monitoring, failover detection, cache hit rates, and distribution ID tracking
 - **Client Identity**: Honest identification headers for responsible API citizenship
 - **Rate Limiting**: Opt-in client-side throttling with per-minute/hour/daily budgets
+- **Stale Data Cache**: Per-endpoint TTL caching for graceful degradation when the cloud is slow or unavailable
 - **Modular Architecture**: Domain-specific mixins (stats, modes, TOU, storm, power, devices, account)
 - **CLI Tool**: Subcommand-based CLI with `fetch` for arbitrary endpoint access, debug tracing, JSON output
 
