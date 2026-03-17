@@ -1,82 +1,112 @@
-# Contributing to franklinwh-python
+# Contributing to franklinwh-cloud-client
 
-## Commit Policy
+Thank you for your interest in contributing! This project is an unofficial,
+community-maintained client library for FranklinWH energy storage systems.
 
-### Conventional Commits
+## ⚖️ Before You Contribute
 
-All commits must use [Conventional Commits](https://www.conventionalcommits.org/) format:
+By contributing to this project, you agree that:
 
-| Prefix | Use |
-|--------|-----|
-| `fix:` | Bug fix |
-| `feat:` | New feature or endpoint |
-| `refactor:` | Code restructure (no behaviour change) |
-| `docs:` | Documentation only |
-| `test:` | Test additions or fixes |
-| `chore:` | Build, deps, config changes |
+1. You have read and understood the [LICENSE](LICENSE) including the Additional Terms
+2. Your contributions will be licensed under the same MIT License
+3. You will not submit code that intentionally abuses FranklinWH's API or
+   violates their terms of service
+4. You understand this software controls energy storage equipment and will
+   test your changes thoroughly
 
-### Branching
-
-- Use **feature branches** for multi-commit work
-- Self-merge PRs are acceptable for solo development
-- Direct pushes to `main` are OK for single-commit fixes
-
-### Secrets
-
-- **Never commit credentials** — use `.env` for local credentials
-- See `.env.example` for the required format
-- For CI, use GitHub repository secrets
-
-## Test Policy
-
-### Running Tests
+## 🏗️ Development Setup
 
 ```bash
-# Install test dependencies
-venv/bin/pip install -e ".[test]"
-
-# Run all tests (excluding live)
-venv/bin/pytest -m "not live" -v
-
-# Run with coverage
-venv/bin/pytest -m "not live" -v --cov=franklinwh --cov-report=term-missing
-
-# Run live smoke tests (requires .env)
-venv/bin/pytest -m live -v
+git clone https://github.com/david2069/franklinwh-python.git
+cd franklinwh-python
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[test]"
 ```
 
-### Test Requirements
-
-| Rule | Detail |
-|------|--------|
-| New code requires tests | Any new method or bug fix needs a test |
-| All tests must pass before merge | `pytest -m "not live"` exit code 0 |
-| Coverage ratchet | Coverage percentage can only go up |
-| Live tests are opt-in | Marked with `@pytest.mark.live`, skipped by default |
-
-### Test Traceability (AP-11)
-
-Every commit with code changes must have a corresponding test result:
+## 🧪 Running Tests
 
 ```bash
-# Run tests and save results
-./tests/run_and_record.sh FEAT-my-feature
+# Unit tests (mocked, no API credentials needed)
+pytest tests/ -m "not live" -v
 
-# Output: tests/results/YYYY-MM-DD_FEAT-my-feature_pass.txt
+# Live tests (requires franklinwh.ini with credentials)
+pytest tests/ -m live -v
 ```
 
-Commit the result file together with your code changes.
+**All unit tests must pass before submitting a pull request.** Currently 74 unit tests.
 
-See `tests/results/README.md` for naming conventions.
+## 📏 Code Standards
 
-### Test Types
+### API Citizenship
 
-| Type | Location | Runs By Default |
-|------|----------|:---:|
-| Unit tests | `tests/test_*.py` | ✅ |
-| Mock integration | `tests/test_get_stats.py`, `test_retry.py` | ✅ |
-| Live smoke tests | `tests/test_live.py` | ❌ (opt-in) |
+This library prioritises being a **good API citizen**. All contributions must:
 
-## Re-syncing Downstream
+- **Not increase API call volume** without justification
+- **Respect rate limiting** — use `RateLimiter` or equivalent
+- **Identify honestly** via client identity headers — never spoof the official app
+- **Handle errors gracefully** — timeouts, 429s, 5xx responses
+- **Log responsibly** — no credentials or tokens in log output
 
-The `franklinwh-energy-manager` project depends on this library. After changes here, update FEM's dependency reference.
+### Code Style
+
+- Python 3.10+ type hints
+- Docstrings for all public methods (NumPy style)
+- `logging.getLogger("franklinwh_cloud")` — not `print()`
+- New API methods go in the appropriate `mixins/` module
+- New constants go in `const/`
+
+### Testing Requirements
+
+- New features require unit tests with mocked API responses
+- Use `respx` for HTTP mocking (already in test dependencies)
+- Tests must not make real API calls unless marked `@pytest.mark.live`
+- Record test results: `./tests/run_and_record.sh <TAG>`
+
+## 🔀 Pull Request Process
+
+1. **Fork** the repository
+2. **Branch** from `main` — use descriptive names: `fix/typo-in-mode-payload`, `feat/installer-account`
+3. **Test** — all 74+ unit tests must pass
+4. **Document** — update README/API_CLIENT_GUIDE if adding user-facing features
+5. **One concern per PR** — don't mix bug fixes with new features
+6. **Describe** — PR description should explain what and why
+
+### PR Checklist
+
+- [ ] All unit tests pass (`pytest tests/ -m "not live"`)
+- [ ] No new API calls without rate limiter integration
+- [ ] Client identity headers not modified to spoof official app
+- [ ] No credentials or tokens logged at INFO level or above
+- [ ] Docstrings for all new public methods
+- [ ] README/docs updated if user-facing change
+
+## 🐛 Reporting Issues
+
+See [ISSUES.md](ISSUES.md) for detailed guidance on reporting bugs,
+requesting features, and what information to include.
+
+### Quick Issue Template
+
+**Before opening an issue:**
+- Check if it's already reported
+- Confirm you're on the latest version
+- Run `franklinwh-cli --version` to get your version
+
+**Include in your report:**
+- Library version (`franklinwh-cli --version`)
+- Python version (`python3 --version`)
+- What you expected vs. what happened
+- Relevant log output (redact credentials/tokens!)
+
+## 🚫 What We Won't Accept
+
+- Code that spoofs the official FranklinWH app identity
+- Brute-force or credential-stuffing utilities
+- Automated fleet-wide write operations for installer accounts
+- Features designed to circumvent FranklinWH's security measures
+- Dependencies on proprietary or non-OSS libraries
+
+## 💬 Questions?
+
+Open a GitHub Discussion or Issue. Please don't email the maintainers directly.

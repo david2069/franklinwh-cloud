@@ -24,6 +24,7 @@ __version__ = "0.2.0"
 DISCLAIMER = (
     f"franklinwh-cloud-client v{__version__} | UNOFFICIAL · NOT AFFILIATED WITH FRANKLINWH "
     "| NO WARRANTY · PROVIDED AS-IS · USE AT YOUR OWN RISK "
+    "| You must read and understand the LICENSE and its Additional Terms before use. "
     "| This software may break without notice due to upstream API changes, "
     "outages, or authentication changes by FranklinWH. "
     "| MIT License — see LICENSE for details."

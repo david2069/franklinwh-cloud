@@ -235,11 +235,18 @@ The FranklinWH Cloud API supports **installer accounts** — these are privilege
 
 ## 🤝 Contributing
 
-See [MIGRATION.md](MIGRATION.md) for details on the recent modularization and how it affects downstream code. Contributions welcome!
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code standards,
+API citizenship requirements, and pull request process.
+
+See [ISSUES.md](ISSUES.md) for how to report bugs and request features.
 
 ## 📝 License
 
-MIT License - see LICENSE file for details
+MIT License with Additional Terms — see [LICENSE](LICENSE) for details.
+
+The Additional Terms address the specific risks of interacting with
+undocumented energy equipment APIs. **You must read and understand the
+LICENSE before using this software.**
 
 ## 🙏 Acknowledgments
 
@@ -250,6 +257,9 @@ MIT License - see LICENSE file for details
 ## ⚖️ Disclaimer
 
 > **UNOFFICIAL SOFTWARE — NOT AFFILIATED WITH FRANKLINWH**
+>
+> By using this software, you confirm that you have read and understood the
+> [LICENSE](LICENSE) and its Additional Terms.
 >
 > This software is provided **AS-IS**, without warranty of any kind, express or implied,
 > including but not limited to the warranties of merchantability, fitness for a particular
