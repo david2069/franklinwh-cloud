@@ -1,6 +1,6 @@
-# Fork Analysis: david2069 vs richo/franklinwh-python
+# Fork Analysis: franklinwh-cloud-client vs richo/franklinwh-python
 
-**Date**: 2026-03-16
+**Date**: 2026-03-17 (updated) | **Package**: `franklinwh-cloud-client v0.2.0` | **Import**: `from franklinwh_cloud import Client`
 
 ---
 
@@ -14,7 +14,12 @@
 | Client methods | ~15 | **60+** |
 | Exception classes | 4 | **10** |
 | Constants/modes | inline in client.py | Extracted to `const/` package |
-| Modules | `client.py`, `api.py`, `caching_thread.py` | `client.py`, `api.py`, `cli.py`, `const/`, `endpoints.py` |
+| Modules | `client.py`, `api.py`, `caching_thread.py` | `client.py`, `api.py`, `cli.py`, `const/`, `endpoints.py`, `metrics.py`, `mixins/` (7 modules) |
+| Pip package | `franklinwh` | `franklinwh-cloud-client` |
+| Import path | `from franklinwh import Client` | `from franklinwh_cloud import Client` |
+| Performance Monitoring | None | EdgeTracker, RateLimiter, StaleDataCache, ClientMetrics |
+| Client Identity | Anonymous | `franklinwh-cloud-client/0.2.0` headers |
+| CLI | None | Full CLI with 10 commands, JSON output, metrics display |
 
 ---
 
@@ -30,7 +35,7 @@ async def get_stats(self) -> Stats:
     return Stats(Current(...11 fields...), Totals(...11 fields...))
 ```
 
-- **Always** calls both `get_composite_info` + `_switch_usage` (MQTT 353) via `asyncio.gather`
+- **Always** calls both `get_composite_info` (REST GET) + `_switch_usage` (MQTT 353) via `asyncio.gather`
 - `generator_enabled` is a `bool` derived from `genStat > 1`
 - No defensive `.get()` calls — will crash if keys missing
 - No work mode, relay, or grid electrical data
@@ -52,7 +57,7 @@ Key differences:
 
 | Aspect | Original | Fork |
 |--------|----------|------|
-| **Primary API** | MQTT `get_composite_info` | REST `get_device_composite_info` |
+| **Primary API** | REST `get_composite_info` (`getDeviceCompositeInfo`) | REST `get_device_composite_info` (same endpoint) |
 | **API calls** | Always 2 (parallel) | 1–3 (conditional) |
 | **Smart circuits** | Always fetched | Only if `pro_load` has active circuits |
 | **Power info** | Not fetched | Only if V2L or generator enabled |
@@ -243,35 +248,24 @@ Key differences:
 | **Token refresh** | On-demand with retry | Proactive refresh before expiry using token TTL |
 | **Unnecessary imports** | Test fixtures imported in client.py | Lazy-load or remove from client.py |
 
-### 2. Metrics & Observability
+### 2. Metrics & Observability ✅ IMPLEMENTED
 
-Currently the fork has **zero instrumentation**. Recommended additions:
+The fork now has **comprehensive instrumentation** via `metrics.py`:
 
-```python
-@dataclass
-class ClientMetrics:
-    start_time: float
-    total_api_calls: int = 0
-    calls_by_endpoint: dict[str, int]       # e.g. {"getDeviceCompositeInfo": 142}
-    errors_by_type: dict[str, int]          # e.g. {"timeout": 3, "401": 1}
-    total_errors: int = 0
-    total_timeouts: int = 0
-    total_retries: int = 0
-    avg_response_time_ms: float = 0.0
-    response_times_by_endpoint: dict[str, list[float]]
-    last_successful_call: float | None = None
-    last_error_time: float | None = None
-    token_refreshes: int = 0
-    uptime_seconds: float                   # time.time() - start_time
-```
+- **ClientMetrics** — per-session call counts, min/avg/max timing, error rates by type, retry counts, token refreshes
+- **EdgeTracker** — CloudFront PoP monitoring, failover detection, cache hit rates, transition logging
+- **RateLimiter** — client-side throttling with daily budgets (opt-in)
+- **StaleDataCache** — per-endpoint TTL cache for graceful degradation (opt-in)
+- **Client Identity** — `franklinwh-cloud-client/0.2.0` headers for API citizenship
+- **CLI `metrics` command** — pretty-print and JSON output of all monitoring data
 
-**Implementation approach**: Wrap `_post`, `_get`, and `retry` with timing decorators that update a `ClientMetrics` instance. Expose via a `client.metrics` property.
+All API calls are wrapped via `instrumented_retry()` which automatically records timing, errors, and edge tracker data.
 
 ### 3. Code Quality
 
 | Issue | Impact | Effort |
 |-------|--------|--------|
-| `client.py` is 3,581 lines | Hard to navigate/test | Split into modules: `client.py`, `tou.py`, `power.py`, `device.py` |
+| ~~`client.py` is 3,581 lines~~ | ~~Hard to navigate/test~~ | ✅ **Done** — split into `mixins/` (stats, modes, tou, storm, power, devices, account) |
 | `_post` / `_post2` and `_get` / `_get2` coexist | Confusing which to use | Consolidate to single implementations |
 | Many `print()` statements | Debug noise in production | Replace with `logger.debug()` |
 | No type hints on many returns | Poor IDE support | Add `-> dict` / `-> list` hints |
@@ -431,8 +425,11 @@ The following upstream PRs are **fully addressed** by this fork's existing codeb
 
 ## Summary
 
-The fork is a **7× expansion** of the original library, transforming it from a minimal HA sensor poller into a comprehensive energy management API client with TOU scheduling, power control, storm watch, notifications, and deep device introspection. The `get_stats` function alone went from 11+11 fields to 45+17 fields, with smart conditional API calls to avoid unnecessary network traffic.
+The fork is a **7× expansion** of the original library (`franklinwh-cloud-client`), transforming it from a minimal HA sensor poller into a comprehensive energy management API client with TOU scheduling, power control, storm watch, notifications, CloudFront edge monitoring, and deep device introspection. The `get_stats` function alone went from 11+11 fields to 45+17 fields, with smart conditional API calls to avoid unnecessary network traffic.
 
-The main areas for optimisation are: **parallelising API calls**, **adding metrics instrumentation**, and **modularising the 3,581-line monolith** into domain-focused modules.
+> [!NOTE]
+> Both richo's `get_composite_info` and our `get_device_composite_info` call the **same REST endpoint** (`getDeviceCompositeInfo`). The original does NOT use MQTT for this call — it uses MQTT only for `_status` (203), `_switch_status` (311), and `_switch_usage` (353).
+
+**Completed optimisations**: Metrics instrumentation (ClientMetrics, EdgeTracker, RateLimiter, StaleDataCache), modularisation into 7 mixin modules, CLI with 10 commands. **Remaining**: parallelising conditional API calls in `get_stats`.
 
 4 of 9 upstream PRs are already addressed by this fork. 4 PRs (library #23, #31 and HA #74, #58) would cause **high merge conflicts** if upstream merges them and the fork tries to sync — these touch classes the fork has removed or fundamentally rewritten.
