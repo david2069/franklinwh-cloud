@@ -155,31 +155,78 @@ franklinwh-cli status -vv --log-file debug.log
 
 ## 🏗️ Architecture
 
+```mermaid
+graph TB
+    CLI["franklinwh-cli"] --> Client
+    FEM["FEM / HA Addon"] --> Client
+    Scripts["Python Scripts"] --> Client
+
+    subgraph "franklinwh_cloud"
+        Client["Client<br/>(composes all mixins)"]
+        Client --> API["api.py<br/>HTTP transport, auth"]
+        API --> RL["RateLimiter"]
+        API --> ET["EdgeTracker<br/>CloudFront PoP"]
+        API --> SC["StaleDataCache"]
+        
+        Client --> Stats["mixins/stats.py"]
+        Client --> Modes["mixins/modes.py"]
+        Client --> TOU["mixins/tou.py"]
+        Client --> Power["mixins/power.py"]
+        Client --> Devices["mixins/devices.py"]
+        Client --> Storm["mixins/storm.py"]
+        Client --> Account["mixins/account.py"]
+    end
+
+    API --> CF["CloudFront CDN"]
+    CF --> FW["FranklinWH Cloud API"]
+
+    style CLI fill:#22c55e,color:#fff
+    style Client fill:#3b82f6,color:#fff
+    style ET fill:#eab308,color:#000
 ```
-franklinwh/
+
+```
+franklinwh_cloud/
 ├── client.py            # Client class (inherits all mixins)
 ├── models.py            # Stats, Current, Totals, GridStatus dataclasses
-├── exceptions.py        # 9 exception classes
+├── api.py               # HTTP transport, auth, session management
+├── exceptions.py        # Custom exception hierarchy
 ├── metrics.py           # ClientMetrics — API call instrumentation
-├── api.py               # Base API constants
 ├── const/               # Operating modes, TOU, device constants
-│   ├── modes.py
-│   ├── tou.py
-│   ├── devices.py
-│   └── test_fixtures.py
-├── mixins/              # Domain-specific API method groups
+│   ├── modes.py, tou.py, devices.py, test_fixtures.py
+├── mixins/              # Domain-specific API method groups (7 modules)
 │   ├── stats.py         # get_stats, get_runtime_data, get_power_by_day
 │   ├── modes.py         # get_mode, set_mode, get_mode_info
-│   ├── tou.py           # get_tou_info, set_tou, get_gateway_tou_list
-│   ├── storm.py         # get_weather, get_storm_settings
-│   ├── power.py         # get_grid_status, get_power_control_settings
-│   ├── devices.py       # get_device_info, get_bms_info
-│   └── account.py       # siteinfo, get_warranty_info, get_alarm_codes_list
-├── cli.py               # CLI entry point (subcommands)
-├── cli_output.py        # Formatting + debug/tracing config
+│   ├── tou.py           # TOU schedule CRUD + dispatch details
+│   ├── storm.py         # weather, storm hedge settings
+│   ├── power.py         # grid status, PCS settings, power control
+│   ├── devices.py       # device info, BMS, composite info
+│   └── account.py       # site info, notifications, alarms, warranty
+├── cli.py               # CLI entry point
+├── cli_output.py        # Terminal rendering + colour utilities
 └── cli_commands/        # CLI subcommand modules
-    ├── status.py, discover.py, mode.py, tou.py, raw.py
+    ├── status.py        # Power flow, SOC, mode, weather, grid
+    ├── discover.py      # Device discovery + connectivity
+    ├── monitor.py       # Real-time dashboard (full/compact/JSON)
+    ├── metrics.py       # API probe + CloudFront edge data
+    ├── bms.py           # Battery Management System inspection
+    ├── diag.py          # System diagnostics report
+    ├── tou.py           # TOU schedule with dispatch details
+    ├── mode.py          # Operating mode get/set
+    └── raw.py           # Direct API method calls
 ```
+
+## 📖 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) | Rate limiting, CloudFront edge tracking, metrics, monitor usage |
+| [FORK_ANALYSIS.md](FORK_ANALYSIS.md) | Detailed comparison with upstream `richo/franklinwh-python` |
+| [HISTORY.md](HISTORY.md) | Project timeline from fork to independence |
+| [UPSTREAM_STRATEGY.md](UPSTREAM_STRATEGY.md) | Contributing back to upstream — the trust ladder |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code standards, PR process |
+| [ISSUES.md](ISSUES.md) | How to report bugs and request features |
 
 ## 🧪 Testing
 
