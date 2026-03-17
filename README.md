@@ -50,7 +50,11 @@ pip install -e ".[test]"
 ### From GitHub (direct)
 
 ```bash
+# Latest (tracks main branch)
 pip install git+https://github.com/david2069/franklinwh-python.git@main
+
+# Pinned release (recommended for production / Docker)
+pip install git+https://github.com/david2069/franklinwh-python.git@v0.2.0
 ```
 
 ## ⚙️ Configuration
