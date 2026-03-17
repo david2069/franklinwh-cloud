@@ -277,58 +277,8 @@ async def async_main():
                               json_output=args.json)
 
             case "metrics":
-                metrics = client.get_metrics()
-                if args.json:
-                    # Include rate limiter state in JSON output
-                    if client.rate_limiter:
-                        metrics["rate_limiter"] = client.rate_limiter.snapshot()
-                    # Include edge tracker in JSON output
-                    if hasattr(client, 'edge_tracker') and client.edge_tracker:
-                        metrics["edge_tracker"] = client.edge_tracker.snapshot()
-                    print_json_output(metrics)
-                else:
-                    print_header("API Metrics")
-                    print_kv("Total Calls", metrics["total_api_calls"])
-                    print_kv("Avg Response", f'{metrics["avg_response_time_s"]:.3f}s')
-                    print_kv("Min / Max", f'{metrics["min_response_time_s"]:.3f}s / {metrics["max_response_time_s"]:.3f}s')
-                    print_kv("By Method", str(metrics["calls_by_method"]))
-                    print_kv("Endpoints", len(metrics["calls_by_endpoint"]))
-                    print_kv("Errors", metrics["total_errors"])
-                    print_kv("Rate Limits (429)", metrics["total_rate_limits"])
-                    print_kv("Throttle Waits", metrics["total_throttle_waits"])
-                    print_kv("Retries", metrics["retry_count"])
-                    print_kv("Uptime", f'{metrics["uptime_s"]:.1f}s')
-                    if metrics["calls_by_endpoint"]:
-                        print_section("📊", "Endpoints")
-                        for ep, count in sorted(metrics["calls_by_endpoint"].items()):
-                            print_kv(ep, f"{count} calls")
-                    # Rate limiter state
-                    if client.rate_limiter:
-                        rl = client.rate_limiter.snapshot()
-                        print_section("⏱️", "Rate Limiting")
-                        print_kv("Calls (last min)", f'{rl["calls_last_minute"]} / {rl["limit_per_minute"]}')
-                        print_kv("Calls (last hr)", f'{rl["calls_last_hour"]} / {rl["limit_per_hour"] or "∞"}')
-                        print_kv("Calls (today)", f'{rl["calls_today"]} / {rl["daily_budget"] or "∞"}')
-                        if rl["remaining_daily"] is not None:
-                            print_kv("Remaining", rl["remaining_daily"])
-                        print_kv("Throttled", "Yes ⚠️" if rl["is_throttled"] else "No")
-                    # CloudFront edge tracker
-                    if hasattr(client, 'edge_tracker') and client.edge_tracker and client.edge_tracker.total_requests > 0:
-                        et = client.edge_tracker.snapshot()
-                        print_section("☁️", "CloudFront Edge")
-                        print_kv("Current PoP", et["current_pop"] or "—")
-                        print_kv("Requests", et["total_cf_requests"])
-                        print_kv("Cache Rate", et["cache_hit_rate"])
-                        if et["pop_distribution"]:
-                            for pop, cnt in sorted(et["pop_distribution"].items()):
-                                print_kv(f"  {pop}", f"{cnt} requests")
-                        if et["edge_transitions"] > 0:
-                            print_kv("⚠️ Transitions", et["edge_transitions"])
-                            for t in et["transition_log"]:
-                                print_kv(f"  {t['from']} → {t['to']}", t.get("at_iso", ""))
-                        if et["distribution_ids"]:
-                            print_kv("Distribution", ", ".join(et["distribution_ids"]))
-                    print()
+                from franklinwh_cloud.cli_commands import metrics
+                await metrics.run(client, json_output=args.json)
 
             case "monitor" | "mon":
                 from franklinwh_cloud.cli_commands import monitor
