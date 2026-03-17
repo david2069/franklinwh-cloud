@@ -312,6 +312,41 @@ Sample CLI output:
 
 When a rate limiter is active, the output additionally includes a **Rate Limiting** section showing calls per time window and remaining budget.
 
+### CLI Monitor — Real-Time Dashboard
+
+Continuous battery monitoring with auto-refresh:
+
+```bash
+franklinwh-cli monitor              # full dashboard, 30s refresh
+franklinwh-cli monitor -i 10        # refresh every 10 seconds
+franklinwh-cli monitor -d 5         # run for 5 minutes then stop
+franklinwh-cli monitor --compact    # single-line per poll (scrolling log)
+franklinwh-cli monitor --json       # JSON stream per interval (for piping)
+```
+
+**Full dashboard mode** clears the screen each refresh and shows:
+- Power flow bars (solar, battery, grid, home) with direction indicators
+- Battery SoC (color-coded: green ≥80%, yellow ≥30%, red <30%)
+- Grid status (connected/disconnected/off-grid)
+- Operating mode and run status
+- Daily energy totals
+- Smart circuit loads (if active)
+- Footer: refresh interval, uptime, poll count, API calls, CloudFront PoP
+
+**Compact mode** appends one line per poll — ideal for logging:
+```
+[14:35:22] ☀  3400W  🔋  76% ↓  600W  ⚡ ● +200W  🏠  2100W  │ Self-Consumption
+[14:35:52] ☀  3350W  🔋  77% ↓  550W  ⚡ ●  +50W  🏠  2100W  │ Self-Consumption
+[14:36:22] ☀  3200W  🔋  78% ─    0W  ⚡ ●  +10W  🏠  2100W  │ Self-Consumption
+```
+
+**JSON mode** outputs one complete JSON object per poll — useful for piping to ETL or logging:
+```bash
+franklinwh-cli monitor --json -i 60 > battery_log.jsonl
+```
+
+All modes exit gracefully on `Ctrl+C`, displaying final session metrics.
+
 ## 🔄 Compatibility with Upstream HA Integration
 
 This fork (`david2069/franklinwh-python`) is a **drop-in replacement** for the upstream `richo/franklinwh-python` library. All new parameters have backward-compatible defaults:

@@ -3,6 +3,9 @@
 
 Usage:
     franklinwh-cli status                  # live system overview
+    franklinwh-cli monitor                 # real-time dashboard (refreshes every 30s)
+    franklinwh-cli monitor -i 10           # refresh every 10 seconds
+    franklinwh-cli monitor -d 5 --compact  # compact mode for 5 minutes
     franklinwh-cli discover                # device enumeration
     franklinwh-cli mode                    # current operating mode
     franklinwh-cli tou                     # TOU schedule info
@@ -139,6 +142,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     # metrics
     subs.add_parser("metrics", help="Show API call metrics from current session")
+
+    # monitor
+    sub_monitor = subs.add_parser("monitor", aliases=["mon"],
+                                   help="Real-time battery dashboard (auto-refresh, Ctrl+C to exit)")
+    sub_monitor.add_argument("-i", "--interval", type=int, default=30, metavar="SECS",
+                             help="Refresh interval in seconds (default: 30)")
+    sub_monitor.add_argument("-d", "--duration", type=int, default=None, metavar="MINS",
+                             help="Run for N minutes then stop (default: until Ctrl+C)")
+    sub_monitor.add_argument("--compact", action="store_true",
+                             help="Single-line output per poll (no screen clearing)")
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
@@ -307,6 +320,13 @@ async def async_main():
                         if et["distribution_ids"]:
                             print_kv("Distribution", ", ".join(et["distribution_ids"]))
                     print()
+
+            case "monitor" | "mon":
+                from franklinwh_cloud.cli_commands import monitor
+                await monitor.run(client, json_output=args.json,
+                                  interval=args.interval,
+                                  duration=args.duration,
+                                  compact=args.compact)
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
