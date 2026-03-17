@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - Monitor crash when edge tracker `cache_hit_rate` returns string instead of float (#2)
+- Status command now warns when runtimeData is empty instead of silently showing zeros
 
 ---
 

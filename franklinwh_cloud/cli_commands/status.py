@@ -45,6 +45,12 @@ async def run(client, *, json_output: bool = False):
     cur = stats.current
     tot = stats.totals
 
+    # Warn if runtime data was empty (API returned no power measurements)
+    if cur.battery_soc == 0 and cur.solar_production == 0 and cur.home_load == 0:
+        print_warning("Runtime data unavailable — API returned no power measurements.")
+        print_warning("The aGate may not have reported yet. Try again in 30-60 seconds.")
+        print()
+
     # Power flows
     print_section("📊", "Power Flow")
     print_kv("Solar", f"{cur.solar_production:>8.1f} W")
