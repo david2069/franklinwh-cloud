@@ -75,6 +75,8 @@ This library prioritises being a **good API citizen**. All contributions must:
 ### PR Checklist
 
 - [ ] All unit tests pass (`pytest tests/ -m "not live"`)
+- [ ] `CHANGELOG.md` updated under `[Unreleased]` (if user-facing change)
+- [ ] GitHub Issue referenced in commit message (if applicable)
 - [ ] No new API calls without rate limiter integration
 - [ ] Client identity headers not modified to spoof official app
 - [ ] No credentials or tokens logged at INFO level or above
