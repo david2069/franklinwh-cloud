@@ -254,7 +254,7 @@ LICENSE before using this software.**
 
 ## 🙏 Acknowledgments
 
-- **FranklinWH** - For innovative energy storage systems
+- **[FranklinWH](https://www.franklinwh.com)** - For innovative energy storage systems
 - **[richo](https://github.com/richo/franklinwh-python)** - Original library foundation
 - This project was developed with AI assistance (Claude, Gemini)
 
