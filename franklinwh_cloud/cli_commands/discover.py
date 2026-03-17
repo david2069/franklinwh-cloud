@@ -8,7 +8,7 @@ from franklinwh_cloud.cli_output import (
 )
 from franklinwh_cloud.const import (
     FRANKLINWH_MODELS, NETWORK_TYPES, COUNTRY_ID, OPERATING_MODES,
-    RUN_STATUS, AGATE_STATE,
+    RUN_STATUS, AGATE_STATE, SIM_STATUS,
 )
 
 
@@ -49,11 +49,23 @@ async def run(client, *, json_output: bool = False, show_warranty: bool = True,
         print_kv("Status", f'{status}  Active: {gate.get("activeStatus", "?")}')
         print_kv("Protocol", gate.get("protocolVer", "?"))
         print_kv("Firmware", gate.get("version", "?"))
+        sw_ver = gate.get("softwareVersion", gate.get("swVersion", ""))
+        if sw_ver:
+            print_kv("Software", sw_ver)
         print_kv("Hardware", gate.get("sysHdVersion", "?"))
 
-        # Network
+        # Network & Signal
         conn = gate.get("connType", 0)
-        print_kv("Network", f"{NETWORK_TYPES.get(conn, f'Type {conn}')}  SIM: {gate.get('simCardStatus', '?')}")
+        sim_status = gate.get('simCardStatus', 0)
+        sim_desc = SIM_STATUS.get(int(sim_status), f'Unknown ({sim_status})')
+        print_kv("Network", f"{NETWORK_TYPES.get(conn, f'Type {conn}')}")
+        print_kv("SIM Card", sim_desc)
+        wifi_sig = gate.get("wifiSignal", gate.get("wifiStrength"))
+        mobile_sig = gate.get("mobileSignal", gate.get("cellSignal"))
+        if wifi_sig is not None:
+            print_kv("WiFi Signal", f"{wifi_sig} dBm")
+        if mobile_sig is not None:
+            print_kv("4G Signal", f"{mobile_sig} dBm")
 
         # Timestamps
         for label, key in [("Activated", "activeTime"), ("Installed", "installTime"), ("Created", "createTime")]:
@@ -144,6 +156,25 @@ async def run(client, *, json_output: bool = False, show_warranty: bool = True,
 
         phase = "Three Phase" if solar.get("isThreePhaseInstall") else "Single Phase"
         print_kv("Phase", phase)
+
+        # Grid voltages/currents (from runtimeData)
+        v1 = rt.get("gridV1", rt.get("v_l1"))
+        v2 = rt.get("gridV2", rt.get("v_l2"))
+        i1 = rt.get("gridA1", rt.get("i_l1"))
+        i2 = rt.get("gridA2", rt.get("i_l2"))
+        freq = rt.get("gridFreq", rt.get("frequency"))
+        if v1 is not None or v2 is not None:
+            print_section("🔌", "Grid Electrical")
+            if v1 is not None:
+                print_kv("L1 Voltage", f"{v1} V")
+            if i1 is not None:
+                print_kv("L1 Current", f"{i1} A")
+            if v2 is not None and float(v2) > 0:
+                print_kv("L2 Voltage", f"{v2} V")
+            if i2 is not None and float(i2) > 0:
+                print_kv("L2 Current", f"{i2} A")
+            if freq is not None:
+                print_kv("Frequency", f"{freq} Hz")
 
         # aPower detail
         fhp_sn = rt.get("fhpSn", [])
