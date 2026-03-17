@@ -1,6 +1,6 @@
-# franklinwh-python Refactoring — FEM Agent Handoff
+# franklinwh-cloud Refactoring — FEM Agent Handoff
 
-> **Purpose**: Summary of all changes to the `franklinwh-python` library that may impact the `franklinwh-energy-manager` (FEM) project. Includes what changed, what's backward compatible, and what needs attention.
+> **Purpose**: Summary of all changes to the `franklinwh-cloud` library that may impact the `franklinwh-energy-manager` (FEM) project. Includes what changed, what's backward compatible, and what needs attention.
 
 ## TL;DR — Impact Summary
 
@@ -167,7 +167,7 @@ Verified these FEM files — **all imports are backward compatible**:
 cd /path/to/franklinwh-energy-manager
 
 # Update the library
-pip install -e /path/to/franklinwh-python
+pip install -e /path/to/franklinwh-cloud
 
 # Delete stale CLI copy  
 rm lib/franklinwh/cli.py

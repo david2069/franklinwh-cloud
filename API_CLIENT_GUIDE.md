@@ -18,7 +18,7 @@ This library accesses FranklinWH's **installer/consumer API** at `energy.frankli
 Since v0.2.0, this library identifies itself honestly in every request:
 
 ```
-softwareversion: franklinwh-python/0.2.0
+softwareversion: franklinwh-cloud/0.2.0
 optdevice:       your-hostname
 optdevicename:   python
 optsource:       3
@@ -45,7 +45,7 @@ The upstream [homeassistant-franklinwh](https://github.com/richo/homeassistant-f
 
 ### Comparison Table
 
-| Aspect | Upstream HA Integration | This Library (franklinwh-python) |
+| Aspect | Upstream HA Integration | This Library (franklinwh-cloud) |
 |--------|------------------------|----------------------------------|
 | **Layer** | Application (HA `DataUpdateCoordinator`) | HTTP client (inside `Client`) |
 | **Mechanism** | `update_interval` — fixed poll period (default 30s) | `RateLimiter` — sliding window with per-min/hr/daily budgets |
@@ -349,7 +349,7 @@ All modes exit gracefully on `Ctrl+C`, displaying final session metrics.
 
 ## 🔄 Compatibility with Upstream HA Integration
 
-This fork (`david2069/franklinwh-python`) is a **drop-in replacement** for the upstream `richo/franklinwh-python` library. All new parameters have backward-compatible defaults:
+This fork (`david2069/franklinwh-cloud`) is a **drop-in replacement** for the upstream `richo/franklinwh-python` library. All new parameters have backward-compatible defaults:
 
 ```python
 # Existing code continues to work unchanged:

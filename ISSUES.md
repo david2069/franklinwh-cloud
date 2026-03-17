@@ -9,7 +9,7 @@ changes by FranklinWH that are outside our control.
 
 ## 🐛 Bug Reports
 
-Use the [Bug Report template](https://github.com/david2069/franklinwh-python/issues/new?template=bug_report.md) on GitHub.
+Use the [Bug Report template](https://github.com/david2069/franklinwh-cloud/issues/new?template=bug_report.md) on GitHub.
 
 **Please include:**
 
@@ -43,7 +43,7 @@ for correlating with outages.
 
 ## 💡 Feature Requests
 
-Use the [Feature Request template](https://github.com/david2069/franklinwh-python/issues/new?template=feature_request.md) on GitHub.
+Use the [Feature Request template](https://github.com/david2069/franklinwh-cloud/issues/new?template=feature_request.md) on GitHub.
 
 **Describe:**
 1. The problem you're trying to solve

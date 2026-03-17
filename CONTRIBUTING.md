@@ -17,8 +17,8 @@ By contributing to this project, you agree that:
 ## 🏗️ Development Setup
 
 ```bash
-git clone https://github.com/david2069/franklinwh-python.git
-cd franklinwh-python
+git clone https://github.com/david2069/franklinwh-cloud.git
+cd franklinwh-cloud
 python3 -m venv venv
 source venv/bin/activate
 pip install -e ".[test]"
