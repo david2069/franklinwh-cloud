@@ -126,28 +126,107 @@ franklinwh-cli fetch GET /any-endpoint --json
 
 Monitor these for changes — a version bump may signal breaking API changes.
 
-## Metrics & Observability
+## Performance Monitoring & Observability
 
-Every `Client` instance tracks API usage automatically:
+Every `Client` instance provides three layers of automatic monitoring:
+
+### API Call Metrics
+
+Per-session tracking of call counts, timing, and errors — always on, zero config:
 
 ```python
 metrics = client.get_metrics()
 # {
 #   "total_api_calls": 42,
 #   "avg_response_time_s": 0.234,
+#   "min_response_time_s": 0.089,
+#   "max_response_time_s": 1.456,
+#   "total_errors": 0,
 #   "total_rate_limits": 0,     # 429 count
 #   "total_throttle_waits": 0,  # proactive waits
 #   "calls_by_endpoint": {"getDeviceCompositeInfo": 12, ...},
 # }
 ```
 
-CLI:
-```bash
-franklinwh-cli metrics        # pretty print
-franklinwh-cli metrics --json # machine-readable
+### CloudFront Edge Tracking
+
+The library automatically captures CloudFront PoP (Point of Presence) information from every API response via httpx event hooks. This is invaluable for diagnosing performance issues and outages:
+
+```python
+edge = client.edge_tracker.snapshot()
+# {
+#   "current_pop": "SYD62-P1",          # Sydney edge, rack P1
+#   "total_cf_requests": 42,
+#   "cache_hits": 0,
+#   "cache_misses": 42,
+#   "cache_hit_rate": "0%",             # expected for dynamic API
+#   "pop_distribution": {"SYD62-P1": 42},
+#   "edge_transitions": 0,              # failover count
+#   "transition_log": [],               # [{from, to, at_iso}]
+#   "distribution_ids": ["8bec1389...cloudfront.net"],
+#   "last_cf_trace_id": "7DdZaIMj..."   # per-request trace
+# }
 ```
 
-When a rate limiter is active, the metrics output includes a **Rate Limiting** section showing calls per time window and remaining budget.
+**What it tells you:**
+
+| Metric | Diagnostic Value |
+|--------|-----------------|
+| `current_pop` | Which AWS region serves you (SYD62 = Sydney, NRT52 = Tokyo, etc.) |
+| `pop_distribution` | Request distribution across edges — reveals load balancing |
+| `edge_transitions` | ⚠️ Non-zero = failover detected — correlate with timeouts/errors |
+| `cache_hit_rate` | Expected 0% for API (dynamic), but reveals if FranklinWH adds CDN layer |
+| `distribution_ids` | CloudFront distribution hash — changes signal infrastructure redeployment |
+| `last_cf_trace_id` | Unique request ID for support tickets or AWS troubleshooting |
+
+**Edge transitions are logged automatically:**
+```
+WARNING ☁️ CloudFront edge transition: SYD62-P1 → NRT52-P3
+```
+
+### Stale Data Cache
+
+Per-endpoint TTL cache providing graceful degradation when the cloud is slow or unreachable:
+
+```python
+client = Client(fetcher, gateway, tolerate_stale_data=True, stale_cache_ttl=300)
+
+# Check cache state
+cache = client.stale_cache.snapshot()
+# {
+#   "enabled": true,
+#   "cached_endpoints": 3,
+#   "hits": 5,               # stale data served
+#   "misses": 2,             # no cached data available
+# }
+```
+
+When triggered, logs: `WARNING: Serving stale data for getDeviceCompositeInfo (age: 45s)`
+
+### CLI Metrics
+
+```bash
+franklinwh-cli metrics        # pretty print — includes CloudFront Edge section
+franklinwh-cli metrics --json # machine-readable — includes edge_tracker object
+```
+
+Sample CLI output:
+```
+═══ API Metrics ═══
+          Total Calls: 3
+         Avg Response: 0.845s
+            Min / Max: 0.089s / 1.456s
+               Errors: 0
+
+☁️ CloudFront Edge
+          Current PoP: SYD62-P1
+             Requests: 3
+           Cache Rate: 0%
+            SYD62-P1: 3 requests
+         Distribution: 8bec1389...cloudfront.net
+```
+
+When a rate limiter is active, the output additionally includes a **Rate Limiting** section showing calls per time window and remaining budget.
 
 ## 🔄 Compatibility with Upstream HA Integration
 
