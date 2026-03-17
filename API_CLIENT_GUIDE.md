@@ -179,6 +179,90 @@ edge = client.edge_tracker.snapshot()
 | `distribution_ids` | CloudFront distribution hash — changes signal infrastructure redeployment |
 | `last_cf_trace_id` | Unique request ID for support tickets or AWS troubleshooting |
 
+#### Stable Connection (Normal)
+
+```json
+{
+  "current_pop": "SYD62-P1",
+  "total_cf_requests": 47,
+  "pop_distribution": {"SYD62-P1": 47},
+  "edge_transitions": 0,
+  "transition_log": []
+}
+```
+All traffic staying on one edge. ✅ No failovers.
+
+#### Failover Detected
+
+```json
+{
+  "current_pop": "MEL50-C1",
+  "total_cf_requests": 47,
+  "pop_distribution": {
+    "SYD62-P1": 42,
+    "MEL50-C1": 5
+  },
+  "edge_transitions": 1,
+  "transition_log": [
+    {"from": "SYD62-P1", "to": "MEL50-C1", "at": "2026-03-17T12:34:56"}
+  ]
+}
+```
+⚠️ CloudFront rerouted 5 requests to Melbourne. Check if latency spiked at `12:34:56`.
+
+#### Unstable / Flapping
+
+```json
+{
+  "current_pop": "NRT52-P3",
+  "total_cf_requests": 100,
+  "pop_distribution": {
+    "SYD62-P1": 60,
+    "MEL50-C1": 25,
+    "NRT52-P3": 15
+  },
+  "edge_transitions": 4,
+  "transition_log": [
+    {"from": "SYD62-P1", "to": "MEL50-C1", "at": "2026-03-17T12:30:00"},
+    {"from": "MEL50-C1", "to": "SYD62-P1", "at": "2026-03-17T12:35:00"},
+    {"from": "SYD62-P1", "to": "NRT52-P3", "at": "2026-03-17T13:10:00"},
+    {"from": "NRT52-P3", "to": "NRT52-P3", "at": "2026-03-17T13:15:00"}
+  ]
+}
+```
+🚨 Multiple failovers across 3 regions — indicative of a CloudFront or network issue.
+
+#### Common PoP Codes (Asia-Pacific)
+
+| Code | Location |
+|------|----------|
+| `SYD` | Sydney, Australia |
+| `MEL` | Melbourne, Australia |
+| `NRT` | Tokyo, Japan |
+| `SIN` | Singapore |
+| `HKG` | Hong Kong |
+| `BOM` | Mumbai, India |
+| `ICN` | Seoul, South Korea |
+
+#### What Triggers Edge Switches?
+
+- **PoP overloaded** → CloudFront reroutes to nearest available edge
+- **Network path change** → ISP routing shifts (common overnight)
+- **CloudFront maintenance** → Planned failover to alternate edge
+- **Outage** → Requests jump to distant region (e.g., SYD → NRT)
+- **DNS TTL expiry** → Normal re-evaluation, may land on different edge
+
+#### Diagnostic Correlation
+
+`edge_transitions > 0` **strongly correlates** with latency spikes:
+
+| Scenario | Same PoP? | High Latency? | Likely Cause |
+|----------|-----------|---------------|-------------|
+| Slow responses | ✅ Yes | ✅ Yes | FranklinWH API backend slow |
+| Slow responses | ❌ No | ✅ Yes | CloudFront rerouted to distant edge |
+| Errors / timeouts | ✅ Yes | N/A | FranklinWH API outage |
+| Errors / timeouts | ❌ No | N/A | CloudFront / network outage |
+
 **Edge transitions are logged automatically:**
 ```
 WARNING ☁️ CloudFront edge transition: SYD62-P1 → NRT52-P3
