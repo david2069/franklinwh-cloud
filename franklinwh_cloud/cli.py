@@ -6,6 +6,7 @@ Usage:
     franklinwh-cli monitor                 # real-time dashboard (refreshes every 30s)
     franklinwh-cli monitor -i 10           # refresh every 10 seconds
     franklinwh-cli monitor -d 5 --compact  # compact mode for 5 minutes
+    franklinwh-cli diag                    # diagnostic report for support
     franklinwh-cli discover                # device enumeration
     franklinwh-cli mode                    # current operating mode
     franklinwh-cli tou                     # TOU schedule info
@@ -152,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Run for N minutes then stop (default: until Ctrl+C)")
     sub_monitor.add_argument("--compact", action="store_true",
                              help="Single-line output per poll (no screen clearing)")
+
+    # diag
+    subs.add_parser("diag", aliases=["diagnostic"],
+                    help="Diagnostic report — system, auth, device, power, API health")
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
@@ -327,6 +332,10 @@ async def async_main():
                                   interval=args.interval,
                                   duration=args.duration,
                                   compact=args.compact)
+
+            case "diag" | "diagnostic":
+                from franklinwh_cloud.cli_commands import diag
+                await diag.run(client, json_output=args.json)
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
