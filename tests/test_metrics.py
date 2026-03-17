@@ -4,7 +4,7 @@ import time
 import pytest
 import httpx
 
-from franklinwh.metrics import ClientMetrics, instrumented_retry, extract_endpoint
+from franklinwh_cloud.metrics import ClientMetrics, instrumented_retry, extract_endpoint
 
 
 # ---------------------------------------------------------------------------

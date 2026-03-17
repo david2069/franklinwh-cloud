@@ -2,7 +2,7 @@
 
 import pytest
 
-from franklinwh.client import GridStatus
+from franklinwh_cloud.client import GridStatus
 
 
 class TestGridStatusEnum:

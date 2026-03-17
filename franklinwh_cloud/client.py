@@ -1,0 +1,753 @@
+"""Client for interacting with FranklinWH gateway API.
+
+This module provides classes and functions to authenticate, send commands,
+and retrieve statistics from FranklinWH energy gateway devices.
+"""
+
+from dataclasses import dataclass
+from enum import Enum
+import hashlib
+import json
+from jsonschema import validate, ValidationError
+import logging
+import time
+import zlib
+from datetime import datetime, timedelta
+import httpx
+import pprint
+
+from .api import DEFAULT_URL_BASE
+from .models import Stats, Current, Totals, GridStatus, empty_stats
+from .exceptions import (
+    TokenExpiredException, AccountLockedException, InvalidCredentialsException,
+    DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
+    InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
+    InvalidTOUScheduleOption,
+)
+# Operating Workand Run mode constants
+from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
+from franklinwh_cloud.const import MODE_MAP, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_EMERGENCY_BACKUP, tou_json_schema
+
+# Optional: Power Control Settings and Emeregency Backup periods (HA select action / User Input)
+from franklinwh_cloud.const import PCS_CONTROL, EMERGENCY_BACKUP_PERIODS
+# TOU Schedule dispatch codes and wave types (tariffs)
+from franklinwh_cloud.const import dispatchCodeType, DISPATCH_CODES, WaveType, WAVE_TYPES, valid_tou_modes
+# NOTE: TOU Schedule presets (primarily for testing / examples)
+from franklinwh_cloud.const.test_fixtures import (
+    gap_schedule, export_to_grid_always, export_to_grid_peak2, 
+    export_to_grid_peakonly, charge_from_grid, standby_schedule, 
+    power_home_only, charge_from_solar, self_schedule, custom_schedule
+)
+
+# Mixin modules — each groups related API methods
+from franklinwh_cloud.mixins.stats import StatsMixin
+from franklinwh_cloud.mixins.modes import ModesMixin
+from franklinwh_cloud.mixins.tou import TouMixin
+from franklinwh_cloud.mixins.storm import StormMixin
+from franklinwh_cloud.mixins.power import PowerMixin
+from franklinwh_cloud.mixins.devices import DevicesMixin
+from franklinwh_cloud.mixins.account import AccountMixin
+
+logger = logging.getLogger(__name__)
+class AccessoryType(Enum):
+    """Represents the type of accessory connected to the FranklinWH gateway.
+
+    Attributes:
+        SMART_CIRCUIT_MODULE (int): A Smart Circuit module, see https://www.franklinwh.com/document/download/smart-circuits-module-installation-guide-sku-accy-scv2-us
+        GENERATOR_MODULE (int): A Generator module, see https://www.franklinwh.com/document/download/generator-module-installation-guide-sku-accy-genv2-us
+    """
+
+    GENERATOR_MODULE = 3
+    SMART_CIRCUIT_MODULE = 4
+
+
+def to_hex(inp):
+    """Convert an integer to an 8-character uppercase hexadecimal string.
+
+    Parameters
+    ----------
+    inp : int
+        The integer to convert.
+
+    Returns:
+    -------
+    str
+        The hexadecimal string representation of the input.
+    """
+    return f"{inp:08X}"
+
+
+class Mode:
+    """Represents an operating mode for the FranklinWH gateway.
+
+    Provides static methods to create specific modes (time of use, emergency backup, self consumption)
+    and generates payloads for API requests to set the gateway's operating mode.
+
+    Attributes:
+    ----------
+    soc : int
+        The state of charge value for the mode.
+    currendId : int | None
+        The current mode identifier.
+    workMode : int | None
+        The work mode value.
+
+    Methods:
+    -------
+    time_of_use(soc=20)
+        Create a time of use mode instance.
+    emergency_backup(soc=100)
+        Create an emergency backup mode instance.
+    self_consumption(soc=20)
+        Create a self consumption mode instance.
+    payload(gateway)
+        Generate the payload dictionary for API requests.
+    """
+
+    @staticmethod
+    def time_of_use(soc=20):
+        """Create a time of use mode instance.
+
+        Parameters
+        ----------
+        soc : int, optional
+            The state of charge value for the mode, defaults to 20.
+
+        Returns:
+        -------
+        Mode
+            An instance of Mode configured for time of use.
+        """
+        mode = Mode(soc)
+        mode.currendId = 9322
+        mode.workMode = 1
+        mode.oldIndex = 3
+        mode.stormEn = 0
+        return mode
+
+    @staticmethod
+    def emergency_backup(soc=100):
+        """Create an emergency backup mode instance.
+
+        Parameters
+        ----------
+        soc : int, optional
+            The state of charge value for the mode, defaults to 100.
+
+        Returns:
+        -------
+        Mode
+            An instance of Mode configured for emergency backup.
+        """
+        mode = Mode(soc)
+        mode.currendId = 9324
+        mode.workMode = 3
+        mode.oldIndex = 1
+        mode.stormEn = 0
+        return mode
+
+    @staticmethod
+    def self_consumption(soc=20):
+        """Create a self consumption mode instance.
+
+        Parameters
+        ----------
+        soc : int, optional
+            The state of charge value for the mode, defaults to 20.
+
+        Returns:
+        -------
+        Mode
+            An instance of Mode configured for self consumption.
+        """
+        mode = Mode(soc)
+        mode.currendId = 9323
+        mode.workMode = 2
+        mode.oldIndex = 2
+        mode.stormEn = 0
+        return mode
+
+    def __init__(self, soc: int) -> None:
+        """Initialize a Mode instance with the given state of charge.
+
+        Parameters
+        ----------
+        soc : int
+            The state of charge value for the mode.
+        """
+        self.soc = soc
+        self.currendId = None
+        self.workMode = None
+        self.stormEn = None
+        self.oldIndex = None
+
+    def payload(self, gateway) -> dict:
+        """Generate the payload dictionary for API requests to set the gateway's operating mode.
+
+        Parameters
+        ----------
+        gateway : str
+            The gateway identifier.
+
+        Returns:
+        -------
+        dict
+            The payload dictionary for the API request.
+        """
+        return {
+            "currendId": str(self.currendId),
+            "gatewayId": gateway,
+            "lang": "EN_US",
+            "oldIndex": str(self.oldIndex),
+            "soc": str(self.soc),
+            "stromEn": str(self.stormEn),
+            "workMode": str(self.workMode),
+        }
+
+class TokenFetcher:
+    """Fetches and refreshes authentication tokens for FranklinWH API."""
+
+    def __init__(self, username: str, password: str) -> None:
+        """Initialize the TokenFetcher with the provided username and password."""
+        self.username = username
+        self.password = password
+        self.info: dict | None = None
+
+    async def get_token(self, force_refresh=False):
+        """Fetch a new authentication token using the stored credentials.
+
+        Store the intermediate account information in self.info.
+        """
+        if self.info and self.info.get("token") and not force_refresh:
+            return self.info["token"]
+        
+        result = await TokenFetcher._login(self.username, self.password)
+        if not result or "token" not in result:
+             raise InvalidCredentialsException("Login failed: No token returned in response")
+             
+        self.info = result
+        return self.info["token"]
+
+    @property
+    def access_token(self):
+        """Synchronous property to get the access token. Forces a login if necessary."""
+        import asyncio
+        
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            # If the loop is already running, we have a problem in sync property.
+            # But in app.py startup and simple scripts, it's not running.
+            # In Flask routes, we create a new loop anyway.
+            # To be safe, we try to use the current loop if possible.
+            # Since we can't await here, nested loop would be needed, but we avoid nest_asyncio.
+            # We'll just try to run it and hope for the best, or return cached.
+            if self.info and self.info.get("token"):
+                return self.info["token"]
+            return loop.run_until_complete(self.get_token())
+        else:
+            return loop.run_until_complete(self.get_token())
+
+    @staticmethod
+    async def login(username: str, password: str):
+        """Log in to the FranklinWH API and retrieve an authentication token."""
+        return (await TokenFetcher._login(username, password))["token"]
+
+    @staticmethod
+    async def _login(username: str, password: str) -> dict:
+        """Log in to the FranklinWH API and retrieve account information."""
+        url = (
+            DEFAULT_URL_BASE + "hes-gateway/terminal/initialize/appUserOrInstallerLogin"
+        )
+        form = {
+            "account": username,
+            "password": hashlib.md5(bytes(password, "ascii")).hexdigest(),
+            "lang": "en_US",
+            "type": 1,
+        }
+        async with httpx.AsyncClient(http2=True) as client:
+            res = await client.post(url, data=form, timeout=30)
+        res.raise_for_status()
+        js = res.json()
+
+        if js["code"] == 401:
+            raise InvalidCredentialsException(js["message"])
+
+        if js["code"] == 400:
+            raise AccountLockedException(js["message"])
+
+        return js["result"]
+
+
+async def retry(func, filter, refresh_func):
+    """Tries calling func, and if filter fails it calls refresh func then tries again."""
+    res = await func()
+    if filter(res):
+        return res
+    await refresh_func()
+    return await func()
+
+
+class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin):
+
+    """Client for interacting with FranklinWH gateway API."""
+
+    def __init__(
+        self, fetcher: TokenFetcher, gateway: str, url_base: str = DEFAULT_URL_BASE,
+        client_headers: dict | None | bool = True,
+        rate_limiter=None,
+        tolerate_stale_data: bool = False,
+        stale_cache_ttl: float = 300,
+    ) -> None:
+        """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
+
+        Parameters
+        ----------
+        client_headers : dict | None | bool
+            True = send default client identity headers (recommended, good API citizen).
+            dict = send custom headers. None/False = send no extra headers (anonymous).
+        rate_limiter : RateLimiter | bool | None
+            None/False = no proactive throttling (default — 429s still detected reactively).
+            True = create default limiter (60/min).
+            RateLimiter(...) = custom limits (e.g. daily budget).
+        tolerate_stale_data : bool
+            If True, return cached responses when the API is unreachable/slow.
+            Default False. Inspired by richo/homeassistant-franklinwh.
+        stale_cache_ttl : float
+            Max age of cached data in seconds. Default 300s (5 minutes).
+            Only used when tolerate_stale_data=True.
+        """
+        from franklinwh_cloud.metrics import ClientMetrics, EdgeTracker, RateLimiter, StaleDataCache, get_default_client_headers
+
+        self.fetcher = fetcher
+        self.gateway = gateway
+        self.url_base = url_base
+        self.token = self.fetcher.info.get("token", "") if self.fetcher.info else ""
+        self.snno = 0
+        self.info = self.fetcher.info
+        self.metrics = ClientMetrics()
+
+        # Rate limiter — proactive client-side throttling (opt-in)
+        if rate_limiter is True:
+            self.rate_limiter = RateLimiter()  # default: 60/min
+        elif isinstance(rate_limiter, RateLimiter):
+            self.rate_limiter = rate_limiter
+        else:
+            self.rate_limiter = None  # disabled by default
+
+        # Stale data cache — graceful degradation when cloud is slow/down
+        if tolerate_stale_data:
+            self.stale_cache = StaleDataCache(max_age_s=stale_cache_ttl, enabled=True)
+        else:
+            self.stale_cache = StaleDataCache(max_age_s=stale_cache_ttl, enabled=False)
+
+        # Edge tracker — CloudFront PoP monitoring (always on, zero overhead)
+        self.edge_tracker = EdgeTracker()
+
+        # Client identity headers — good API citizenship
+        default_headers = {}
+        if client_headers is True:
+            default_headers = get_default_client_headers()
+        elif isinstance(client_headers, dict):
+            default_headers = client_headers
+        # else: no extra headers (anonymous)
+
+        # httpx event hook to capture CloudFront headers from every response
+        async def _on_response(response: httpx.Response):
+            self.edge_tracker.record_response(response.headers)
+
+        self.session = httpx.AsyncClient(
+            http2=True,
+            headers=default_headers,
+            event_hooks={"response": [_on_response]},
+        )
+
+        # to enable detailed logging add this to configuration.yaml:
+        # logger:
+        #   logs:
+        #     franklinwh: debug
+        logger = logging.getLogger("franklinwh_cloud")
+        if logger.isEnabledFor(logging.DEBUG):
+
+            async def debug_request(request: httpx.Request):
+                body = request.content
+                if body and request.headers.get("Content-Type", "").startswith(
+                    "application/json"
+                ):
+                    body = json.dumps(json.loads(body), ensure_ascii=False)
+                self.logger.debug(
+                    "Request: %s %s %s %s",
+                    request.method,
+                    request.url,
+                    request.headers,
+                    body,
+                )
+                return request
+
+            async def debug_response(response: httpx.Response):
+                await response.aread()
+                self.logger.debug(
+                    "Response: %s %s %s %s",
+                    response.status_code,
+                    response.url,
+                    response.headers,
+                    response.json(),
+                )
+                return response
+
+            self.logger = logger
+            self.session = httpx.AsyncClient(
+                http2=True,
+                event_hooks={
+                    "request": [debug_request],
+                    "response": [debug_response],
+                },
+            )
+
+
+    # TODO(richo) Setup timeouts and deal with them gracefully.
+    async def _post2(self, url, payload, params: dict | None = None):
+        if params is not None:
+            params = params.copy()
+            params.update({"gatewayId": self.gateway, "lang": "en_US"})
+
+        async def __post():
+            return (
+                await self.session.post(
+                    url,
+                    params=params,
+                    headers={
+                        "loginToken": self.token,
+                        "Content-Type": "application/json",
+                    },
+                    data=payload,
+                )
+            ).json()
+
+        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
+        return await instrumented_retry(
+            self.metrics, extract_endpoint(url), "POST",
+            __post, lambda j: j["code"] != 401, self.refresh_token,
+            rate_limiter=self.rate_limiter,
+            stale_cache=self.stale_cache,
+        )
+
+
+
+    # TODO(richo) Setup timeouts and deal with them gracefully.
+    async def _post(self, url, payload, params: dict = None, **kwargs):
+
+        logger.info(f"_post: url={url}\n params = {params}\n payload = {payload}\n kwargs = {kwargs}   \n ")
+
+        from urllib.parse import urlparse, parse_qs
+
+        def extract_url_params(url):
+            """
+            Remove and extract all URL parameters into a dictionary.
+            
+            Args:
+                url: The URL string to process
+                
+            Returns:
+                tuple: (base_url, params_dict)
+            """
+            parsed = urlparse(url)
+            
+            # Extract parameters into a dictionary
+            params = parse_qs(parsed.query)
+            
+            # parse_qs returns lists for each value, convert to single values
+            # Keep as list if multiple values exist for same key
+            params_dict = {
+                k: v[0] if len(v) == 1 else v 
+                for k, v in params.items()
+            }
+            
+            # Reconstruct base URL without query parameters
+            base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            
+            # Handle fragment if present
+            if parsed.fragment:
+                base_url += f"#{parsed.fragment}"
+            
+            return base_url, params_dict
+
+
+        """    # Example usage
+            url = "https://example.com/path?name=John&age=30&tags=python&tags=coding"
+            base_url, params = extract_url_params(url)
+
+            print(f"Base URL: {base_url}")
+            print(f"Parameters: {params}")
+        """
+
+
+
+
+        headers = {"loginToken": str(self.token)}
+        tag = "gatewayId"
+        if params is None:
+            params = {}
+        else:
+            params = params.copy()
+            if "equipNo" in params:
+                tag = "equipNo"
+        if "&" in url:
+            url, params = extract_url_params(url)
+        gateway_params = {tag: str(self.gateway), "lang": "en_US"}
+        supressParams = kwargs.get("supressParams") in (True, "Y")
+        supressGateway = kwargs.get("supressGateway") in (True, "Y")
+        logger.info(f"suppressParams = {supressParams}")
+        logger.info(f"supressGateway = {supressGateway}")
+        logger.info(f"params = {params}")
+        logger.info(f"gateway_params = {gateway_params}")
+        if supressParams is True:
+            params = {} if supressGateway is False else None
+            if supressGateway is False:
+                params = gateway_params
+                logger.info(f"supress both params and gateway")
+
+        if supressGateway is False and params is not None:
+            params.update(gateway_params)
+
+        logger.info(f"params = {params}")
+
+        async def __post():
+            if payload is not None:
+                headers.update({"Content-Type": "application/json", "accept-encoding": "gzip", "lang": "EN_US"})
+                if isinstance(payload, (dict, list)):
+                    resp = await self.session.post(url, headers=headers, params=params, json=payload, timeout=30)
+                else:
+                    # payload already serialized or primitive
+                    resp = await self.session.post(url, headers=headers, params=params, data=str(payload), timeout=30)
+            else:
+                resp = await self.session.post(
+                    url,
+                    params=params,
+                    headers={
+                        "loginToken": self.token,
+                        "Content-Type": "application/json",
+                    },
+                    data=payload,
+                    timeout=30,
+                )
+
+            return resp.json()
+
+        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
+        return await instrumented_retry(
+            self.metrics, extract_endpoint(url), "POST",
+            __post, lambda j: j["code"] != 401, self.refresh_token,
+        )
+
+    async def _post_form(self, url, payload):
+        async def __post():
+            return (
+                await self.session.post(
+                    url,
+                    headers={
+                        "loginToken": self.token,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "optsource": "3",
+                    },
+                    data=payload,
+                )
+            ).json()
+
+        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
+        return await instrumented_retry(
+            self.metrics, extract_endpoint(url), "POST",
+            __post, lambda j: j["code"] != 401, self.refresh_token,
+            rate_limiter=self.rate_limiter,
+            stale_cache=self.stale_cache,
+        )
+
+    async def _get2(self, url, params: dict | None = None):
+        headers = {"loginToken": str(self.token)}
+        if params is None:
+            params = {}
+        else:
+            params = params.copy()
+        params.update({"gatewayId": self.gateway, "lang": "en_US"})
+
+        async def __get():
+            return (
+                await self.session.get(
+                    #url, params=params, headers=headers,
+                    url, params=params, headers={"loginToken": self.token},
+                    timeout=30,
+                )
+            ).json()
+
+        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
+        return await instrumented_retry(
+            self.metrics, extract_endpoint(url), "GET",
+            __get, lambda j: j["code"] != 401, self.refresh_token,
+            rate_limiter=self.rate_limiter,
+            stale_cache=self.stale_cache,
+        )
+
+    async def _get(self, url, params: dict | None = None, **kwargs):
+
+        headers = {"loginToken": str(self.token)}
+        tag = "gatewayId"
+        if params is None:
+            params = {}
+        else:
+            params = params.copy()
+            if "equipNo" in params:
+                tag = "equipNo"
+        supressParams = kwargs.get("supressParams") in (True, "Y")
+        supressGateway = kwargs.get("supressGateway") in (True, "Y")
+        logger.info(f"suppressParams = {supressParams}")
+        logger.info(f"supressGateway = {supressGateway}")
+        
+        if supressParams:
+            params = {}
+        if not supressGateway:
+            if params is None: params = {}
+            params.update({tag: self.gateway, "lang": "en_US"})
+    
+        logger.info(f"params = {params}")
+
+        async def __get():
+            return (
+                await self.session.get(
+                    #url, params=params, headers=headers,
+                    url, params=params, headers={"loginToken": self.token},
+                    timeout=30,
+                )
+            ).json()
+
+        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
+        return await instrumented_retry(
+            self.metrics, extract_endpoint(url), "GET",
+            __get, lambda j: j.get("code") != 401, self.refresh_token,
+            rate_limiter=self.rate_limiter,
+            stale_cache=self.stale_cache,
+        )
+
+
+    async def refresh_token(self):
+        """Refresh the authentication token using the TokenFetcher."""
+        self.metrics.record_token_refresh()
+        self.token = await self.fetcher.get_token(force_refresh=True)
+
+    def get_metrics(self) -> dict:
+        """Return a snapshot of all API call metrics.
+
+        Returns
+        -------
+        dict
+            Metrics including uptime, call counts, timing, errors,
+            retries, and token refresh counts.
+        """
+        return self.metrics.snapshot()
+
+
+
+
+
+
+
+
+
+    def next_snno(self):
+        """Get the next sequence number for API requests."""
+        self.snno += 1
+        return self.snno
+
+    def _build_payload(self, ty, data):
+        blob = json.dumps(data, separators=(",", ":")).encode("utf-8")
+        # crc = to_hex(zlib.crc32(blob.encode("ascii")))
+        crc = to_hex(zlib.crc32(blob))
+        ts = int(time.time())
+
+        temp = json.dumps(
+            {
+                "lang": "EN_US",
+                "cmdType": ty,
+                "equipNo": self.gateway,
+                "type": 0,
+                "timeStamp": ts,
+                "snno": self.next_snno(),
+                "len": len(blob),
+                "crc": crc,
+                "dataArea": "DATA",
+            }
+        )
+        # We do it this way because without a canonical way to generate JSON we can't risk reordering breaking the CRC.
+        return temp.replace('"DATA"', blob.decode("utf-8"))
+
+    async def _mqtt_send(self, payload):
+        url = DEFAULT_URL_BASE + "hes-gateway/terminal/sendMqtt"
+
+        res = await self._post(url, payload)
+        if res["code"] == 102:
+            raise DeviceTimeoutException(res["message"])
+        if res["code"] == 136:
+            raise GatewayOfflineException(res["message"])
+        assert res["code"] == 200, f"{res['code']}: {res['message']}"
+        return res
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class UnknownMethodsClient(Client):
+    """A client that also implements some methods that don't obviously work, for research purposes."""
+
+    async def get_controllable_loads(self):
+        """Get the list of controllable loads connected to the gateway."""
+        url = (
+            self.url_base
+            + "hes-gateway/terminal/selectTerGatewayControlLoadByGatewayId"
+        )
+        params = {"id": self.gateway, "lang": "en_US"}
+        headers = {"loginToken": self.token}
+        res = await self.session.get(url, params=params, headers=headers)
+        return res.json()
+
+    async def get_accessory_list(self):
+        """Get the list of accessories connected to the gateway."""
+        url = self.url_base + "hes-gateway/terminal/getIotAccessoryList"
+        params = {"gatewayId": self.gateway, "lang": "en_US"}
+        headers = {"loginToken": self.token}
+        res = await self.session.get(url, params=params, headers=headers)
+        return res.json()
+
+    async def get_equipment_list(self):
+        """Get the list of equipment connected to the gateway."""
+        url = self.url_base + "hes-gateway/manage/getEquipmentList"
+        params = {"gatewayId": self.gateway, "lang": "en_US"}
+        headers = {"loginToken": self.token}
+        res = await self.session.get(url, params=params, headers=headers)
+        return res.json()

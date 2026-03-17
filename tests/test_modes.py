@@ -5,8 +5,8 @@ Tests the const/modes.py data structures and validation.
 
 import pytest
 
-from franklinwh.const import OPERATING_MODES, RUN_STATUS
-from franklinwh.const.modes import (
+from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
+from franklinwh_cloud.const.modes import (
     MODE_TIME_OF_USE,
     MODE_SELF_CONSUMPTION,
     MODE_EMERGENCY_BACKUP,

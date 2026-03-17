@@ -75,7 +75,7 @@ The upstream [homeassistant-franklinwh](https://github.com/richo/homeassistant-f
 
 ```python
 from franklinwh import Client, TokenFetcher
-from franklinwh.metrics import RateLimiter
+from franklinwh_cloud.metrics import RateLimiter
 
 client = Client(
     fetcher, gateway,

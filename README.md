@@ -1,6 +1,8 @@
-# FranklinWH Python Client Library
+# FranklinWH Cloud Client
 
 A Python client library for interacting with FranklinWH energy storage systems via the cloud API.
+
+> 📦 **pip package**: `franklinwh-cloud-client` | **import**: `from franklinwh_cloud import Client`
 
 > 📊 **Fork of [richo/franklinwh-python](https://github.com/richo/franklinwh-python)** — see [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
 
@@ -26,7 +28,7 @@ A Python client library for interacting with FranklinWH energy storage systems v
 ### From wheel (recommended for downstream projects like FEM)
 
 ```bash
-pip install dist/franklinwh-0.2.0-py3-none-any.whl
+pip install dist/franklinwh_cloud_client-0.2.0-py3-none-any.whl
 ```
 
 ### From source (editable, for development)

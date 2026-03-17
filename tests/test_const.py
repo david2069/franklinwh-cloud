@@ -5,8 +5,8 @@ Validates WaveType, dispatchCodeType, and the predefined schedule catalog.
 
 import pytest
 
-from franklinwh.const.tou import WaveType, dispatchCodeType
-from franklinwh.const.test_fixtures import tou_predefined_builtin
+from franklinwh_cloud.const.tou import WaveType, dispatchCodeType
+from franklinwh_cloud.const.test_fixtures import tou_predefined_builtin
 
 
 REQUIRED_SCHEDULE_KEYS = {"startHourTime", "endHourTime", "waveType", "name", "dispatchId"}

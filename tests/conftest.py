@@ -40,8 +40,8 @@ def minimal_client():
     Uses Client.__new__ to bypass __init__ and sets only the attributes
     needed for unit-testable methods like _build_payload, next_snno, etc.
     """
-    from franklinwh.client import Client
-    from franklinwh.metrics import ClientMetrics
+    from franklinwh_cloud.client import Client
+    from franklinwh_cloud.metrics import ClientMetrics
 
     c = Client.__new__(Client)
     c.gateway = "TEST-GW-001"

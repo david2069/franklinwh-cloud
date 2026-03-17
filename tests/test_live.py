@@ -17,8 +17,8 @@ import configparser
 import os
 import pytest
 
-from franklinwh.client import Client, TokenFetcher, Stats
-from franklinwh.models import GridStatus
+from franklinwh_cloud.client import Client, TokenFetcher, Stats
+from franklinwh_cloud.models import GridStatus
 
 
 # Skip entire module if credentials not available
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.live
 
 
 def _load_credentials():
-    """Load credentials from franklinwh.ini or environment variables."""
+    """Load credentials from franklinwh_cloud.ini or environment variables."""
     # Try franklinwh.ini first (same config as cli.py)
     for ini_path in ["franklinwh.ini", "franklinwh/franklinwh.ini"]:
         if os.path.exists(ini_path):
