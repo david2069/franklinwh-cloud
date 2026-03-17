@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `franklinwh-cli bms` — Battery Management System inspection (cell voltages, temperatures, SoC/SoH)
 - `franklinwh-cli diag` — System diagnostics report
 - `franklinwh-cli tou` — Full dispatch schedule with seasons, day types, pricing tiers
+- `franklinwh-cli metrics` — now does a probe call so it shows real data including CloudFront edge
 - GitHub Issues for public issue tracking (#1–#6)
 
 ### Fixed
