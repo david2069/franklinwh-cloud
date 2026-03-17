@@ -141,7 +141,12 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
         cache_rate = edge_snapshot.get('cache_hit_rate', 0)
         transitions = edge_snapshot.get('edge_transitions', 0)
         dist_ids = edge_snapshot.get('distribution_ids', [])
-        lines.append(f"  │  Edge PoP: {CYAN}{pop}{RESET}   Cache: {cache_rate:.0%}   Transitions: {transitions}")
+        # cache_rate can be float (0.85) or str ("85%") depending on edge tracker
+        if isinstance(cache_rate, (int, float)):
+            cache_str = f"{cache_rate:.0%}"
+        else:
+            cache_str = str(cache_rate)
+        lines.append(f"  │  Edge PoP: {CYAN}{pop}{RESET}   Cache: {cache_str}   Transitions: {transitions}")
         if dist_ids:
             lines.append(f"  │  CDN: {', '.join(d[:12] + '…' for d in dist_ids)}")
     elif edge_pop:
