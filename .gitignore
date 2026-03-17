@@ -1,4 +1,3 @@
-
 # Python cache
 __pycache__/
 *.pyc
@@ -6,6 +5,7 @@ __pycache__/
 
 # Virtual environment
 venv/
+.venv/
 
 # Build artifacts
 *.egg-info/
@@ -15,10 +15,28 @@ build/
 # macOS
 .DS_Store
 
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
 # Environment / secrets
 .env
-
-# Test outputs
-test_output.log
 franklinwh.ini
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Test outputs — results stay local, not public
+test_output.log
+tests/results/*.txt
 tests/results/test_history.log
+
+# Agent notes — internal development context
+agent.md
+
+# Root-level scratch scripts
+test_library.py
