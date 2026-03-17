@@ -1,5 +1,7 @@
 """Helpers for interating with the FranklinWH Python Client Library"""
 
+__version__ = "0.2.0"
+
 from .client import Client, TokenFetcher
 from .models import Stats, Current, Totals, GridStatus, empty_stats
 from .exceptions import (
