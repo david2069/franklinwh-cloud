@@ -34,8 +34,8 @@ pip install dist/franklinwh_cloud_client-0.2.0-py3-none-any.whl
 ### From source (editable, for development)
 
 ```bash
-git clone https://github.com/david2069/franklinwh-python.git
-cd franklinwh-python
+git clone https://github.com/david2069/franklinwh-cloud.git
+cd franklinwh-cloud
 python3 -m venv venv
 source venv/bin/activate
 pip install -e .
@@ -51,10 +51,10 @@ pip install -e ".[test]"
 
 ```bash
 # Latest (tracks main branch)
-pip install git+https://github.com/david2069/franklinwh-python.git@main
+pip install git+https://github.com/david2069/franklinwh-cloud.git@main
 
 # Pinned release (recommended for production / Docker)
-pip install git+https://github.com/david2069/franklinwh-python.git@v0.2.0
+pip install git+https://github.com/david2069/franklinwh-cloud.git@v0.2.0
 ```
 
 ## ⚙️ Configuration
