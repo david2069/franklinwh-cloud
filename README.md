@@ -127,6 +127,13 @@ franklinwh-cli raw get_bms_info AP_SERIAL_NUMBER
 
 # API metrics
 franklinwh-cli metrics
+
+# Real-time battery monitor (auto-refresh dashboard)
+franklinwh-cli monitor              # full dashboard, 30s refresh, Ctrl+C to exit
+franklinwh-cli monitor -i 10        # refresh every 10 seconds
+franklinwh-cli monitor -d 5         # run for 5 minutes then stop
+franklinwh-cli monitor --compact    # single-line mode (no screen clearing)
+franklinwh-cli monitor --json       # JSON stream per interval
 ```
 
 **Output modes:**
