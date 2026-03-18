@@ -6,8 +6,15 @@ for the FranklinWH aGate operating mode via the Cloud API.
 MANDATORY USER SETUP: Default Time of Use Tariff setup. May not work
 if user has defined 'Flat' or 'Tiered' rate plans.
 
-NOTE: Does not yet support multiple seasons, week/weekends, etc.
-(must only use one season configuration).
+Supports:
+- Multiple seasons with month assignments
+- Weekday/weekend/everyday day types
+- Pricing rates (buy/sell per tariff tier)
+- Full overwrite (operation=0) — the only mode the Cloud API supports
+
+CAUTION: The saveTouDispatch API endpoint is destructive — it validates,
+saves, AND switches the system to TOU mode. There is no 'update data only'
+path. Calling it always forces a TOU mode switch.
 """
 
 import json
@@ -433,7 +440,42 @@ class TouMixin:
 
         return results
 
-    async def set_tou_schedule(self, touMode: str, touSchedule: list = None, operation: int = 0, default_mode: str = "SELF", default_tariff: str = "OFF_PEAK"):
+    # ── Rate field mapping (user-friendly key → API field) ────────
+    RATE_FIELD_MAP = {
+        "peak": "eleticRatePeak",
+        "sharp": "eleticRateSharp",
+        "shoulder": "eleticRateShoulder",
+        "off_peak": "eleticRateValley",
+        "super_off_peak": "eleticRateSuperOffPeak",
+        "sell_peak": "eleticSellPeak",
+        "sell_sharp": "eleticSellSharp",
+        "sell_shoulder": "eleticSellShoulder",
+        "sell_off_peak": "eleticSellValley",
+        "sell_super_off_peak": "eleticSellSuperOffPeak",
+        "grid_fee": "eleticRateGridFee",
+    }
+
+    # All rate API fields (for read-merge)
+    _ALL_RATE_FIELDS = list(RATE_FIELD_MAP.values())
+
+    # Day type constants
+    DAY_TYPE_WEEKDAY = 1
+    DAY_TYPE_WEEKEND = 2
+    DAY_TYPE_EVERYDAY = 3
+
+    async def set_tou_schedule(
+        self,
+        touMode: str,
+        touSchedule: list = None,
+        operation: int = 0,
+        default_mode: str = "SELF",
+        default_tariff: str = "OFF_PEAK",
+        *,
+        rates: dict = None,
+        seasons: list = None,
+        day_type: int = 3,
+        day_schedules: dict = None,
+    ):
         """Set the Custom or Predefined Time-of-Use Work Mode Schedule.
 
         Once inputs are validated, the schedule is submitted to the aGate.
@@ -441,6 +483,10 @@ class TouMixin:
         new schedule is pending. Generally applied immediately, but the
         aGate may take a few minutes. touSendStatus=1 may persist as a
         false positive even after the schedule is applied.
+
+        CAUTION: The Cloud API's saveTouDispatch endpoint is destructive.
+        It validates, saves, AND switches the system to TOU mode. There
+        is no 'update data only' path.
 
         Parameters
         ----------
@@ -471,15 +517,43 @@ class TouMixin:
         operation : int
             Type of operation (currently only 0 is implemented):
                 0 = Overwrite all (replace entire schedule)
-                1 = Insert entry (adjust existing times accordingly)
-                2 = Delete entry by id (adjust remaining times)
-                3 = Update tariff pricing rates
+                1 = Insert entry (not yet implemented)
+                2 = Delete entry by id (not yet implemented)
+                3 = Update tariff pricing rates (not yet implemented)
 
         default_mode : str
             TOU dispatch mode for gap-filling when schedule < 24 hours
             (default: 'SELF')
         default_tariff : str
             Default tariff type for gap-filling (default: 'OFF_PEAK')
+
+        rates : dict, optional (keyword-only)
+            Pricing rates to set. Keys use friendly names mapped to API fields:
+                peak, sharp, shoulder, off_peak, super_off_peak (buy rates)
+                sell_peak, sell_sharp, sell_shoulder, sell_off_peak,
+                sell_super_off_peak (sell rates)
+                grid_fee (grid fee)
+            Values are floats (e.g. 0.32 = $0.32/kWh).
+            If None, existing rates from the current schedule are preserved.
+
+        seasons : list, optional (keyword-only)
+            List of season dicts, each with:
+                {"name": "Summer", "months": "10,11,12,1,2,3"}
+            If None, defaults to single season covering all 12 months.
+
+        day_type : int, optional (keyword-only)
+            Day type for the schedule (default: 3 = everyDay):
+                1 = Weekdays (Mon-Fri)
+                2 = Weekends (Sat-Sun)
+                3 = Every day
+            Only used when day_schedules is None.
+
+        day_schedules : dict, optional (keyword-only)
+            Separate schedules per day type. Keys are 'weekday' and 'weekend',
+            values are detailVoList arrays. Example:
+                {"weekday": [...blocks...], "weekend": [...blocks...]}
+            When provided, day_type is ignored and two dayTypeVoList entries
+            are created.
 
         Returns
         -------
@@ -815,32 +889,84 @@ class TouMixin:
         detailVoList = sorted(detailVoList.copy(), key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
         logger.info(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
 
-        dayTypeVoList_everyday = [
-            {
-                "dayName": "everyDay",
-                "dayType": 3,
-                "eleticRatePeak": 0,
-                "eleticRateSharp": 0,
-                "eleticRateShoulder": 0,
-                "eleticRateValley": 0,
-                "eleticRateSuperOffPeak": 0,
-                "eleticSellPeak": 0,
-                "eleticSellSharp": 0,
-                "eleticSellShoulder": 0,
-                "eleticSellValley": 0,
-                "eleticSellSuperOffPeak": 0,
-                "detailVoList": detailVoList,
-            }
-        ]
+        # ── Read existing rates from current schedule (preserve if not overridden) ──
+        existing_rates = {}
+        try:
+            existing = await self.get_tou_dispatch_detail()
+            existing_strategies = existing.get("result", {}).get("strategyList", [])
+            if existing_strategies:
+                existing_day_types = existing_strategies[0].get("dayTypeVoList", [])
+                if existing_day_types:
+                    for field in self._ALL_RATE_FIELDS:
+                        existing_rates[field] = existing_day_types[0].get(field, 0)
+        except Exception:
+            logger.warning("set_tou_schedule: Could not read existing rates — using zeros")
 
+        # ── Build rate values: existing → overridden by user rates ──
+        rate_values = {field: existing_rates.get(field, 0) for field in self._ALL_RATE_FIELDS}
+        if rates:
+            for user_key, value in rates.items():
+                api_field = self.RATE_FIELD_MAP.get(user_key)
+                if api_field:
+                    rate_values[api_field] = value
+                else:
+                    logger.warning(f"set_tou_schedule: Unknown rate key '{user_key}' — ignoring")
+
+        # ── Day type names and codes ───────────────────────────────
+        DAY_TYPE_NAMES = {
+            1: ("weekDay", 1),
+            2: ("weekendDay", 2),
+            3: ("everyDay", 3),
+        }
+
+        def _build_day_type_entry(dt_code, schedule_blocks):
+            """Build a single dayTypeVoList entry with rates and schedule."""
+            dt_name, dt_val = DAY_TYPE_NAMES.get(dt_code, ("everyDay", 3))
+            entry = {
+                "dayName": dt_name,
+                "dayType": dt_val,
+                "detailVoList": schedule_blocks,
+            }
+            entry.update(rate_values)
+            return entry
+
+        # ── Build dayTypeVoList ────────────────────────────────────
+        if day_schedules:
+            # Weekday/weekend split schedules
+            built_day_types = []
+            if "weekday" in day_schedules:
+                built_day_types.append(
+                    _build_day_type_entry(1, day_schedules["weekday"])
+                )
+            if "weekend" in day_schedules:
+                built_day_types.append(
+                    _build_day_type_entry(2, day_schedules["weekend"])
+                )
+            if not built_day_types:
+                built_day_types = [_build_day_type_entry(3, detailVoList)]
+        else:
+            built_day_types = [_build_day_type_entry(day_type, detailVoList)]
+
+        # ── Build strategyList (seasons) ───────────────────────────
         false = 'false'
-        strategyList = [{
-            "id": null,
-            "seasonName": "Season 1",
-            "month": "1,2,3,4,5,6,7,8,9,10,11,12",
-            "templateId": null,
-            "dayTypeVoList": dayTypeVoList_everyday,
-        }]
+        if seasons:
+            strategyList = []
+            for s in seasons:
+                strategyList.append({
+                    "id": null,
+                    "seasonName": s.get("name", f"Season {len(strategyList) + 1}"),
+                    "month": s.get("months", "1,2,3,4,5,6,7,8,9,10,11,12"),
+                    "templateId": null,
+                    "dayTypeVoList": built_day_types,
+                })
+        else:
+            strategyList = [{
+                "id": null,
+                "seasonName": "Season 1",
+                "month": "1,2,3,4,5,6,7,8,9,10,11,12",
+                "templateId": null,
+                "dayTypeVoList": built_day_types,
+            }]
 
         payload = {"template": saveTOUdispatch_template, "strategyList": strategyList, "nemType": 0, "coverContentFlag": false}
         logger.info("set_tou_schedule: Finalised payload now sending to saveTouDispatch")
