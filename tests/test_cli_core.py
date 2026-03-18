@@ -114,6 +114,16 @@ class TestBuildParser:
         with pytest.raises(SystemExit):
             parser.parse_args(["tou", "--set", "SELF", "--day-type", "invalid"])
 
+    def test_tou_wait_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["tou", "--set", "SELF", "--wait"])
+        assert args.wait_confirm is True
+
+    def test_tou_wait_default_false(self):
+        parser = build_parser()
+        args = parser.parse_args(["tou", "--set", "SELF"])
+        assert args.wait_confirm is False
+
     def test_mode_command(self):
         parser = build_parser()
         args = parser.parse_args(["mode"])
