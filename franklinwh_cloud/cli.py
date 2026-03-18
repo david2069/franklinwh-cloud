@@ -166,6 +166,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub_monitor.add_argument("--compact", action="store_true",
                              help="Single-line output per poll (no screen clearing)")
 
+    # accessories
+    sub_acc = subs.add_parser("accessories", aliases=["acc"],
+                              help="Accessory inventory, status, and device info (Smart Circuits, V2L, Generator)")
+    sub_acc.add_argument("--power", action="store_true",
+                         help="Include live power data for active accessories (extra MQTT call)")
+
     # diag
     subs.add_parser("diag", aliases=["diagnostic"],
                     help="Diagnostic report — system, auth, device, power, API health")
@@ -304,6 +310,11 @@ async def async_main():
                                   interval=args.interval,
                                   duration=args.duration,
                                   compact=args.compact)
+
+            case "accessories" | "acc":
+                from franklinwh_cloud.cli_commands import accessories
+                await accessories.run(client, json_output=args.json,
+                                      show_power=args.power)
 
             case "diag" | "diagnostic":
                 from franklinwh_cloud.cli_commands import diag

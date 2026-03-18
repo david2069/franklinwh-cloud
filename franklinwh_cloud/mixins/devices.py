@@ -28,7 +28,6 @@ class DevicesMixin:
         dict
             List of connected accessories with details
         """
-        print(f"option = {option}")
         params = None
         match option:
             case 2:
@@ -41,7 +40,6 @@ class DevicesMixin:
                 params = {"gatewayId": self.gateway}
             case _:
                 url = self.url_base + "hes-gateway/common/getAccessoryList"
-        print(f"url = {url}")
         return await self._get(url, params=params)
 
     async def get_device_composite_info(self):
