@@ -185,14 +185,35 @@ class StatsMixin:
         )
 
     async def get_runtime_data(self):
-        """Get runtime data — similar to getDeviceCompositeInfo with extra relays."""
+        """Get runtime data — similar to getDeviceCompositeInfo with extra relays.
+
+        Has similar info as get_device_composite_info but also includes relays
+        not listed there: gridRelay2, pvRelay2, BlackStartRelay,
+        sinLTemp, sinHTemp, t_amb.
+
+        Returns
+        -------
+        dict
+            Runtime data including relay states and temperature readings
+        """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectIotUserRuntimeDataLog"
         params = {"gatewayId": self.gateway, "type": 1, "lang": "EN_US"}
         data = await self._get(url, params=params)
         return data["result"]
 
     async def get_power_by_day(self, dayTime):
-        """Get power details for a specified day."""
+        """Get power details for a specified day.
+
+        Parameters
+        ----------
+        dayTime : str
+            Requested day in YYYY-MM-DD format
+
+        Returns
+        -------
+        dict
+            Power details for the specified day
+        """
         url = DEFAULT_URL_BASE + "/hes-gateway/api-energy/power/getFhpPowerByDay"
         params = {"gatewayId": self.gateway, "dayTime": f"{dayTime}"}
         data = await self._get(url, params=params)
@@ -214,7 +235,20 @@ class StatsMixin:
         return data.get("result", data)
 
     def calculate_remaining_time(start_time_str, end_time_str):
-        """Calculate remaining time between two HH:MM time strings."""
+        """Calculate remaining time between two HH:MM time strings.
+
+        Parameters
+        ----------
+        start_time_str : str
+            Start time in HH:MM format
+        end_time_str : str
+            End time in HH:MM format (wraps past midnight if needed)
+
+        Returns
+        -------
+        str
+            Human-readable duration, e.g. '7 hours and 30 minutes'
+        """
         fmt = "%H:%M"
         start_time = datetime.strptime(start_time_str, fmt)
         end_time = datetime.strptime(end_time_str, fmt)

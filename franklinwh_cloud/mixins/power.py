@@ -108,7 +108,21 @@ class PowerMixin:
         return data
 
     async def get_pcs_hintinfo(self, dispatchIdList):
-        """Get PCS Hint Information."""
+        """Get PCS Hint Information.
+
+        Retrieves the desired power settings associated with the TOU dispatch
+        codes in the current schedule.
+
+        Parameters
+        ----------
+        dispatchIdList : list[int]
+            TOU dispatch code IDs to query (e.g. [6, 8])
+
+        Returns
+        -------
+        dict
+            PCS capability hints for the specified dispatch IDs
+        """
         url = self.url_base + "hes-gateway/terminal/tou/getPcsHintInfo"
         params = {}
         payload = {
