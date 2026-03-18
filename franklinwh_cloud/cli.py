@@ -143,6 +143,15 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Dispatch mode for times outside --start/--end (required with --start/--end)")
     sub_tou.add_argument("--file", dest="schedule_file", metavar="PATH",
                          help="JSON schedule file for --set CUSTOM")
+    sub_tou.add_argument("--rates-file", dest="rates_file", metavar="PATH",
+                         help="JSON file with pricing rates (peak, off_peak, sell_peak, ...)")
+    sub_tou.add_argument("--season", metavar="NAME",
+                         help="Season name (e.g. 'Summer'). Use with --months.")
+    sub_tou.add_argument("--months", metavar="M,M,...",
+                         help="Comma-separated months for --season (e.g. '10,11,12,1,2,3')")
+    sub_tou.add_argument("--day-type", dest="day_type", metavar="TYPE",
+                         choices=["everyday", "weekday", "weekend"],
+                         help="Day type: everyday (default), weekday, weekend")
     sub_tou.add_argument("--next", dest="show_next", action="store_true",
                          help="Show current and next dispatch with remaining time")
 
@@ -293,6 +302,10 @@ async def async_main():
                               end=getattr(args, 'end', None),
                               default_mode=getattr(args, 'default_mode', None),
                               schedule_file=getattr(args, 'schedule_file', None),
+                              rates_file=getattr(args, 'rates_file', None),
+                              season_name=getattr(args, 'season', None),
+                              season_months=getattr(args, 'months', None),
+                              day_type_str=getattr(args, 'day_type', None),
                               show_next=getattr(args, 'show_next', False))
 
             case "raw":

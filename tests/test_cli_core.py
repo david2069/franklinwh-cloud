@@ -92,6 +92,28 @@ class TestBuildParser:
         assert args.command == "tou"
         assert args.show_next is True
 
+    def test_tou_rates_file_option(self):
+        parser = build_parser()
+        args = parser.parse_args(["tou", "--set", "SELF", "--rates-file", "rates.json"])
+        assert args.set_mode == "SELF"
+        assert args.rates_file == "rates.json"
+
+    def test_tou_season_and_months(self):
+        parser = build_parser()
+        args = parser.parse_args(["tou", "--set", "SELF", "--season", "Summer", "--months", "10,11,12,1,2,3"])
+        assert args.season == "Summer"
+        assert args.months == "10,11,12,1,2,3"
+
+    def test_tou_day_type(self):
+        parser = build_parser()
+        args = parser.parse_args(["tou", "--set", "SELF", "--day-type", "weekday"])
+        assert args.day_type == "weekday"
+
+    def test_tou_day_type_choices(self):
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["tou", "--set", "SELF", "--day-type", "invalid"])
+
     def test_mode_command(self):
         parser = build_parser()
         args = parser.parse_args(["mode"])

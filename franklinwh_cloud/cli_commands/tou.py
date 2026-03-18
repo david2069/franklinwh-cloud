@@ -30,13 +30,16 @@ from franklinwh_cloud.const import DISPATCH_CODES, WAVE_TYPES
 async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               set_mode: str | None = None, start: str | None = None,
               end: str | None = None, default_mode: str = "SELF",
-              schedule_file: str | None = None, show_next: bool = False):
+              schedule_file: str | None = None, rates_file: str | None = None,
+              season_name: str | None = None, season_months: str | None = None,
+              day_type_str: str | None = None, show_next: bool = False):
     """Execute the TOU command."""
 
     # ── tou --set ────────────────────────────────────────────────
     if set_mode:
         await _handle_set(client, set_mode, start, end, default_mode,
-                          schedule_file, json_output)
+                          schedule_file, rates_file, season_name,
+                          season_months, day_type_str, json_output)
         return
 
     # ── tou --next ───────────────────────────────────────────────
@@ -350,14 +353,69 @@ def _dispatch_name(dispatch_id: int) -> str:
 
 # ── tou --set handler ───────────────────────────────────────────────
 
+_DAY_TYPE_MAP = {"everyday": 3, "weekday": 1, "weekend": 2}
+
+
+def _load_rates_file(rates_file: str):
+    """Load pricing rates from a JSON file."""
+    try:
+        with open(rates_file, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print_error(f"Rates file not found: {rates_file}")
+        return None
+    except json.JSONDecodeError as e:
+        print_error(f"Invalid JSON in rates file {rates_file}: {e}")
+        return None
+
+
+def _build_extra_kwargs(rates_file, season_name, season_months, day_type_str, json_output):
+    """Build keyword arguments for set_tou_schedule from CLI flags."""
+    kwargs = {}
+
+    # Rates
+    if rates_file:
+        rates = _load_rates_file(rates_file)
+        if rates is None:
+            return None  # signal error
+        kwargs["rates"] = rates
+        if not json_output:
+            print(f"  Loading pricing rates from {rates_file}")
+
+    # Seasons
+    if season_name or season_months:
+        name = season_name or "Season 1"
+        months = season_months or "1,2,3,4,5,6,7,8,9,10,11,12"
+        kwargs["seasons"] = [{"name": name, "months": months}]
+        if not json_output:
+            print(f"  Season: {name} (months: {months})")
+
+    # Day type
+    if day_type_str:
+        kwargs["day_type"] = _DAY_TYPE_MAP.get(day_type_str, 3)
+        if not json_output:
+            print(f"  Day type: {day_type_str}")
+
+    return kwargs
+
+
 async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                       default_mode: str | None, schedule_file: str | None,
+                      rates_file: str | None, season_name: str | None,
+                      season_months: str | None, day_type_str: str | None,
                       json_output: bool):
     """Handle tou --set command."""
     from franklinwh_cloud.const import dispatchCodeType, WaveType
     from franklinwh_cloud.exceptions import InvalidTOUScheduleOption
 
     mode = set_mode.upper().replace("-", "_").replace(" ", "_")
+
+    # Build extra kwargs from CLI flags
+    extra_kwargs = _build_extra_kwargs(
+        rates_file, season_name, season_months, day_type_str, json_output
+    )
+    if extra_kwargs is None:
+        return  # error loading rates file
 
     # ── CUSTOM --file ────────────────────────────────────────────
     if mode == "CUSTOM" and schedule_file:
@@ -383,6 +441,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 touMode="CUSTOM",
                 touSchedule=schedule,
                 default_mode=default_mode.upper() if default_mode else "SELF",
+                **extra_kwargs,
             )
             if await _print_set_result(result, json_output, client):
                 return
@@ -443,6 +502,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 touMode="CUSTOM",
                 touSchedule=schedule,
                 default_mode=default_mode.upper(),
+                **extra_kwargs,
             )
             if await _print_set_result(result, json_output, client):
                 return
@@ -462,7 +522,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
             print(f"Setting full-day {_dispatch_name(dispatch_id)}...")
 
         try:
-            result = await client.set_tou_schedule(touMode=mode)
+            result = await client.set_tou_schedule(touMode=mode, **extra_kwargs)
             if await _print_set_result(result, json_output, client):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
