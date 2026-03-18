@@ -117,7 +117,15 @@ All commands should return data without errors. If you see `No credentials found
 
 ## Step 6: Set Up the Test Harness (Main Repo)
 
-The unit test suite lives in the **source repo**, not the sandbox. Install test dependencies in the source repo's venv:
+The unit tests use [**pytest**](https://docs.pytest.org/) — Python's most popular testing framework. If you're new to pytest, the key things to know are:
+
+- Tests are plain Python files named `test_*.py`
+- Each test is a function starting with `test_`
+- Run with `pytest tests/` — it auto-discovers and runs all tests
+- `-v` = verbose (show each test name), `--tb=short` = compact error output
+- Docs: [docs.pytest.org](https://docs.pytest.org/en/stable/)
+
+The test suite lives in the **source repo**, not the sandbox. Install test dependencies in the source repo's venv:
 
 ```bash
 cd ~/dev/franklinwh-cloud
