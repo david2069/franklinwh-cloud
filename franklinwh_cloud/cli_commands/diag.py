@@ -269,12 +269,12 @@ async def run(client, *, json_output: bool = False):
 
         power_info = {
             "api_response_s": api_time,
-            "solar_w": cur.solar_production,
-            "battery_w": cur.battery_use,
+            "solar_kw": cur.solar_production,
+            "battery_kw": cur.battery_use,
             "battery_soc": cur.battery_soc,
-            "grid_w": cur.grid_use,
+            "grid_kw": cur.grid_use,
             "grid_status": cur.grid_status.name,
-            "home_load_w": cur.home_load,
+            "home_load_kw": cur.home_load,
             "operating_mode": cur.work_mode_desc,
             "run_status": cur.run_status_dec,
         }
@@ -293,11 +293,11 @@ async def run(client, *, json_output: bool = False):
             print_kv("Status", c("red", f'✘ {power_info["error"]}'))
         else:
             print_kv("API Response", f'{power_info["api_response_s"]:.3f}s')
-            print_kv("Solar", f'{power_info["solar_w"]:.1f} W')
-            print_kv("Battery", f'{power_info["battery_w"]:.1f} W  (SoC: {power_info["battery_soc"]:.0f}%)')
+            print_kv("Solar", f'{power_info["solar_kw"]:.1f} kW')
+            print_kv("Battery", f'{power_info["battery_kw"]:.1f} kW  (SoC: {power_info["battery_soc"]:.0f}%)')
             grid_color = "green" if power_info["grid_status"] == "NORMAL" else "red"
-            print_kv("Grid", f'{power_info["grid_w"]:.1f} W  ({c(grid_color, power_info["grid_status"])})')
-            print_kv("Home", f'{power_info["home_load_w"]:.1f} W')
+            print_kv("Grid", f'{power_info["grid_kw"]:.1f} kW  ({c(grid_color, power_info["grid_status"])})')
+            print_kv("Home", f'{power_info["home_load_kw"]:.1f} kW')
             print_kv("Mode", power_info["operating_mode"])
             print_kv("Run Status", power_info["run_status"])
 

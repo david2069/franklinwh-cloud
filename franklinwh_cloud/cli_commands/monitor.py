@@ -36,15 +36,15 @@ CYAN = "\033[36m"
 BLUE = "\033[34m"
 
 
-def _power_bar(watts: float, max_watts: float = 8000, width: int = 20) -> str:
-    """Render a horizontal bar for power level."""
-    if max_watts <= 0:
+def _power_bar(kw: float, max_kw: float = 8.0, width: int = 20) -> str:
+    """Render a horizontal bar for power level (input in kW)."""
+    if max_kw <= 0:
         return ""
-    filled = int(min(abs(watts) / max_watts, 1.0) * width)
+    filled = int(min(abs(kw) / max_kw, 1.0) * width)
     bar = "█" * filled + "░" * (width - filled)
-    if watts > 0:
+    if kw > 0:
         return f"{GREEN}{bar}{RESET}"
-    elif watts < 0:
+    elif kw < 0:
         return f"{CYAN}{bar}{RESET}"
     return f"{DIM}{bar}{RESET}"
 
@@ -59,11 +59,11 @@ def _soc_color(soc: float) -> str:
         return f"{RED}{soc:.0f}%{RESET}"
 
 
-def _direction(watts: float, pos_label: str = "export", neg_label: str = "import") -> str:
-    """Describe power flow direction."""
-    if watts > 50:
+def _direction(kw: float, pos_label: str = "export", neg_label: str = "import") -> str:
+    """Describe power flow direction (input in kW)."""
+    if kw > 0.05:
         return pos_label
-    elif watts < -50:
+    elif kw < -0.05:
         return neg_label
     return "idle"
 
@@ -100,12 +100,12 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
     # Power Flow
     lines.append(f"  {BOLD}⚡ Power Flow{RESET}")
     lines.append(f"  ┌─────────────────────────────────────────────────────┐")
-    lines.append(f"  │  Solar       {cur.solar_production:>7.0f} W  {_power_bar(cur.solar_production)}  │")
-    lines.append(f"  │  Battery     {cur.battery_use:>7.0f} W  {_power_bar(cur.battery_use)}  {_direction(cur.battery_use, 'discharge', 'charge'):<10}│")
-    lines.append(f"  │  Grid        {cur.grid_use:>7.0f} W  {_power_bar(cur.grid_use)}  {_direction(cur.grid_use, 'export', 'import'):<10}│")
-    lines.append(f"  │  Home Load   {cur.home_load:>7.0f} W  {_power_bar(cur.home_load)}  │")
+    lines.append(f"  │  Solar       {cur.solar_production:>6.1f} kW  {_power_bar(cur.solar_production)}  │")
+    lines.append(f"  │  Battery     {cur.battery_use:>6.1f} kW  {_power_bar(cur.battery_use)}  {_direction(cur.battery_use, 'discharge', 'charge'):<10}│")
+    lines.append(f"  │  Grid        {cur.grid_use:>6.1f} kW  {_power_bar(cur.grid_use)}  {_direction(cur.grid_use, 'export', 'import'):<10}│")
+    lines.append(f"  │  Home Load   {cur.home_load:>6.1f} kW  {_power_bar(cur.home_load)}  │")
     if cur.generator_production:
-        lines.append(f"  │  Generator   {cur.generator_production:>7.0f} W  {_power_bar(cur.generator_production)}  │")
+        lines.append(f"  │  Generator   {cur.generator_production:>6.1f} kW  {_power_bar(cur.generator_production)}  │")
     lines.append(f"  └─────────────────────────────────────────────────────┘")
     lines.append("")
 
@@ -124,11 +124,11 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
     if cur.switch_1_load or cur.switch_2_load or cur.v2l_use:
         lines.append(f"  {BOLD}🔌 Smart Circuits{RESET}")
         if cur.switch_1_load:
-            lines.append(f"  │  Circuit 1: {cur.switch_1_load:>6.0f} W")
+            lines.append(f"  │  Circuit 1: {cur.switch_1_load:>6.1f} kW")
         if cur.switch_2_load:
-            lines.append(f"  │  Circuit 2: {cur.switch_2_load:>6.0f} W")
+            lines.append(f"  │  Circuit 2: {cur.switch_2_load:>6.1f} kW")
         if cur.v2l_use:
-            lines.append(f"  │  V2L:       {cur.v2l_use:>6.0f} W")
+            lines.append(f"  │  V2L:       {cur.v2l_use:>6.1f} kW")
         lines.append("")
 
     # API Performance
@@ -148,7 +148,7 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
             cache_str = str(cache_rate)
         lines.append(f"  │  Edge PoP: {CYAN}{pop}{RESET}   Cache: {cache_str}   Transitions: {transitions}")
         if dist_ids:
-            lines.append(f"  │  CDN: {', '.join(d[:12] + '…' for d in dist_ids)}")
+            lines.append(f"  │  CDN: {len(dist_ids)} distribution{'s' if len(dist_ids) != 1 else ''} (use 'metrics' for detail)")
     elif edge_pop:
         lines.append(f"  │  Edge PoP: {CYAN}{edge_pop}{RESET}")
     lines.append("")
@@ -167,13 +167,13 @@ def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
     cur = stats.current
     now = datetime.now().strftime("%H:%M:%S")
     grid_sym = "●" if cur.grid_status.name == "NORMAL" else "✗"
-    batt_dir = "↑" if cur.battery_use > 50 else "↓" if cur.battery_use < -50 else "─"
+    batt_dir = "↑" if cur.battery_use > 0.05 else "↓" if cur.battery_use < -0.05 else "─"
     return (
         f"[{now}] "
-        f"☀ {cur.solar_production:>5.0f}W  "
-        f"🔋 {cur.battery_soc:>3.0f}% {batt_dir}{abs(cur.battery_use):>5.0f}W  "
-        f"⚡ {grid_sym} {cur.grid_use:>+6.0f}W  "
-        f"🏠 {cur.home_load:>5.0f}W  "
+        f"☀ {cur.solar_production:>5.1f}kW  "
+        f"🔋 {cur.battery_soc:>3.0f}% {batt_dir}{abs(cur.battery_use):>5.1f}kW  "
+        f"⚡ {grid_sym} {cur.grid_use:>+5.1f}kW  "
+        f"🏠 {cur.home_load:>5.1f}kW  "
         f"│ {cur.work_mode_desc}  "
         f"{DIM}{poll_time_ms:.0f}ms{RESET}"
     )
