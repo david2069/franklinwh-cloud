@@ -889,18 +889,32 @@ class TouMixin:
         detailVoList = sorted(detailVoList.copy(), key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
         logger.info(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
 
-        # ── Read existing rates from current schedule (preserve if not overridden) ──
+        # ── Read existing config from current schedule ──────────────────────
+        # Preserves rates, seasons, day types, and schedule blocks when
+        # the user hasn't explicitly overridden them (two-context separation).
         existing_rates = {}
+        existing_seasons = None    # list of strategyList entries
+        existing_day_types = None  # list of dayTypeVoList entries
+        existing_blocks = None     # detailVoList from first day type
+
         try:
             existing = await self.get_tou_dispatch_detail()
             existing_strategies = existing.get("result", {}).get("strategyList", [])
             if existing_strategies:
-                existing_day_types = existing_strategies[0].get("dayTypeVoList", [])
-                if existing_day_types:
+                # Preserve full season structure
+                existing_seasons = existing_strategies
+
+                # Preserve day types and rates from first season
+                existing_dt_list = existing_strategies[0].get("dayTypeVoList", [])
+                if existing_dt_list:
+                    existing_day_types = existing_dt_list
+                    # Extract rates from first day type
                     for field in self._ALL_RATE_FIELDS:
-                        existing_rates[field] = existing_day_types[0].get(field, 0)
+                        existing_rates[field] = existing_dt_list[0].get(field, 0)
+                    # Extract existing schedule blocks
+                    existing_blocks = existing_dt_list[0].get("detailVoList", [])
         except Exception:
-            logger.warning("set_tou_schedule: Could not read existing rates — using zeros")
+            logger.warning("set_tou_schedule: Could not read existing config — using defaults")
 
         # ── Build rate values: existing → overridden by user rates ──
         rate_values = {field: existing_rates.get(field, 0) for field in self._ALL_RATE_FIELDS}
@@ -931,8 +945,9 @@ class TouMixin:
             return entry
 
         # ── Build dayTypeVoList ────────────────────────────────────
+        # Priority: explicit day_schedules > explicit day_type > existing > default
         if day_schedules:
-            # Weekday/weekend split schedules
+            # Weekday/weekend split schedules (explicit)
             built_day_types = []
             if "weekday" in day_schedules:
                 built_day_types.append(
@@ -944,12 +959,23 @@ class TouMixin:
                 )
             if not built_day_types:
                 built_day_types = [_build_day_type_entry(3, detailVoList)]
-        else:
+        elif day_type != 3 or not existing_day_types:
+            # Explicit day_type override or no existing config
             built_day_types = [_build_day_type_entry(day_type, detailVoList)]
+        else:
+            # Preserve existing day type structure, replacing schedule blocks
+            built_day_types = []
+            for existing_dt in existing_day_types:
+                dt_code = existing_dt.get("dayType", 3)
+                built_day_types.append(
+                    _build_day_type_entry(dt_code, detailVoList)
+                )
 
         # ── Build strategyList (seasons) ───────────────────────────
+        # Priority: explicit seasons > existing > default single season
         false = 'false'
         if seasons:
+            # Explicit seasons override
             strategyList = []
             for s in seasons:
                 strategyList.append({
@@ -959,7 +985,19 @@ class TouMixin:
                     "templateId": null,
                     "dayTypeVoList": built_day_types,
                 })
+        elif existing_seasons:
+            # Preserve existing season structure, replacing day types
+            strategyList = []
+            for existing_s in existing_seasons:
+                strategyList.append({
+                    "id": null,
+                    "seasonName": existing_s.get("seasonName", "Season 1"),
+                    "month": existing_s.get("month", "1,2,3,4,5,6,7,8,9,10,11,12"),
+                    "templateId": null,
+                    "dayTypeVoList": built_day_types,
+                })
         else:
+            # Default: single season covering all months
             strategyList = [{
                 "id": null,
                 "seasonName": "Season 1",
