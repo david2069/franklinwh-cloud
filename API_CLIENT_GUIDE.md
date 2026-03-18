@@ -401,3 +401,150 @@ There is **no conflict** — the features are additive. However:
 - [richo/franklinwh-python](https://github.com/richo/franklinwh-python) — the upstream library this fork extends
 
 Both projects demonstrate responsible API consumption patterns. This guide builds on their work while adding library-level protections for a broader range of use cases.
+
+---
+
+## Accessories & Peripherals Cookbook
+
+The `accessories` command provides a unified view of Smart Circuits, V2L, Generator, and device hardware with cross-referenced model/SKU/compatibility data.
+
+### CLI Usage
+
+```bash
+franklinwh-cli accessories              # inventory + status
+franklinwh-cli accessories --power      # include live power data (extra MQTT call)
+franklinwh-cli accessories --json       # machine-readable output
+franklinwh-cli acc --power --json       # alias + power + JSON
+```
+
+Sample output:
+```
+════════════════════════════════════════════════════════════
+  FranklinWH Accessories & Devices
+════════════════════════════════════════════════════════════
+
+🏠 aGate Gateway
+              Serial: AGT-XXXXXXXXXX
+               Model: aGate X-01-AU
+                 SKU: AGT-R1V1-AU
+            Firmware: 3.2.1
+
+🔋 aPower Batteries (1 units, 13.6 kWh)
+   aPower XXXXXX: Rated: 5000W  Capacity: 13600Wh  Warranty: 2036-01-15
+
+🔌 Installed Accessories (2)
+   Smart Circuits: SN: SC-123456  Model: Smart Circuits-01-AU  SKU: ACCY-SCV1-AU  ✓ compatible
+   Generator Mod: SN: GN-789012  Model: Generator Module-01-AU  SKU: ACCY-GENV1-AU  ✓ compatible
+
+⚡ Smart Circuits
+       Hot Water: Enabled  (Always On)
+          Pool Pump: Disabled  (Off)
+
+🚗 V2L (Vehicle-to-Load)
+              Status: Not enabled
+
+⛽ Generator
+              Status: Active
+                Mode: Auto-Schedule
+           Start SoC: 20%
+            Stop SoC: 90%
+```
+
+### Python API — Querying Accessories
+
+```python
+import asyncio
+import json
+from franklinwh_cloud.client import Client, TokenFetcher
+from franklinwh_cloud.const import FRANKLINWH_MODELS, FRANKLINWH_ACCESSORIES
+
+async def main():
+    fetcher = TokenFetcher("user@email.com", "password")
+    await fetcher.get_token()
+    client = Client(fetcher, "YOUR-AGATE-SERIAL")
+
+    # ── 1. Installed accessories with cross-referencing ──────────
+    gw_res = await client.get_home_gateway_list()
+    gw = gw_res["result"][0]
+    hw_ver = int(gw.get("sysHdVersion", 0))
+    agate_model = FRANKLINWH_MODELS.get(hw_ver, {})
+    print(f"aGate: {agate_model.get('model', 'Unknown')} (SKU: {agate_model.get('sku', '?')})")
+
+    acc_res = await client.get_accessories(2)
+    for accy in acc_res.get("result", []):
+        a_type = accy.get("accessoryType")
+        info = FRANKLINWH_ACCESSORIES.get(a_type, {})
+        compat_ids = info.get("compatiable", "").split("|")
+        is_compat = "ALL" in compat_ids or str(hw_ver) in compat_ids
+        print(f"  {accy['accessoryName']}: {info.get('model', '?')} "
+              f"(SKU: {info.get('sku', '?')}) "
+              f"{'✓' if is_compat else '✗'} compatible")
+
+    # ── 2. Smart Circuit configuration ───────────────────────────
+    sc = await client.get_smart_circuits_info()
+    for i in range(1, 4):
+        name = sc.get(f"Sw{i}Name", f"Circuit {i}")
+        mode = sc.get(f"Sw{i}Mode", 0)
+        if name or mode:
+            print(f"  SC{i}: {name} — {'Enabled' if mode else 'Disabled'}")
+
+    # ── 3. Accessory power data ──────────────────────────────────
+    # Smart Circuit power
+    sc_power = await client.get_accessories_power_info("1")
+    print(f"  SC1 Power: {sc_power['smart_circuits'][0]['power']}W")
+
+    # V2L power
+    v2l = await client.get_accessories_power_info("2")
+    print(f"  V2L Power: {v2l['v2l']['power']}W")
+
+    # Generator power
+    gen = await client.get_accessories_power_info("3")
+    print(f"  Gen Power: {gen['generator']['power']}W")
+
+    # ── 4. Generator state ───────────────────────────────────────
+    gen_info = await client.get_generator_info()
+    if gen_info:
+        mode = "Manual" if gen_info.get("manuSw") == 2 else "Auto"
+        print(f"  Generator: {mode}, "
+              f"Start SoC: {gen_info.get('startSoc')}%, "
+              f"Stop SoC: {gen_info.get('stopSoc')}%")
+
+    # ── 5. V2L state (from device info) ──────────────────────────
+    dev = await client.get_device_info()
+    result = dev.get("result", {})
+    v2l_en = result.get("v2lModeEnable", 0)
+    v2l_st = result.get("v2lRunState", 0)
+    print(f"  V2L: {'Enabled' if v2l_en else 'Disabled'}, "
+          f"State: {'Running' if v2l_st >= 1 else 'Standby'}")
+
+    # ── 6. Full JSON dump ────────────────────────────────────────
+    raw = await client.get_accessories_power_info("0")
+    print(json.dumps(raw, indent=2))
+
+asyncio.run(main())
+```
+
+### API Method Reference
+
+| Method | Transport | Returns |
+|--------|-----------|---------|
+| `get_accessories(option)` | REST | Accessory list (1=common, 2=IoT, 3=equipment, 4=IoT by GW) |
+| `get_smart_circuits_info()` | MQTT 311 | Per-circuit name, mode, protected load, SoC threshold |
+| `get_accessories_power_info(opt)` | MQTT 353 | Live power/energy (0=raw, 1=SC, 2=V2L, 3=Generator) |
+| `get_generator_info()` | REST | Generator state, mode, SoC thresholds |
+| `set_smart_switch_state(tuple)` | MQTT 310 | Set circuit on/off (True/False/None per circuit) |
+| `set_generator_mode(mode)` | REST | Set generator mode (1=Auto, 2=Manual) |
+
+### Cross-Reference Constants
+
+Accessory types map to `FRANKLINWH_ACCESSORIES` in `const/devices.py`:
+
+| Type ID | Name | SKU | Compatible aGates |
+|---------|------|-----|-------------------|
+| 201 | Generator Module | ACCY-GENV1-US | 100, 101 |
+| 202 | Smart Circuits | ACCY-SCV1-US | 100, 101 |
+| 203 | Generator Module | ACCY-GENV2-US | 103, 104 |
+| 204 | Smart Circuits | ACCY-SCV2-US | 102, 103, 104 |
+| 251 | aPbox | ACCY-RCV1-US | ALL |
+| 301 | Generator Module (AU) | ACCY-GENV1-AU | 102 |
+| 302 | Smart Circuits (AU) | ACCY-SCV1-AU | 102 |

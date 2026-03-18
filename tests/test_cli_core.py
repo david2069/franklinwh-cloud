@@ -118,9 +118,27 @@ class TestBuildParser:
         parser = build_parser()
         # Commands that need no extra args
         for cmd in ["status", "mode", "tou", "monitor", "diag",
-                     "discover", "metrics", "bms"]:
+                     "discover", "metrics", "bms", "accessories"]:
             args = parser.parse_args([cmd])
             assert args.command == cmd
+
+    def test_accessories_alias(self):
+        """accessories command should accept 'acc' alias."""
+        parser = build_parser()
+        args = parser.parse_args(["acc"])
+        assert args.command == "acc"
+
+    def test_accessories_power_flag(self):
+        """accessories --power flag should be parsed correctly."""
+        parser = build_parser()
+        args = parser.parse_args(["accessories", "--power"])
+        assert args.power is True
+
+    def test_accessories_default_no_power(self):
+        """accessories without --power should have power=False."""
+        parser = build_parser()
+        args = parser.parse_args(["accessories"])
+        assert args.power is False
 
     def test_fetch_requires_args(self):
         """fetch requires http_method and path — should fail without them."""
