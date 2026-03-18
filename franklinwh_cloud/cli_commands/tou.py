@@ -18,6 +18,7 @@ Usage:
 
 import json
 import re
+import asyncio
 from datetime import datetime, timedelta
 
 from franklinwh_cloud.cli_output import (
@@ -32,14 +33,16 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               end: str | None = None, default_mode: str = "SELF",
               schedule_file: str | None = None, rates_file: str | None = None,
               season_name: str | None = None, season_months: str | None = None,
-              day_type_str: str | None = None, show_next: bool = False):
+              day_type_str: str | None = None, wait_confirm: bool = False,
+              show_next: bool = False):
     """Execute the TOU command."""
 
     # ── tou --set ────────────────────────────────────────────────
     if set_mode:
         await _handle_set(client, set_mode, start, end, default_mode,
                           schedule_file, rates_file, season_name,
-                          season_months, day_type_str, json_output)
+                          season_months, day_type_str, wait_confirm,
+                          json_output)
         return
 
     # ── tou --next ───────────────────────────────────────────────
@@ -360,13 +363,93 @@ def _load_rates_file(rates_file: str):
     """Load pricing rates from a JSON file."""
     try:
         with open(rates_file, "r") as f:
-            return json.load(f)
+            data = json.load(f)
     except FileNotFoundError:
         print_error(f"Rates file not found: {rates_file}")
         return None
     except json.JSONDecodeError as e:
         print_error(f"Invalid JSON in rates file {rates_file}: {e}")
         return None
+
+    # Validate the loaded rates
+    errors = validate_rates(data)
+    if errors:
+        for err in errors:
+            print_error(f"Rates validation: {err}")
+        return None
+    return data
+
+
+# Valid rate keys (matches TouMixin.RATE_FIELD_MAP)
+_VALID_RATE_KEYS = {
+    "peak", "sharp", "shoulder", "off_peak", "super_off_peak",
+    "sell_peak", "sell_sharp", "sell_shoulder", "sell_off_peak",
+    "sell_super_off_peak", "grid_fee",
+}
+
+
+def validate_rates(rates: dict) -> list[str]:
+    """Validate a rates dict. Returns list of error strings (empty = valid).
+
+    Checks:
+    - Must be a dict (not list, string, etc.)
+    - No unknown keys (typo protection)
+    - All values must be numeric (int or float)
+    - No negative values
+    - No unreasonably high values (> 100 $/kWh as sanity cap)
+    - No duplicate keys (JSON spec allows but we reject)
+    """
+    errors = []
+
+    if not isinstance(rates, dict):
+        return [f"Expected a JSON object/dict, got {type(rates).__name__}"]
+
+    if not rates:
+        return ["Rates dict is empty — provide at least one rate key"]
+
+    for key, value in rates.items():
+        if key not in _VALID_RATE_KEYS:
+            errors.append(f"Unknown rate key '{key}'. Valid: {', '.join(sorted(_VALID_RATE_KEYS))}")
+        if not isinstance(value, (int, float)):
+            errors.append(f"Rate '{key}' must be numeric, got {type(value).__name__}: {value!r}")
+        elif value < 0:
+            errors.append(f"Rate '{key}' cannot be negative: {value}")
+        elif value > 100:
+            errors.append(f"Rate '{key}' = {value} seems unreasonably high (> $100/kWh)")
+
+    return errors
+
+
+def validate_season_months(season_months: str) -> list[str]:
+    """Validate a comma-separated months string. Returns list of errors.
+
+    Checks:
+    - All values must be integers 1-12
+    - No duplicates within the same season
+    - No empty values
+    """
+    errors = []
+    if not season_months:
+        return []
+
+    parts = [p.strip() for p in season_months.split(",")]
+    seen = set()
+    for part in parts:
+        if not part:
+            errors.append("Empty month value in months list")
+            continue
+        try:
+            m = int(part)
+        except ValueError:
+            errors.append(f"Invalid month '{part}' — must be an integer 1-12")
+            continue
+        if m < 1 or m > 12:
+            errors.append(f"Month {m} out of range — must be 1-12")
+        elif m in seen:
+            errors.append(f"Duplicate month {m} in season")
+        seen.add(m)
+
+    return errors
 
 
 def _build_extra_kwargs(rates_file, season_name, season_months, day_type_str, json_output):
@@ -386,6 +469,12 @@ def _build_extra_kwargs(rates_file, season_name, season_months, day_type_str, js
     if season_name or season_months:
         name = season_name or "Season 1"
         months = season_months or "1,2,3,4,5,6,7,8,9,10,11,12"
+        # Validate months
+        month_errors = validate_season_months(months)
+        if month_errors:
+            for err in month_errors:
+                print_error(f"Season validation: {err}")
+            return None
         kwargs["seasons"] = [{"name": name, "months": months}]
         if not json_output:
             print(f"  Season: {name} (months: {months})")
@@ -403,7 +492,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                       default_mode: str | None, schedule_file: str | None,
                       rates_file: str | None, season_name: str | None,
                       season_months: str | None, day_type_str: str | None,
-                      json_output: bool):
+                      wait_confirm: bool, json_output: bool):
     """Handle tou --set command."""
     from franklinwh_cloud.const import dispatchCodeType, WaveType
     from franklinwh_cloud.exceptions import InvalidTOUScheduleOption
@@ -443,7 +532,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 default_mode=default_mode.upper() if default_mode else "SELF",
                 **extra_kwargs,
             )
-            if await _print_set_result(result, json_output, client):
+            if await _print_set_result(result, json_output, client, wait_confirm):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -504,7 +593,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 default_mode=default_mode.upper(),
                 **extra_kwargs,
             )
-            if await _print_set_result(result, json_output, client):
+            if await _print_set_result(result, json_output, client, wait_confirm):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -523,7 +612,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
 
         try:
             result = await client.set_tou_schedule(touMode=mode, **extra_kwargs)
-            if await _print_set_result(result, json_output, client):
+            if await _print_set_result(result, json_output, client, wait_confirm):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -534,16 +623,26 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
     print(f"  Usage: franklinwh-cli tou --set {set_mode} --start HH:MM --end HH:MM")
 
 
-async def _print_set_result(result: dict, json_output: bool, client=None):
+async def _print_set_result(result: dict, json_output: bool, client=None,
+                            wait_confirm: bool = False):
     """Print the result of a set_tou_schedule call."""
     if json_output:
-        print_json_output(result)
+        output = dict(result)
+        if wait_confirm and client and result.get("code") == 200:
+            wait_result = await _wait_for_dispatch(client)
+            output["wait_result"] = wait_result
+        print_json_output(output)
         return True
 
     if result.get("code") == 200:
         tou_id = result.get("result", {}).get("id", "?")
         print_success(f"Schedule submitted — touId={tou_id}")
-        print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
+
+        if wait_confirm and client:
+            await _wait_for_dispatch(client, verbose=True)
+        else:
+            print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
+
         print()
         # Show the resulting schedule
         if client:
@@ -554,6 +653,68 @@ async def _print_set_result(result: dict, json_output: bool, client=None):
         msg = result.get("msg", result.get("message", "Unknown error"))
         print_error(f"API returned code={code}: {msg}")
         return False
+
+
+async def _wait_for_dispatch(client, *, verbose: bool = False,
+                             timeout: int = 90, interval: int = 5):
+    """Poll touSendStatus until dispatch is confirmed applied.
+
+    The aGate sets touSendStatus=1 when a schedule is pending.
+    When applied, it clears to 0. We also check the work mode
+    changed to TOU (workMode=1).
+
+    Returns dict with confirmation status for JSON output.
+    """
+    if verbose:
+        print(f"  {c('dim', 'Waiting for dispatch confirmation (up to {timeout}s)...')}")
+
+    elapsed = 0
+    confirmed = False
+    tou_active = False
+    last_status = None
+
+    while elapsed < timeout:
+        try:
+            res = await client.get_gateway_tou_list()
+            result = res.get("result", {})
+            send_status = result.get("touSendStatus", None)
+            work_mode = result.get("workMode", None)
+
+            # touSendStatus: 0 = applied, 1 = pending
+            if send_status == 0 or send_status is None:
+                confirmed = True
+            # workMode: 1 = TOU
+            tou_active = (work_mode == 1)
+            last_status = {
+                "touSendStatus": send_status,
+                "workMode": work_mode,
+            }
+
+            if confirmed:
+                if verbose:
+                    if tou_active:
+                        print_success(f"Dispatch confirmed — TOU mode active (took {elapsed}s)")
+                    else:
+                        print_warning(f"Dispatch sent but workMode={work_mode} (expected 1=TOU) after {elapsed}s")
+                return {"confirmed": True, "tou_active": tou_active,
+                        "elapsed_seconds": elapsed, **last_status}
+
+            if verbose and elapsed % 15 == 0 and elapsed > 0:
+                print(f"  {c('dim', f'Still pending... touSendStatus={send_status} ({elapsed}s)')}")
+
+        except Exception as e:
+            if verbose:
+                print(f"  {c('dim', f'Poll error: {e}')}")
+
+        await asyncio.sleep(interval)
+        elapsed += interval
+
+    # Timeout
+    if verbose:
+        print_warning(f"Timed out after {timeout}s — touSendStatus may still be pending")
+    return {"confirmed": False, "tou_active": tou_active,
+            "elapsed_seconds": elapsed, "timeout": True,
+            **(last_status or {})}
 
 
 def _print_set_error(error: Exception, json_output: bool):

@@ -154,6 +154,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Day type: everyday (default), weekday, weekend")
     sub_tou.add_argument("--next", dest="show_next", action="store_true",
                          help="Show current and next dispatch with remaining time")
+    sub_tou.add_argument("--wait", dest="wait_confirm", action="store_true",
+                         help="After --set, poll until dispatch is confirmed applied (up to 90s)")
 
     # raw
     sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
@@ -306,6 +308,7 @@ async def async_main():
                               season_name=getattr(args, 'season', None),
                               season_months=getattr(args, 'months', None),
                               day_type_str=getattr(args, 'day_type', None),
+                              wait_confirm=getattr(args, 'wait_confirm', False),
                               show_next=getattr(args, 'show_next', False))
 
             case "raw":
