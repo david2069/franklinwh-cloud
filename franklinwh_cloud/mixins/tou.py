@@ -42,7 +42,14 @@ class TouMixin:
     """
 
     async def get_gateway_tou_list(self):
-        """Get TOU Schedule to extract current operating mode and details."""
+        """Get TOU Schedule to extract current operating mode and details.
+
+        Returns
+        -------
+        dict
+            Full TOU configuration: currendId, mode list, timers, flags,
+            stopMode, stromEn, gridChargeEn, touSendStatus
+        """
         url = self.url_base + f"hes-gateway/terminal/tou/getGatewayTouListV2?gatewayId={self.gateway}"
         params = {"showType": "1", "lang": "en_US"}
         data = await self._post(url, "", params=params)
@@ -51,20 +58,45 @@ class TouMixin:
         return data
 
     async def get_charge_power_details(self):
-        """Get charge power details."""
+        """Get charge power details.
+
+        Returns
+        -------
+        dict
+            Charge power configuration and current charge rates
+        """
         url = self.url_base + "hes-gateway/terminal/chargePowerDetails"
         params = {"showType": "1", "lang": "en_US"}
         data = await self._get(url, params=params)
         return data
 
     async def save_tou_dispatch(self, payload):
-        """Save the TOU Dispatch Template and send it to the aGate."""
+        """Save the TOU Dispatch Template and send it to the aGate.
+
+        Parameters
+        ----------
+        payload : dict
+            JSON payload containing the TOU Dispatch Template to be saved.
+            Must include detailVoList with schedule blocks.
+
+        Returns
+        -------
+        dict
+            API response with result containing the saved touId
+        """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/tou/saveTouDispatch"
         data = await self._post(url, payload, params=None, supressParams=True)
         return data
 
     async def get_tou_dispatch_detail(self):
-        """Get the TOU Dispatch Template details from the aGate."""
+        """Get the TOU Dispatch Template details from the aGate.
+
+        Returns
+        -------
+        dict
+            TOU dispatch template including detailVoList (schedule blocks),
+            detailDefaultVo (default mode), and strategyList (tariff config)
+        """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/tou/getTouDispatchDetail"
         params = {"gatewayId": self.gateway, "lang": "EN_US"}
         data = await self._get(url, params=params)
