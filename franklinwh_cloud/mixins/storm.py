@@ -12,7 +12,22 @@ class StormMixin:
     """
 
     async def get_storm_list(self, pageNum=1, pageSize=10):
-        """Get a list of storm notifications."""
+        """Get a list of storm notifications.
+
+        https://www.franklinwh.com/support/overview/storm-hedge
+
+        Parameters
+        ----------
+        pageNum : int
+            Page number (default 1)
+        pageSize : int
+            Results per page (default 10)
+
+        Returns
+        -------
+        dict
+            Paginated storm notification history
+        """
         url = self.url_base + "hes-gateway/terminal/weather/getStormList"
         params = {"equipNo": self.gateway, "pageNum": pageNum, "pageSize": pageSize, "lang": "en_US"}
         logger.info(f"get_storm_list: url={url}, params={params}")
@@ -20,21 +35,45 @@ class StormMixin:
         return data
 
     async def get_progressing_storm_list(self):
-        """Get progressing storm list details (if any)."""
+        """Get progressing storm list details (if any).
+
+        https://www.franklinwh.com/support/overview/storm-hedge
+
+        Returns
+        -------
+        dict
+            Active storms currently in progress
+        """
         url = self.url_base + "hes-gateway/terminal/weather/getProgressingStormList"
         params = {"equipNo": self.gateway}
         data = await self._get(url, params=params)
         return data
 
     async def get_weather(self):
-        """Get current brief weather details."""
+        """Get current brief weather details.
+
+        https://www.franklinwh.com/support/overview/storm-hedge
+
+        Returns
+        -------
+        dict
+            Current weather conditions for the gateway location
+        """
         url = self.url_base + "hes-gateway/terminal/weather/getCurrentBriefWeather"
         params = {"equipNo": self.gateway}
         data = await self._get(url, params=params)
         return data
 
     async def get_storm_settings(self):
-        """Get Storm Hedge settings."""
+        """Get Storm Hedge settings.
+
+        https://www.franklinwh.com/support/overview/storm-hedge
+
+        Returns
+        -------
+        dict
+            Storm Hedge configuration: enableStorm, advanceBackupTime, etc.
+        """
         url = self.url_base + "hes-gateway/terminal/weather/getStormSetting"
         params = {"equipNo": self.gateway}
         data = await self._get(url, params=params)
