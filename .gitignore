@@ -30,9 +30,8 @@ franklinwh.ini
 htmlcov/
 .pytest_cache/
 
-# Test outputs — results stay local, not public
+# Test outputs — results are tracked for traceability
 test_output.log
-tests/results/*.txt
 tests/results/test_history.log
 
 # AGENT.md is tracked (agent onboarding doc)
