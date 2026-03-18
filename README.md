@@ -1,5 +1,7 @@
 # FranklinWH Cloud Client
 
+![Tests](https://github.com/david2069/franklinwh-cloud/actions/workflows/test.yml/badge.svg)
+
 A Python client library for interacting with FranklinWH energy storage systems via the cloud API.
 
 > 📦 **Package**: `franklinwh-cloud-client` (install from source or GitHub — not yet on PyPI) | **import**: `from franklinwh_cloud import Client`
@@ -245,7 +247,7 @@ pytest -v
 cat tests/results/test_history.log
 ```
 
-**Current coverage**: 107 tests (74 unit + 33 live across all 7 domains)
+**Current coverage**: 125 tests (92 unit + 33 live across all 7 domains)
 
 ## 📚 API Reference
 
