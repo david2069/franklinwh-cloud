@@ -13,7 +13,21 @@ class DevicesMixin:
     """Accessory, device, and hardware information methods."""
 
     async def get_accessories(self, option=1):
-        """Get the list of accessories connected to the gateway."""
+        """Get the list of accessories connected to the gateway.
+
+        Parameters
+        ----------
+        option : int
+            1 = Common accessory list (default)
+            2 = IoT accessory list
+            3 = Equipment list (by gateway)
+            4 = IoT accessory list (by gateway)
+
+        Returns
+        -------
+        dict
+            List of connected accessories with details
+        """
         print(f"option = {option}")
         params = None
         match option:
@@ -31,20 +45,42 @@ class DevicesMixin:
         return await self._get(url, params=params)
 
     async def get_device_composite_info(self):
-        """Get Gateway Composite Data to extract current runtime info, operating mode and details."""
+        """Get Gateway Composite Data to extract current runtime info, operating mode and details.
+
+        This is the master data call used by get_stats() — returns runtime data,
+        current work mode, solar info, alarms, relay states, and more.
+
+        Returns
+        -------
+        dict
+            Composite device data including runtimeData, solarHaveVo, currentWorkMode
+        """
         url = self.url_base + f"hes-gateway/terminal/getDeviceCompositeInfo?gatewayId={self.gateway}"
         params = {"refreshFlag": "1", "lang": "en_US"}
         data = await self._get(url, params=params)
         return data
 
     async def get_agate_info(self):
-        """Get the details of connected FranklinWH Gateway."""
+        """Get the details of connected FranklinWH Gateway.
+
+        Returns
+        -------
+        dict
+            Protocol, software/firmware releases, connectivity type
+        """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/obtainAgateInfo"
         data = await self._get(url)
         return data
 
     async def get_apower_info(self):
-        """Get the details of connected FranklinWH aPower batteries."""
+        """Get the details of connected FranklinWH aPower batteries.
+
+        Returns
+        -------
+        dict
+            aPowers grouped by serial number: power rating, rated capacity,
+            status, remaining capacity, SoC, firmware versions
+        """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/obtainApowersInfo"
         data = await self._get(url)
         return data
@@ -131,7 +167,13 @@ class DevicesMixin:
         return await self._mqtt_send(wire_payload)
 
     async def get_device_info(self):
-        """Get detailed device info for the current gateway."""
+        """Get detailed device info for the current gateway.
+
+        Returns
+        -------
+        dict
+            Device Info V2 payload with hardware details
+        """
         url = DEFAULT_URL_BASE + f"hes-gateway/terminal/getDeviceInfoV2?gatewayId={self.gateway}&lang=EN_US"
         data = await self._get(url)
         return data
@@ -162,7 +204,15 @@ class DevicesMixin:
         return json.loads(data)
 
     async def get_power_info(self):
-        """Get voltages, current, frequencies for grid, loads, genset, relay states."""
+        """Get voltages, current, frequencies for grid, loads, genset, relay states.
+
+        Useful for continuous monitoring of power data, relays, and operating mode.
+
+        Returns
+        -------
+        dict
+            Electricity metrics: voltages, currents, frequencies, relay states, modes
+        """
         dataArea = {"type": 1}
         wire_payload = self._build_payload(211, dataArea)
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
@@ -207,7 +257,20 @@ class DevicesMixin:
         return raw_data
 
     async def get_span_settings(self, requestType):
-        """Get SPAN Panel settings associated with this aGate."""
+        """Get SPAN Panel settings associated with this aGate.
+
+        Note: Requires the SPAN panel settings flag to be set in the FranklinWH app.
+
+        Parameters
+        ----------
+        requestType : int
+            Request type for SPAN panel query
+
+        Returns
+        -------
+        dict
+            SPAN panel settings information
+        """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/span/getSpanSettings"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
