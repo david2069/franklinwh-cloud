@@ -351,7 +351,7 @@ def _dispatch_name(dispatch_id: int) -> str:
 # ── tou --set handler ───────────────────────────────────────────────
 
 async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
-                      default_mode: str, schedule_file: str | None,
+                      default_mode: str | None, schedule_file: str | None,
                       json_output: bool):
     """Handle tou --set command."""
     from franklinwh_cloud.const import dispatchCodeType, WaveType
@@ -382,9 +382,10 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
             result = await client.set_tou_schedule(
                 touMode="CUSTOM",
                 touSchedule=schedule,
-                default_mode=default_mode.upper(),
+                default_mode=default_mode.upper() if default_mode else "SELF",
             )
-            _print_set_result(result, json_output)
+            if await _print_set_result(result, json_output, client):
+                return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
         return
@@ -403,11 +404,25 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
             print_error(f"Invalid end time: {end} (expected HH:MM)")
             return
 
+        # --default: warn if not specified, default to SELF
+        if not default_mode:
+            default_mode = "SELF"
+            if not json_output:
+                print_warning(f"No --default specified — remaining times will use Self-Consumption (dispatchId=6).")
+                print(f"  Tip: use --default MODE to change (SELF, HOME, STANDBY, SOLAR, GRID_CHARGE, GRID_EXPORT)")
+
         # Resolve dispatch ID
         dispatch_id = DISPATCH_CODES.get(mode)
         if dispatch_id is None:
             print_error(f"Unknown dispatch mode: {set_mode}")
             print(f"  Available: GRID_CHARGE, GRID_EXPORT, SELF, HOME, STANDBY, SOLAR")
+            return
+
+        # Validate default mode
+        default_dispatch_id = DISPATCH_CODES.get(default_mode.upper())
+        if default_dispatch_id is None:
+            print_error(f"Unknown default mode: {default_mode}")
+            print(f"  Available: SELF, HOME, STANDBY, SOLAR, GRID_CHARGE, GRID_EXPORT")
             return
 
         schedule = [{
@@ -419,9 +434,9 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
         }]
 
         if not json_output:
-            default_name = DISPATCH_CODES.get(DISPATCH_CODES.get(default_mode.upper(), 6), "Self-consumption")
+            default_name = DISPATCH_CODES.get(default_dispatch_id, "Unknown")
             print(f"Setting {_dispatch_name(dispatch_id)} from {start} to {end}")
-            print(f"  Default mode for remaining times: {default_name}")
+            print(f"  Remaining times: {default_name} (dispatchId={default_dispatch_id})")
 
         try:
             result = await client.set_tou_schedule(
@@ -429,7 +444,8 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 touSchedule=schedule,
                 default_mode=default_mode.upper(),
             )
-            _print_set_result(result, json_output)
+            if await _print_set_result(result, json_output, client):
+                return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
         return
@@ -447,7 +463,8 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
 
         try:
             result = await client.set_tou_schedule(touMode=mode)
-            _print_set_result(result, json_output)
+            if await _print_set_result(result, json_output, client):
+                return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
         return
@@ -457,21 +474,26 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
     print(f"  Usage: franklinwh-cli tou --set {set_mode} --start HH:MM --end HH:MM")
 
 
-def _print_set_result(result: dict, json_output: bool):
+async def _print_set_result(result: dict, json_output: bool, client=None):
     """Print the result of a set_tou_schedule call."""
     if json_output:
         print_json_output(result)
-        return
+        return True
 
     if result.get("code") == 200:
         tou_id = result.get("result", {}).get("id", "?")
         print_success(f"Schedule submitted — touId={tou_id}")
         print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
-        print(f"  {c('dim', 'Run: franklinwh-cli tou --next  to verify.')}")
+        print()
+        # Show the resulting schedule
+        if client:
+            await _handle_next(client, json_output=False)
+        return True
     else:
         code = result.get("code", "?")
         msg = result.get("msg", result.get("message", "Unknown error"))
         print_error(f"API returned code={code}: {msg}")
+        return False
 
 
 def _print_set_error(error: Exception, json_output: bool):

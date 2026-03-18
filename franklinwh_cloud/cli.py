@@ -139,8 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Start time for --set window (e.g. 11:30)")
     sub_tou.add_argument("--end", metavar="HH:MM",
                          help="End time for --set window (e.g. 14:30)")
-    sub_tou.add_argument("--default", dest="default_mode", metavar="MODE", default="SELF",
-                         help="Dispatch mode for times outside --start/--end (default: SELF)")
+    sub_tou.add_argument("--default", dest="default_mode", metavar="MODE", default=None,
+                         help="Dispatch mode for times outside --start/--end (required with --start/--end)")
     sub_tou.add_argument("--file", dest="schedule_file", metavar="PATH",
                          help="JSON schedule file for --set CUSTOM")
     sub_tou.add_argument("--next", dest="show_next", action="store_true",
@@ -285,7 +285,7 @@ async def async_main():
                               set_mode=getattr(args, 'set_mode', None),
                               start=getattr(args, 'start', None),
                               end=getattr(args, 'end', None),
-                              default_mode=getattr(args, 'default_mode', 'SELF'),
+                              default_mode=getattr(args, 'default_mode', None),
                               schedule_file=getattr(args, 'schedule_file', None),
                               show_next=getattr(args, 'show_next', False))
 
