@@ -35,8 +35,7 @@ test_output.log
 tests/results/*.txt
 tests/results/test_history.log
 
-# Agent notes — internal development context
-agent.md
+# AGENT.md is tracked (agent onboarding doc)
 
 # Root-level scratch scripts
 test_library.py
