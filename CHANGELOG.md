@@ -10,7 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `franklinwh-cli bms` — Battery Management System inspection (cell voltages, temperatures, SoC/SoH)
 - `franklinwh-cli diag` — System diagnostics report
 - `franklinwh-cli tou` — Full dispatch schedule with seasons, day types, pricing tiers
+- `franklinwh-cli tou --set` — Set TOU dispatch: single window, full-day, or custom JSON file
+- `franklinwh-cli tou --next` — Show current/next dispatch with remaining time (HH:MM:SS)
 - `franklinwh-cli metrics` — now does a probe call so it shows real data including CloudFront edge
+- `docs/TOU_SCHEDULE_GUIDE.md` — TOU API reference with mermaid diagrams and code examples
 - GitHub Issues for public issue tracking (#1–#6)
 
 ### Fixed

@@ -130,9 +130,21 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Set SOC percentage (used with --set)")
 
     # tou
-    sub_tou = subs.add_parser("tou", help="Time-of-Use schedule inspection")
+    sub_tou = subs.add_parser("tou", help="Time-of-Use schedule inspection and control")
     sub_tou.add_argument("--dispatch", action="store_true",
                          help="Show full dispatch detail including strategies")
+    sub_tou.add_argument("--set", dest="set_mode", metavar="MODE",
+                         help="Set TOU dispatch (GRID_CHARGE, GRID_EXPORT, SELF, HOME, STANDBY, SOLAR, CUSTOM)")
+    sub_tou.add_argument("--start", metavar="HH:MM",
+                         help="Start time for --set window (e.g. 11:30)")
+    sub_tou.add_argument("--end", metavar="HH:MM",
+                         help="End time for --set window (e.g. 14:30)")
+    sub_tou.add_argument("--default", dest="default_mode", metavar="MODE", default="SELF",
+                         help="Dispatch mode for times outside --start/--end (default: SELF)")
+    sub_tou.add_argument("--file", dest="schedule_file", metavar="PATH",
+                         help="JSON schedule file for --set CUSTOM")
+    sub_tou.add_argument("--next", dest="show_next", action="store_true",
+                         help="Show current and next dispatch with remaining time")
 
     # raw
     sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
@@ -269,7 +281,13 @@ async def async_main():
             case "tou":
                 from franklinwh_cloud.cli_commands import tou
                 await tou.run(client, json_output=args.json,
-                              show_dispatch=args.dispatch)
+                              show_dispatch=args.dispatch,
+                              set_mode=getattr(args, 'set_mode', None),
+                              start=getattr(args, 'start', None),
+                              end=getattr(args, 'end', None),
+                              default_mode=getattr(args, 'default_mode', 'SELF'),
+                              schedule_file=getattr(args, 'schedule_file', None),
+                              show_next=getattr(args, 'show_next', False))
 
             case "raw":
                 from franklinwh_cloud.cli_commands import raw
