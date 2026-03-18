@@ -2,6 +2,17 @@
 
 > **Read this first.** This document tells you where everything is so you don't have to ask the user.
 
+## 🤖 Auto-Onboarding
+
+| File | AI Tool | Auto-reads? |
+|------|---------|-------------|
+| `CLAUDE.md` | Claude Code / Anthropic | ✅ Auto |
+| `.cursor/rules/project.mdc` | Cursor | ✅ Auto |
+| `.github/copilot-instructions.md` | GitHub Copilot | ✅ Auto |
+| `AGENT.md` | All (convention) | Manual first use |
+
+> All auto-onboarding files point here as the **canonical source**. Edit policies here, not in the tool-specific files.
+
 ## ⚡ Focus Discipline Protocol
 
 > **Re-affirm at session start.** When beginning a session, briefly acknowledge this protocol:
