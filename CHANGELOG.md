@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - GitHub Issues for public issue tracking (#1–#6)
 
 ### Fixed
+- **All CLI commands display wrong power units** — API returns kW but monitor/status/discover/diag displayed as W (#7)
+- Monitor power bar and direction thresholds used watt-scale values (±50) instead of kW-scale (±0.05)
+- Monitor CDN line now shows distribution count instead of overwhelming hash list
 - Monitor crash when edge tracker `cache_hit_rate` returns string instead of float (#2)
 - Status command now warns when runtimeData is empty instead of silently showing zeros
 

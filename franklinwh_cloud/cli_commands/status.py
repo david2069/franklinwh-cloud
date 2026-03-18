@@ -53,23 +53,23 @@ async def run(client, *, json_output: bool = False):
 
     # Power flows
     print_section("📊", "Power Flow")
-    print_kv("Solar", f"{cur.solar_production:>8.1f} W")
-    print_kv("Battery", f"{cur.battery_use:>8.1f} W  (SoC: {c('bold', f'{cur.battery_soc:.0f}%')})")
+    print_kv("Solar", f"{cur.solar_production:>8.1f} kW")
+    print_kv("Battery", f"{cur.battery_use:>8.1f} kW  (SoC: {c('bold', f'{cur.battery_soc:.0f}%')})")
     grid_color = "green" if cur.grid_status.name == "NORMAL" else "red"
-    print_kv("Grid", f"{cur.grid_use:>8.1f} W  ({c(grid_color, cur.grid_status.name)})")
-    print_kv("Home Load", f"{cur.home_load:>8.1f} W")
+    print_kv("Grid", f"{cur.grid_use:>8.1f} kW  ({c(grid_color, cur.grid_status.name)})")
+    print_kv("Home Load", f"{cur.home_load:>8.1f} kW")
     if cur.generator_production:
-        print_kv("Generator", f"{cur.generator_production:>8.1f} W")
+        print_kv("Generator", f"{cur.generator_production:>8.1f} kW")
 
     # Smart circuits
     if cur.switch_1_load or cur.switch_2_load or cur.v2l_use:
         print_section("🔌", "Smart Circuits")
         if cur.switch_1_load:
-            print_kv("Switch 1", f"{cur.switch_1_load:>8.1f} W")
+            print_kv("Switch 1", f"{cur.switch_1_load:>8.1f} kW")
         if cur.switch_2_load:
-            print_kv("Switch 2", f"{cur.switch_2_load:>8.1f} W")
+            print_kv("Switch 2", f"{cur.switch_2_load:>8.1f} kW")
         if cur.v2l_use:
-            print_kv("EV/V2L", f"{cur.v2l_use:>8.1f} W")
+            print_kv("EV/V2L", f"{cur.v2l_use:>8.1f} kW")
 
     # Daily totals
     print_section("📅", "Daily Totals")

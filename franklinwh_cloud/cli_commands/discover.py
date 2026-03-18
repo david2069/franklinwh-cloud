@@ -131,11 +131,11 @@ async def run(client, *, json_output: bool = False, show_warranty: bool = True,
         print_kv("SoC", f'{rt.get("soc", 0)}%')
 
         # Power flows
-        print_kv("Home Load", f'{rt.get("p_load", 0)} W')
-        print_kv("Grid", f'{rt.get("p_uti", 0)} W')
-        print_kv("Solar", f'{rt.get("p_sun", 0)} W')
-        print_kv("Battery", f'{rt.get("p_fhp", 0)} W')
-        print_kv("Generator", f'{rt.get("p_gen", 0)} W')
+        print_kv("Home Load", f'{rt.get("p_load", 0)} kW')
+        print_kv("Grid", f'{rt.get("p_uti", 0)} kW')
+        print_kv("Solar", f'{rt.get("p_sun", 0)} kW')
+        print_kv("Battery", f'{rt.get("p_fhp", 0)} kW')
+        print_kv("Generator", f'{rt.get("p_gen", 0)} kW')
 
         # Solar config
         flags = []
