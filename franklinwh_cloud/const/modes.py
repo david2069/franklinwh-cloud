@@ -20,10 +20,39 @@ EMERGENCY_BACKUP = 3
 
 
 class workModeType(Enum):
-    """Operating work mode enumeration."""
+    """Operating work mode enumeration (Cloud API workMode codes)."""
     TIME_OF_USE = 1
     SELF_CONSUMPTION = 2
     EMERGENCY_BACKUP = 3
+
+
+# ── Modbus TCP Work Modes ────────────────────────────────────────
+# The aGate uses different mode codes on its Modbus TCP interface
+# (exposed as "oldIndex" in the Cloud API's getGatewayTouListV2).
+# TOU and Emergency Backup are SWAPPED vs Cloud API; Self-Consumption
+# is the same (2) in both systems.
+MODBUS_EMERGENCY_BACKUP = 1
+MODBUS_SELF_CONSUMPTION = 2
+MODBUS_TIME_OF_USE = 3
+
+
+class modbusWorkMode(Enum):
+    """Operating work mode enumeration (Modbus TCP / oldIndex codes)."""
+    EMERGENCY_BACKUP = 1
+    SELF_CONSUMPTION = 2
+    TIME_OF_USE = 3
+
+
+# ── Cross-reference mappings ────────────────────────────────────
+# Cloud API workMode → Modbus oldIndex
+CLOUD_TO_MODBUS_MODE = {
+    TIME_OF_USE: MODBUS_TIME_OF_USE,           # 1 → 3
+    SELF_CONSUMPTION: MODBUS_SELF_CONSUMPTION,  # 2 → 2
+    EMERGENCY_BACKUP: MODBUS_EMERGENCY_BACKUP,  # 3 → 1
+}
+
+# Modbus oldIndex → Cloud API workMode
+MODBUS_TO_CLOUD_MODE = {v: k for k, v in CLOUD_TO_MODBUS_MODE.items()}
 
 
 OPERATING_MODES = {

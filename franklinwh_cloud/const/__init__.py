@@ -22,7 +22,14 @@ from .modes import (
     SELF_CONSUMPTION,
     EMERGENCY_BACKUP,
     PCS_CONTROL,
-    EMERGENCY_BACKUP_PERIODS
+    EMERGENCY_BACKUP_PERIODS,
+    # Modbus TCP work mode codes (oldIndex from Cloud API)
+    MODBUS_TIME_OF_USE,
+    MODBUS_SELF_CONSUMPTION,
+    MODBUS_EMERGENCY_BACKUP,
+    modbusWorkMode,
+    CLOUD_TO_MODBUS_MODE,
+    MODBUS_TO_CLOUD_MODE,
 )
 
 # TOU scheduling
@@ -62,11 +69,14 @@ from .test_fixtures import (
 )
 
 __all__ = [
-    # Modes
+    # Modes (Cloud API)
     "MODE_TIME_OF_USE", "MODE_SELF_CONSUMPTION", "MODE_EMERGENCY_BACKUP",
     "MODE_MAP", "OPERATING_MODES", "RUN_STATUS", "workModeType",
     "TIME_OF_USE", "SELF_CONSUMPTION", "EMERGENCY_BACKUP",
     "PCS_CONTROL", "EMERGENCY_BACKUP_PERIODS",
+    # Modes (Modbus TCP)
+    "MODBUS_TIME_OF_USE", "MODBUS_SELF_CONSUMPTION", "MODBUS_EMERGENCY_BACKUP",
+    "modbusWorkMode", "CLOUD_TO_MODBUS_MODE", "MODBUS_TO_CLOUD_MODE",
     # TOU
     "DISPATCH_CODES", "WAVE_TYPES", "dispatchCodeType", "WaveType",
     "tou_json_schema", "valid_tou_modes",
