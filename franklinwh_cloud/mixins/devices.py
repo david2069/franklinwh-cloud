@@ -308,3 +308,59 @@ class DevicesMixin:
         params = {"gatewayId": self.gateway}
         data = await self._post(url, params=params, payload=payload)
         return data["result"]
+
+    async def get_network_info(self):
+        """Get aGate network configuration via MQTT command.
+
+        Sends cmdType 317 with paraType 6 to retrieve detailed network
+        interface information from the aGate.
+
+        Returns
+        -------
+        dict
+            Parsed network configuration with keys:
+            - currentNetType: active network type code
+            - wifi: {mac, dhcp, ip, dns, gateway}
+            - eth0: {mac, dhcp, ip, dns, gateway}
+            - eth1: {mac, dhcp, ip, dns, gateway}
+            - operator: {mac, dns, rssi}
+            - awsStatus: AWS connection status (1 = connected)
+        """
+        dataArea = {"optType": 0, "paraType": 6}
+        wire_payload = self._build_payload(317, dataArea)
+        raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        parsed = json.loads(raw)
+
+        # Extract the commSetPara from the nested result
+        comm = parsed.get("result", {}).get("commSetPara", parsed)
+
+        return {
+            "currentNetType": comm.get("currentNetType"),
+            "wifi": {
+                "mac": comm.get("wifiMAC"),
+                "dhcp": bool(comm.get("wifiDHCP", 0)),
+                "ip": comm.get("wifiStaticIP"),
+                "dns": comm.get("wifiDNS"),
+                "gateway": comm.get("wifiGateWay"),
+            },
+            "eth0": {
+                "mac": comm.get("eth0MAC"),
+                "dhcp": bool(comm.get("eth0DHCP", 0)),
+                "ip": comm.get("eth0StaticIP"),
+                "dns": comm.get("eth0DNS"),
+                "gateway": comm.get("eth0GateWay"),
+            },
+            "eth1": {
+                "mac": comm.get("eth1MAC"),
+                "dhcp": bool(comm.get("eth1DHCP", 0)),
+                "ip": comm.get("eth1StaticIP"),
+                "dns": comm.get("eth1DNS"),
+                "gateway": comm.get("eth1GateWay"),
+            },
+            "operator": {
+                "mac": comm.get("operatorMAC"),
+                "dns": comm.get("operatorDNS"),
+                "rssi": comm.get("operatorRSSI"),
+            },
+            "awsStatus": comm.get("awsStatus"),
+        }

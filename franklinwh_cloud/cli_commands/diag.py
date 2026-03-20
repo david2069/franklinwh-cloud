@@ -333,6 +333,52 @@ async def run(client, *, json_output: bool = False):
         except Exception:
             pass  # solar display is best-effort
 
+    # ── 5d. Network Configuration (via MQTT) ─────────────────────────
+
+    net_info = {}
+    try:
+        net_info = await client.get_network_info()
+        checks_passed += 1
+    except Exception as e:
+        net_info["error"] = str(e)
+        checks_warned += 1
+
+    results["network"] = net_info
+
+    NET_TYPES = {
+        0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi+Ethernet",
+        4: "4G/LTE", 5: "WiFi+4G", 6: "Ethernet+4G",
+        13: "WiFi+Ethernet+4G",
+    }
+
+    if not json_output:
+        print_section("📶", "Network Configuration")
+        if "error" in net_info:
+            print_kv("Status", c("yellow", f'⚠ {net_info["error"]}'))
+        else:
+            net_type = net_info.get("currentNetType", 0)
+            print_kv("Active Network", c("cyan", NET_TYPES.get(net_type, f"Type {net_type}")))
+
+            aws = net_info.get("awsStatus", 0)
+            aws_text = c("green", "● Connected") if aws else c("red", "○ Disconnected")
+            print_kv("AWS/Cloud", aws_text)
+
+            for iface, label in [("wifi", "WiFi"), ("eth0", "Ethernet 0"), ("eth1", "Ethernet 1")]:
+                idata = net_info.get(iface, {})
+                mac = idata.get("mac")
+                if mac:
+                    dhcp = c("green", "DHCP") if idata.get("dhcp") else c("dim", "Static")
+                    ip = idata.get("ip", "—")
+                    gw = idata.get("gateway", "—")
+                    dns = idata.get("dns", "—")
+                    print_kv(f"{label}", f'{mac}  {dhcp}  IP: {ip}  GW: {gw}  DNS: {dns}')
+
+            op = net_info.get("operator", {})
+            if op.get("mac"):
+                rssi = op.get("rssi", "?")
+                dns = op.get("dns", "—")
+                print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi} dBm  DNS: {dns}')
+
     # ── 6. Power Snapshot ────────────────────────────────────────────
 
     power_info = {}
