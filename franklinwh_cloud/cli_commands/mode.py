@@ -41,8 +41,14 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
             print_success(f"Mode set to {OPERATING_MODES.get(mode_val, set_mode)}")
         return
 
-    # Getting current mode
-    mode = await client.get_mode()
+    # Getting current mode — get_mode() chains several API calls and can be
+    # fragile, so we catch failures and fall back to the lighter-weight
+    # get_all_mode_soc() which only calls getGatewayTouListV2.
+    mode = None
+    try:
+        mode = await client.get_mode()
+    except Exception as e:
+        print_warning(f"get_mode() failed: {e}")
 
     if json_output:
         # Include SoC summary in JSON output
@@ -50,7 +56,7 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
             soc_summary = await client.get_all_mode_soc()
         except Exception:
             soc_summary = None
-        output = mode if isinstance(mode, dict) else {"mode": mode}
+        output = mode if isinstance(mode, dict) else {"mode": str(mode) if mode else None}
         if soc_summary:
             output["soc_summary"] = soc_summary
         print_json_output(output)
@@ -109,10 +115,11 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
             if mode.get("nextWorkMode"):
                 next_name = OPERATING_MODES.get(int(mode["nextWorkMode"]), f"Mode {mode['nextWorkMode']}")
                 print_kv("Next Mode", next_name)
-    else:
+    elif mode is not None:
         print_kv("Mode", str(mode))
 
-    # SoC summary for ALL modes
+    # SoC summary for ALL modes — this uses get_all_mode_soc() which
+    # only calls getGatewayTouListV2 and is much more reliable
     print_section("🔋", "Reserve SoC — All Modes")
     try:
         all_soc = await client.get_all_mode_soc()
