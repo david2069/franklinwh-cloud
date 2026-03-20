@@ -34,6 +34,8 @@ AVAILABLE_METHODS = {
     "get_network_info": {"args": 0, "desc": "aGate network config (WiFi/Eth/4G via MQTT)"},
     "get_wifi_config": {"args": 0, "desc": "WiFi SSID, AP config, security (via MQTT)"},
     "scan_wifi_networks": {"args": 0, "desc": "Scan for available WiFi networks (via MQTT)"},
+    "get_connection_status": {"args": 0, "desc": "Router/network/AWS connectivity (via MQTT)"},
+    "get_network_switches": {"args": 0, "desc": "Interface on/off switches: WiFi/Eth/4G (via MQTT)"},
     # Account mixin
     "get_home_gateway_list": {"args": 0, "desc": "Home gateway list"},
     "siteinfo": {"args": 0, "desc": "Site / account info"},
