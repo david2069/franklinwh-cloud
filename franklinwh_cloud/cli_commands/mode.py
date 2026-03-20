@@ -67,7 +67,7 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
     if isinstance(mode, dict):
         # Display key fields in a structured, readable format
         print_section("⚡", "Current Mode")
-        print_kv("Mode", c("bold", str(mode.get("modeName", mode.get("name", "?")))))
+        print_kv("Mode", c("bold", str(mode.get("name", mode.get("modeName", "?")))))
         print_kv("Run Status", mode.get("run_desc", "?"))
 
         # Reserve SoC for the active mode
