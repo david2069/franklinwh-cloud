@@ -1,0 +1,269 @@
+{
+  "template": {
+    "id": null,
+    "gatewayId": "REDACTED_GATEWAY_ID",
+    "electricCompany": "Amber Electric",
+    "eletricCompanyId": -1,
+    "sdcpCompanyFlag": null,
+    "name": "Ausgrid EA029 Export / EA116 TOU Demand Tariff",
+    "electricityType": 1,
+    "workMode": 1,
+    "countryId": 3,
+    "provinceId": 87,
+    "account": "redacted@example.com",
+    "accountId": -1,
+    "accountType": 0,
+    "countryEn": "Australia",
+    "countryZh": "澳大利亚",
+    "eleCompanyFullName": "Amber Electric",
+    "tariffName": "Ausgrid EA029 Export / EA116 TOU Demand Tariff",
+    "env": null,
+    "gridType": "null",
+    "mookRunCount": null,
+    "priority": null,
+    "provinceEn": "",
+    "provinceZh": "",
+    "solarChargeMin": null,
+    "sourceType": null,
+    "status": null,
+    "templateFromType": null,
+    "templateId": null,
+    "updateTime": null,
+    "derSchdule": "Other",
+    "nbtType": null
+  },
+  "strategyList": [
+    {
+      "id": null,
+      "seasonName": "Season 4",
+      "month": "10,11,12",
+      "templateId": null,
+      "dayTypeVoList": [
+        {
+          "dayName": "weekday",
+          "dayType": 1,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 1.0,
+          "eleticRateValley": null,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.05,
+          "eleticSellValley": null,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 6
+            }
+          ]
+        },
+        {
+          "dayName": "weekend",
+          "dayType": 2,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 1.0,
+          "eleticRateValley": null,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.05,
+          "eleticSellValley": null,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": null,
+      "seasonName": "Season 2",
+      "month": "4,5,6",
+      "templateId": null,
+      "dayTypeVoList": [
+        {
+          "dayName": "weekday",
+          "dayType": 1,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 3.0,
+          "eleticRateValley": null,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.3,
+          "eleticSellValley": null,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 6
+            }
+          ]
+        },
+        {
+          "dayName": "weekend",
+          "dayType": 2,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 3.0,
+          "eleticRateValley": null,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.3,
+          "eleticSellValley": null,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": null,
+      "seasonName": "Season 1",
+      "month": "1,2,3",
+      "templateId": null,
+      "dayTypeVoList": [
+        {
+          "dayName": "weekday",
+          "dayType": 1,
+          "eleticRatePeak": 3.0,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 2.0,
+          "eleticRateValley": 1.0,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": 0.05,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.02,
+          "eleticSellValley": 0.01,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "11:10",
+              "waveType": 0,
+              "name": "Off-peak",
+              "dispatchId": 8
+            },
+            {
+              "startHourTime": "11:10",
+              "endHourTime": "15:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 2
+            },
+            {
+              "startHourTime": "15:00",
+              "endHourTime": "24:00",
+              "waveType": 2,
+              "name": "On-peak",
+              "dispatchId": 6
+            }
+          ]
+        },
+        {
+          "dayName": "weekend",
+          "dayType": 2,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": null,
+          "eleticRateValley": 1.0,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": null,
+          "eleticSellValley": 0.01,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 0,
+              "name": "Off-peak",
+              "dispatchId": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": null,
+      "seasonName": "Season 3",
+      "month": "7,8,9",
+      "templateId": null,
+      "dayTypeVoList": [
+        {
+          "dayName": "weekday",
+          "dayType": 1,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 6.0,
+          "eleticRateValley": null,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.5,
+          "eleticSellValley": null,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 6
+            }
+          ]
+        },
+        {
+          "dayName": "weekend",
+          "dayType": 2,
+          "eleticRatePeak": null,
+          "eleticRateSharp": null,
+          "eleticRateShoulder": 6.0,
+          "eleticRateValley": null,
+          "eleticRateSuperOffPeak": null,
+          "eleticSellPeak": null,
+          "eleticSellSharp": null,
+          "eleticSellShoulder": 0.5,
+          "eleticSellValley": null,
+          "eleticSellSuperOffPeak": null,
+          "detailVoList": [
+            {
+              "startHourTime": "00:00",
+              "endHourTime": "24:00",
+              "waveType": 1,
+              "name": "Mid-peak",
+              "dispatchId": 6
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "nemType": 0,
+  "coverContentFlag": false
+}

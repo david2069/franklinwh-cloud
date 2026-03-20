@@ -85,6 +85,15 @@ async def run(client, *, json_output: bool = False):
     # Operating mode
     print_section("⚡", "Operating Mode")
     print_kv("Mode", cur.work_mode_desc)
+    # Show reserve SoC for active mode
+    try:
+        mode_info = await client.get_mode_info(cur.work_mode or 2)
+        if mode_info and isinstance(mode_info, list) and mode_info[0]:
+            active_soc = mode_info[0].get("soc")
+            if active_soc is not None:
+                print_kv("Reserve SoC", f"{active_soc}%")
+    except Exception:
+        pass
     print_kv("Run Status", cur.run_status_dec)
 
     # aPower batteries

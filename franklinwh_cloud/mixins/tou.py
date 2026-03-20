@@ -164,12 +164,14 @@ class TouMixin:
         option : int
             0 = Raw payload from get_tou_dispatch_detail
             1 = Current and next scheduled items only (active + upcoming TOU entry)
-            2 = Full schedule (past, current and future) in detailVolist format (raw)
+            2 = Full schedule (past, current and future) in detailVoList format (raw)
 
         Returns
         -------
         dict or list
-            JSON payload containing the TOU Schedule information.
+            option=0: full result dict from get_tou_dispatch_detail
+            option=1: dict with current + next block details (active/next keys)
+            option=2: list of detailVoList entries
 
         Note
         ----
@@ -183,262 +185,220 @@ class TouMixin:
         if option == 0:
             return res["result"]
 
-        results = None
-        priorityList = res["result"]["detailDefaultVo"]["priorityList"]
         touDispatchList = res["result"]["detailDefaultVo"]["touDispatchList"]
-        dispatchCount = sum(1 for y in touDispatchList if y['id'] is not None)
         strategyList = res["result"]["strategyList"]
-        dayTypeVoList = strategyList[0]["dayTypeVoList"]
-        detailVoList = dayTypeVoList[0]["detailVoList"]
 
         if option == 2:
-            results = detailVoList
+            # Return full detailVoList from first season, first day type
+            day_types = strategyList[0].get("dayTypeVoList", [])
+            if day_types:
+                return day_types[0].get("detailVoList", [])
+            return []
+
+        # ── option=1: Find current and next dispatch blocks ─────────
+        now = datetime.now()
+        current_month = str(now.month)
+        current_weekday = now.weekday()  # 0=Mon ... 6=Sun
+
+        for season in strategyList:
+            month_str = season.get("month", "")
+            if current_month not in month_str.split(","):
+                continue
+
+            logger.debug(f"get_tou_info: matched season '{season.get('seasonName')}' "
+                         f"for month {current_month}")
+
+            # ── Find the correct day type ───────────────────────────
+            day_type_list = season.get("dayTypeVoList", [])
+            matched_day_type = self._match_day_type(day_type_list, current_weekday)
+            if matched_day_type is None:
+                logger.warning("get_tou_info: no matching day type found")
+                continue
+
+            detail_vo_list = matched_day_type.get("detailVoList", [])
+            if not detail_vo_list:
+                logger.warning("get_tou_info: detailVoList is empty")
+                continue
+
+            # ── Sort blocks and find current/next ───────────────────
+            sorted_blocks = sorted(
+                detail_vo_list,
+                key=lambda b: self._time_to_minutes(b.get("startHourTime", "00:00"))
+            )
+
+            current_minutes = now.hour * 60 + now.minute
+            current_block = None
+            next_block = None
+            current_idx = None
+
+            for i, block in enumerate(sorted_blocks):
+                start_mins = self._time_to_minutes(block.get("startHourTime", "00:00"))
+                end_mins = self._time_to_minutes(block.get("endHourTime", "24:00"))
+                if start_mins <= current_minutes < end_mins:
+                    current_block = block
+                    current_idx = i
+                    break
+
+            if current_idx is not None:
+                if current_idx + 1 < len(sorted_blocks):
+                    next_block = sorted_blocks[current_idx + 1]
+                elif len(sorted_blocks) > 1:
+                    next_block = sorted_blocks[0]  # wraps to first block
+
+            # ── Build result dict ───────────────────────────────────
+            results = {}
+            if current_block:
+                results.update(self._build_block_info(
+                    current_block, touDispatchList, now, prefix="active"
+                ))
+            if next_block:
+                results.update(self._build_block_info(
+                    next_block, touDispatchList, now, prefix="next"
+                ))
+
+            logger.info(f"get_tou_info: returning current={current_block is not None}, "
+                        f"next={next_block is not None}")
             return results
 
-        currentDate = datetime.now()
-        currentMonth = str(int(currentDate.strftime("%m")))
+        logger.warning("get_tou_info: no matching season found for current month")
+        return {}
 
-        for item in strategyList:
-            id = item['id']
-            dayTypeVoList = item['dayTypeVoList']
-            seasonName = item['seasonName']
-            month = item['month']
-            if currentMonth not in month:
-                continue
-            templateId = item['templateId']
-            fromType = item['fromType']
-            activeTOUid = None
-            activeTOUname = None
-            activeTOUdispatchCode = None
-            activeWaveType = None
-            activeTOUtitle = None
-            activeStartTime = None
-            activeEndTime = None
-            activeGridActivity = None
-            nextTOUid = None
-            nextTOUname = None
-            nextTOUdispatchId = None
-            nextTOUdispatchCode = None
-            nextWaveType = None
-            nextTOUtitle = None
-            nextStartTime = None
-            nextEndTime = None
-            nextGridActivity = None
-            next_activity = {}
-            current_activity = {}
-            results = {}
-            current = {}
-            next = {}
+    @staticmethod
+    def _time_to_minutes(time_str: str) -> int:
+        """Convert HH:MM to minutes since midnight."""
+        if time_str == "24:00":
+            return 1440
+        parts = time_str.split(":")
+        return int(parts[0]) * 60 + int(parts[1])
 
-            for items in dayTypeVoList:
-                dayName = items.get('dayName', None)
-                dayType = items.get('dayType', None)
-                ccociateType = items.get('ccociateType', None)
-                eleticRatePeak = items.get('eleticRatePeak', None)
-                eleticRateShoulder = items.get('eleticRateShoulder', None)
-                eleticRateValley = items.get('eleticRateValley', None)
-                eleticRateSharp = items.get('eleticRateSharp', None)
-                eleticRateSuperOffPeak = items.get('eleticRateSuperOffPeak', None)
-                eleticRateGridFee = items.get('eleticRateGridFee', None)
-                eleticSellPeak = items.get('eleticSellPeak', None)
-                eleticSellShoulder = items.get('eleticSellShoulder', None)
-                eleticSellValley = items.get('eleticSellValley', None)
-                eleticSellSharp = items.get('eleticSellSharp', None)
-                eleticSellSuperOffPeak = items.get('eleticSellSuperOffPeak', None)
-                ladderRate = items.get('ladderRate', None)
+    @staticmethod
+    def _match_day_type(day_type_list: list, current_weekday: int) -> dict | None:
+        """Find the correct day type entry for the current weekday.
 
-                nextActiveCount = 0
-                for item in detailVoList:
-                    id = str(item['id'])
-                    name = item['name']
-                    dispatchId = item['dispatchId']
-                    waveType = item['waveType']
-                    startHourTime = item['startHourTime']
-                    endHourTime = item['endHourTime']
-                    if startHourTime is None and endHourTime is None:
-                        startHourTime = "00:00"
-                        endHourTime = "23:59"
-                    if endHourTime == "24:00":
-                        endHourTime = "23:59"
-                    solarPriority = item['solarPriority']
-                    loadPriority = item['loadPriority']
-                    useModeFlag = item['useModeFlag']
-                    briefDescribe = item['briefDescribe']
-                    gridDischargeMax = item['gridDischargeMax']
-                    gridChargeMax = item['gridChargeMax']
-                    chargeMax = item['chargeMax']
-                    chargePower = item['chargePower']
-                    gridFeedMax = item['gridFeedMax']
-                    dischargePower = item['dischargePower']
-                    solarCutoff = item['solarCutoff']
-                    gridMax = item['gridMax']
-                    maxChargeSoc = item['maxChargeSoc']
-                    minDischargeSoc = item['minDischargeSoc']
-                    heatEnable = item['heatEnable']
-                    powerOffApower = item['powerOffApower']
-                    offGrid = item['offGrid']
-                    gcaoMax = item['gcaoMax']
-                    rampTime = item['rampTime']
-                    dispatch = item['dispatch']
-                    print(f"dispatchId = {dispatchId}")
-                    dispatchDetails = [x for x in touDispatchList if x["id"] == dispatchId]
-                    if not dispatchDetails:
-                        print("#### not dispatchDetails")
-                        break
+        Parameters
+        ----------
+        day_type_list : list
+            List of dayTypeVo entries from the API
+        current_weekday : int
+            Python weekday (0=Mon ... 6=Sun)
 
-                    dispatchCode = dispatchDetails[0]['dispatchCode']
-                    gridDesc = DISPATCH_CODES.get(dispatchCode, "Unknown")
+        Returns
+        -------
+        dict or None
+            The matched day type entry, or None if no match
+        """
+        is_weekend = current_weekday >= 5  # Sat=5, Sun=6
 
-                    if startHourTime is None:
-                        startHourTime = "00:00"
-                    if endHourTime is None:
-                        endHourTime = "00:00"
-                    cTime = datetime.now().strftime("%H:%M")
-                    currentTime = datetime.strptime(cTime, "%H:%M")
-                    startingTime = datetime.strptime(startHourTime, "%H:%M")
-                    endingTime = datetime.strptime(endHourTime, "%H:%M")
-                    if endingTime <= startingTime:
-                        endingTime += timedelta(days=1)
-                    time_diff = endingTime - currentTime
-                    hours = time_diff.seconds // 3600
-                    minutes = (time_diff.seconds % 3600) // 60
-                    time_left = f"{hours:02d}:{minutes:02d}"
-                    msg = f'time_left = {time_left} currentTime={currentTime}, endingTime={endingTime}, startingTime={startingTime}'
-                    print(msg)
-                    logger.info(msg)
+        # Priority: exact match first, then everyday, then first available
+        for dt in day_type_list:
+            dt_code = dt.get("dayType", 0)
+            if dt_code == 3:  # everyDay — always matches
+                return dt
+            if dt_code == 1 and not is_weekend:  # weekday
+                return dt
+            if dt_code == 2 and is_weekend:  # weekend
+                return dt
 
-                    print(f"id={id} dispatchId={dispatchId} dispatchCode={dispatchCode} dispatchDetails[0]['title'] = {dispatchDetails[0]['title']}")
-                    print(f"Pre option 1= {option}")
+        # Fallback: return first entry if no match (e.g. custom day type)
+        return day_type_list[0] if day_type_list else None
 
-                    match option:
-                        case 1:
-                            activeTOUid = id
-                            activeTOUname = name
-                            activeTOUdispatchId = dispatchId
-                            activeWaveType = waveType
-                            activeTOUdispatchCode = dispatchCode
-                            activeTOUtitle = dispatchDetails[0]['title']
-                            activeTOUdispatchDesc = gridDesc
-                            activeTOUrecommendScene = dispatchDetails[0]['recommendScene']
-                            activeTOUcontent = dispatchDetails[0]['content']
-                            activeTOUsolarPriority = dispatchDetails[0]['solarPriority']
-                            activeTOUloadPriority = dispatchDetails[0]['loadPriority']
-                            activeStartTime = startHourTime
-                            activeEndTime = endHourTime
-                            activeRemaingTime = time_left
+    @staticmethod
+    def _build_block_info(block: dict, touDispatchList: list,
+                          now: datetime, prefix: str) -> dict:
+        """Build a dict of block info with prefixed keys.
 
-                            current_activity = {
-                                "activeTOUid": activeTOUid,
-                                "activeTOUname": activeTOUname,
-                                "activeTOUdispatchId": dispatchId,
-                                "activeWaveType": activeWaveType,
-                                "activeTOUdispatchCode": dispatchCode,
-                                "activeTOUtitle": activeTOUtitle,
-                                "actieTOUdispatchDesc": activeTOUdispatchDesc,
-                                "activeTOUrecommendScene": activeTOUrecommendScene,
-                                "activeTOUcontent": activeTOUcontent,
-                                "activeTOUsolarPriority": activeTOUsolarPriority,
-                                "activeTOUloadPriority": activeTOUloadPriority,
-                                "activeStartTime": activeStartTime,
-                                "activeEndTime": activeEndTime,
-                                "activeRemainingTime": activeRemaingTime,
-                            }
-                            print(f"current_activity = {current_activity}")
-                            results.update(current_activity)
-                            print(f"results = {results}")
+        Parameters
+        ----------
+        block : dict
+            A detailVoList entry
+        touDispatchList : list
+            Available dispatch definitions from detailDefaultVo
+        now : datetime
+            Current datetime for remaining time calculation
+        prefix : str
+            'active' or 'next' — determines output key names
 
-                        case _:
-                            print(f"{currentTime} >= {startingTime} and {currentTime} <= {endingTime}:")
-                            if currentTime >= startingTime and currentTime <= endingTime:
-                                print("currentTime >= startingTime and currentTime <= endingTime:")
-                                print(f"{currentTime} >= {startingTime} and {currentTime} <= {endingTime}:")
+        Returns
+        -------
+        dict
+            Block info with prefixed keys
+        """
+        block_id = str(block.get("id", ""))
+        name = block.get("name", "")
+        dispatch_id = block.get("dispatchId", 0)
+        wave_type = block.get("waveType", 0)
+        start_time = block.get("startHourTime", "00:00")
+        end_time = block.get("endHourTime", "24:00")
 
-                                activeTOUid = id
-                                activeTOUname = name
-                                activeTOUdispatchId = dispatchId
-                                activeWaveType = waveType
-                                activeTOUdispatchCode = dispatchCode
-                                activeTOUtitle = dispatchDetails[0]['title']
-                                activeTOUdispatchDesc = gridDesc
-                                activeTOUrecommendScene = dispatchDetails[0]['recommendScene']
-                                activeTOUcontent = dispatchDetails[0]['content']
-                                activeTOUsolarPriority = dispatchDetails[0]['solarPriority']
-                                activeTOUloadPriority = dispatchDetails[0]['loadPriority']
-                                activeStartTime = startHourTime
-                                activeEndTime = endHourTime
-                                activeRemaingTime = time_left
+        # Resolve dispatch details from touDispatchList
+        dispatch_details = [x for x in touDispatchList if x.get("id") == dispatch_id]
+        if dispatch_details:
+            dd = dispatch_details[0]
+            dispatch_code = dd.get("dispatchCode", "")
+            title = dd.get("title", "")
+            recommend_scene = dd.get("recommendScene", "")
+            content = dd.get("content", "")
+            solar_priority = dd.get("solarPriority", "")
+            load_priority = dd.get("loadPriority", "")
+        else:
+            dispatch_code = ""
+            title = ""
+            recommend_scene = ""
+            content = ""
+            solar_priority = ""
+            load_priority = ""
 
-                                current_activity = {
-                                    "activeTOUid": activeTOUid,
-                                    "activeTOUname": activeTOUname,
-                                    "activeTOUdispatchId": dispatchId,
-                                    "activeWaveType": activeWaveType,
-                                    "activeTOUdispatchCode": dispatchCode,
-                                    "activeTOUtitle": activeTOUtitle,
-                                    "actieTOUdispatchDesc": activeTOUdispatchDesc,
-                                    "activeTOUrecommendScene": activeTOUrecommendScene,
-                                    "activeTOUcontent": activeTOUcontent,
-                                    "activeTOUsolarPriority": activeTOUsolarPriority,
-                                    "activeTOUloadPriority": activeTOUloadPriority,
-                                    "activeStartTime": activeStartTime,
-                                    "activeEndTime": activeEndTime,
-                                    "activeRemainingTime": activeRemaingTime,
-                                }
-                                print(f"current_activity = {current_activity}")
-                                current.update(current_activity)
-                                print(f"current = {current}")
-                            else:
-                                print(f"next: check if activeTOUid is not None: activeTOUid= {activeTOUid}")
-                                if activeTOUid is not None:
-                                    print("next")
-                                    nextTOUid = id
-                                    nextTOUname = name
-                                    nextTOUdispatchId = dispatchId
-                                    nextWaveType = waveType
-                                    nextTOUdispatchCode = dispatchDetails[0]['dispatchCode']
-                                    nextTOUtitle = dispatchDetails[0]['title']
-                                    nextTOUdispatchDesc = gridDesc
-                                    nextTOUrecommendScene = dispatchDetails[0]['recommendScene']
-                                    nextTOUcontent = dispatchDetails[0]['content']
-                                    nextTOUsolarPriority = dispatchDetails[0]['solarPriority']
-                                    nextTOUloadPriority = dispatchDetails[0]['loadPriority']
-                                    nextStartTime = startHourTime
-                                    nextEndTime = endHourTime
-                                    nextRemaingTime = time_left
+        grid_desc = DISPATCH_CODES.get(dispatch_code, "Unknown")
 
-                                    next_activity = {
-                                        "nextTOUid": nextTOUid,
-                                        "nextTOUname": nextTOUname,
-                                        "nextTOUdispatchId": nextTOUdispatchId,
-                                        "nextWaveType": nextWaveType,
-                                        "nextTOUdispatchCode": nextTOUdispatchCode,
-                                        "nextTOUtitle": nextTOUtitle,
-                                        "nextTOUdispatchDesc": nextTOUdispatchDesc,
-                                        "nextTOUrecommendScene": nextTOUrecommendScene,
-                                        "nextTOUcontent": nextTOUcontent,
-                                        "nextTOUsolarPriority": nextTOUsolarPriority,
-                                        "nextTOUloadPriority": nextTOUloadPriority,
-                                        "nextStartTime": nextStartTime,
-                                        "nextEndTime": nextEndTime,
-                                        "nextemainingTime": nextRemaingTime,
-                                    }
-                                    print(f"next_activity = {next_activity}")
-                                    next.update(next_activity)
-                                    print(f"next = {next}")
-                                else:
-                                    print("SKIPPING as activeTOUid is NONE")
+        # Calculate remaining time
+        end_for_calc = end_time if end_time != "24:00" else "23:59"
+        try:
+            current_time = now.strftime("%H:%M")
+            ct = datetime.strptime(current_time, "%H:%M")
+            et = datetime.strptime(end_for_calc, "%H:%M")
+            if et <= ct:
+                et += timedelta(days=1)
+            diff = et - ct
+            hours = diff.seconds // 3600
+            minutes = (diff.seconds % 3600) // 60
+            time_left = f"{hours:02d}:{minutes:02d}"
+        except (ValueError, TypeError):
+            time_left = "00:00"
 
-                            print(f"current = {current}")
-                            results.update(current)
-                            print("#### results.update(current)")
-                            print(f"results = {results}")
-                            if next:
-                                print(f"next = {next}")
-                                results.update(next)
-                                print("---- results.update(next)")
-                                print(f"NEXT results = {results}")
-
-        return results
+        if prefix == "active":
+            return {
+                "activeTOUid": block_id,
+                "activeTOUname": name,
+                "activeTOUdispatchId": dispatch_id,
+                "activeWaveType": wave_type,
+                "activeTOUdispatchCode": dispatch_code,
+                "activeTOUtitle": title,
+                "activeTOUdispatchDesc": grid_desc,
+                "activeTOUrecommendScene": recommend_scene,
+                "activeTOUcontent": content,
+                "activeTOUsolarPriority": solar_priority,
+                "activeTOUloadPriority": load_priority,
+                "activeStartTime": start_time,
+                "activeEndTime": end_time,
+                "activeRemainingTime": time_left,
+            }
+        else:
+            return {
+                "nextTOUid": block_id,
+                "nextTOUname": name,
+                "nextTOUdispatchId": dispatch_id,
+                "nextWaveType": wave_type,
+                "nextTOUdispatchCode": dispatch_code,
+                "nextTOUtitle": title,
+                "nextTOUdispatchDesc": grid_desc,
+                "nextTOUrecommendScene": recommend_scene,
+                "nextTOUcontent": content,
+                "nextTOUsolarPriority": solar_priority,
+                "nextTOUloadPriority": load_priority,
+                "nextStartTime": start_time,
+                "nextEndTime": end_time,
+                "nextRemainingTime": time_left,
+            }
 
     # ── Rate field mapping (user-friendly key → API field) ────────
     RATE_FIELD_MAP = {

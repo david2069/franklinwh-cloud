@@ -375,6 +375,9 @@ class ModesMixin:
                 "workMode": workMode,
                 "modeName": MODE_MAP[int(workMode)],
                 "name": OPERATING_MODES[int(workMode)],
+                "soc": current_soc,
+                "minSoc": minSoc,
+                "maxSoc": maxSoc,
                 "run_status": run_status,
                 "run_desc": run_desc,
                 "electricityType": electricityType,
@@ -436,3 +439,34 @@ class ModesMixin:
         tou_list = data["result"]["list"]
         found = [x for x in tou_list if x["workMode"] == int(requested_work_mode)]
         return found
+
+    async def get_all_mode_soc(self):
+        """Return reserve SoC details for all operating modes.
+
+        Calls ``getGatewayTouListV2`` and extracts the SoC configuration
+        for each of the three operating modes (TOU, Self-Consumption,
+        Emergency Backup).
+
+        Returns
+        -------
+        list[dict]
+            One entry per mode with keys:
+            ``workMode``, ``name``, ``soc``, ``minSoc``, ``maxSoc``,
+            ``editSocFlag``, ``active``.
+        """
+        data = await self.get_gateway_tou_list()
+        current_id = data["result"]["currendId"]
+        tou_list = data["result"].get("list", [])
+        results = []
+        for entry in tou_list:
+            wm = entry.get("workMode")
+            results.append({
+                "workMode": wm,
+                "name": OPERATING_MODES.get(wm, f"Mode {wm}"),
+                "soc": entry.get("soc", 0),
+                "minSoc": entry.get("minSoc", 0),
+                "maxSoc": entry.get("maxSoc", 100),
+                "editSocFlag": entry.get("editSocFlag", 0),
+                "active": entry.get("id") == int(current_id),
+            })
+        return results

@@ -45,36 +45,87 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
     mode = await client.get_mode()
 
     if json_output:
-        print_json_output(mode)
+        # Include SoC summary in JSON output
+        try:
+            soc_summary = await client.get_all_mode_soc()
+        except Exception:
+            soc_summary = None
+        output = mode if isinstance(mode, dict) else {"mode": mode}
+        if soc_summary:
+            output["soc_summary"] = soc_summary
+        print_json_output(output)
         return
 
     print_header("Operating Mode")
 
     if isinstance(mode, dict):
-        for key, val in mode.items():
-            if key.startswith("_"):
-                continue
-            print_kv(key, val)
+        # Display key fields in a structured, readable format
+        print_section("⚡", "Current Mode")
+        print_kv("Mode", c("bold", str(mode.get("modeName", mode.get("name", "?")))))
+        print_kv("Run Status", mode.get("run_desc", "?"))
+
+        # Reserve SoC for the active mode
+        active_soc = mode.get("soc")
+        min_soc = mode.get("minSoc")
+        max_soc = mode.get("maxSoc")
+        if active_soc is not None:
+            soc_range = f"  (range: {min_soc}–{max_soc}%)" if min_soc is not None else ""
+            print_kv("Reserve SoC", f"{active_soc}%{soc_range}")
+
+        # Device & system health
+        print_section("📡", "System")
+        device_status = mode.get("deviceStatus")
+        if device_status is not None:
+            status_text = c("green", "Normal") if str(device_status) == "1" else c("yellow", f"Status {device_status}")
+            print_kv("Device Status", status_text)
+        if mode.get("alarmsCount"):
+            print_kv("Active Alarms", c("red", str(mode["alarmsCount"])))
+        else:
+            print_kv("Active Alarms", c("green", "0"))
+        if mode.get("unreadMsgCount"):
+            print_kv("Unread Messages", mode["unreadMsgCount"])
+        offgrid = mode.get("offgridState", 0)
+        if offgrid:
+            print_kv("Off-Grid State", c("yellow", str(offgrid)))
+
+        # TOU-specific info
+        if mode.get("touScheduleList"):
+            print_section("📅", "Active TOU Schedule")
+            sched = mode["touScheduleList"]
+            if isinstance(sched, dict):
+                current = sched.get("current")
+                if current:
+                    print_kv("Current Block", f"{current.get('startHourTime', '?')}–{current.get('endHourTime', '?')}  {current.get('dispatchName', '')}")
+                next_block = sched.get("next")
+                if next_block:
+                    remaining = sched.get("remaining", "")
+                    print_kv("Next Block", f"{next_block.get('startHourTime', '?')}–{next_block.get('endHourTime', '?')}  {next_block.get('dispatchName', '')}  ({remaining})")
+
+        # Emergency backup info
+        if mode.get("backupForeverFlag"):
+            print_section("🛡️", "Emergency Backup")
+            flag = mode["backupForeverFlag"]
+            print_kv("Duration", "Indefinite" if str(flag) == "1" else "Fixed timer")
+            if mode.get("nextWorkMode"):
+                next_name = OPERATING_MODES.get(int(mode["nextWorkMode"]), f"Mode {mode['nextWorkMode']}")
+                print_kv("Next Mode", next_name)
     else:
         print_kv("Mode", str(mode))
 
-    # Also show mode info
-    print_section("ℹ️ ", "Mode Details")
+    # SoC summary for ALL modes
+    print_section("🔋", "Reserve SoC — All Modes")
     try:
-        info = await client.get_mode_info()
-        if isinstance(info, dict):
-            for key, val in info.items():
-                if key.startswith("_"):
-                    continue
-                if isinstance(val, (list, dict)):
-                    continue  # skip nested for clean display
-                print_kv(key, val)
-        elif isinstance(info, list):
-            for item in info:
-                if isinstance(item, dict):
-                    desc = item.get("name", item.get("mode", "?"))
-                    print_kv(f"Mode {item.get('workMode', '?')}", desc)
+        all_soc = await client.get_all_mode_soc()
+        for entry in all_soc:
+            name = entry["name"]
+            soc_val = entry["soc"]
+            min_s = entry.get("minSoc", "?")
+            max_s = entry.get("maxSoc", "?")
+            active = entry.get("active", False)
+            marker = c("green", " ← active") if active else ""
+            editable = "" if entry.get("editSocFlag") else c("dim", " (fixed)")
+            print_kv(name, f"{soc_val}%  (range: {min_s}–{max_s}%){editable}{marker}")
     except Exception as e:
-        print_warning(f"Could not retrieve mode details: {e}")
+        print_warning(f"Could not retrieve SoC summary: {e}")
 
     print()
