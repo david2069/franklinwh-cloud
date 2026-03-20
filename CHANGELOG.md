@@ -11,8 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `franklinwh-cli status` — reserve SoC displayed in Operating Mode section
 - `get_all_mode_soc()` — new API method returning reserve SoC, min/max, and active flag for all modes
 - `get_mode()` — now includes `soc`, `minSoc`, `maxSoc` in return dict
-- `MODBUS_TIME_OF_USE`, `MODBUS_SELF_CONSUMPTION`, `MODBUS_EMERGENCY_BACKUP` — Modbus TCP work mode constants (oldIndex mapping)
-- `modbusWorkMode` enum and `CLOUD_TO_MODBUS_MODE`/`MODBUS_TO_CLOUD_MODE` bidirectional conversion dicts
+- `MODBUS_TIME_OF_USE`, `MODBUS_SELF_CONSUMPTION`, `MODBUS_EMERGENCY_BACKUP` — Modbus TCP work mode constants (oldIndex mapping) `FEAT-CONST-MODBUS-MODES`
+- `modbusWorkMode` enum and `CLOUD_TO_MODBUS_MODE`/`MODBUS_TO_CLOUD_MODE` bidirectional conversion dicts `FEAT-CONST-MODBUS-MODES`
 - `franklinwh-cli bms` — Battery Management System inspection (cell voltages, temperatures, SoC/SoH)
 - `franklinwh-cli diag` — System diagnostics report
 - `franklinwh-cli tou` — Full dispatch schedule with seasons, day types, pricing tiers
@@ -21,12 +21,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `franklinwh-cli metrics` — now does a probe call so it shows real data including CloudFront edge
 - `docs/TOU_SCHEDULE_GUIDE.md` — TOU API reference with mermaid diagrams and code examples
 - GitHub Issues for public issue tracking (#1–#6)
+- AP-12 Change Management Policy and enhanced Release Policy with traceability rules
 
 ### Fixed
-- `franklinwh-cli mode` — resilient to `get_mode()` API failures; falls back to `get_all_mode_soc()` for SoC summary
-- `franklinwh-cli mode` — displays proper mode name (`Self-Consumption`) instead of snake_case (`self_consumption`)
-- `suppress_params`/`suppress_gateway` — standardised kwarg spelling across `_get()`, `_post()`, and all callers; `get_unread_count()` and `set_mode()` were silently ignoring the flag due to typo mismatch
-- `currentAlarmVOList` in `get_mode()` — was stringified then iterated over characters; now operates on the original list
+- `franklinwh-cli mode` — resilient to `get_mode()` API failures; falls back to `get_all_mode_soc()` for SoC summary `DEF-MODE-CRASH`
+- `franklinwh-cli mode` — displays proper mode name (`Self-Consumption`) instead of snake_case (`self_consumption`) `DEF-MODE-NAME`
+- `suppress_params`/`suppress_gateway` — standardised kwarg spelling across `_get()`, `_post()`, and all callers; `get_unread_count()` and `set_mode()` were silently ignoring the flag due to typo mismatch `DEF-MODE-SUPPRESS`
+- `currentAlarmVOList` in `get_mode()` — was stringified then iterated over characters; now operates on the original list `DEF-MODE-ALARMS`
 - **All CLI commands display wrong power units** — API returns kW but monitor/status/discover/diag displayed as W (#7)
 - Monitor power bar and direction thresholds used watt-scale values (±50) instead of kW-scale (±0.05)
 - Monitor CDN line now shows distribution count instead of overwhelming hash list
