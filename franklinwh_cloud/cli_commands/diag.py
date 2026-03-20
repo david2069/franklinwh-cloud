@@ -258,6 +258,81 @@ async def run(client, *, json_output: bool = False):
             phase_color = "cyan" if gateway_info.get("three_phase_flag") else "dim"
             print_kv("Phase Config", c(phase_color, gateway_info.get("phase", "Unknown")))
 
+    # ── 5b. Relay States ─────────────────────────────────────────────
+    # Use runtimeData from the composite info call above (section 5)
+
+    if not json_output and "error" not in gateway_info:
+        try:
+            rt = data.get("runtimeData", {})
+            main_sw = rt.get("main_sw", [])
+            if main_sw:
+                relay_defs = [
+                    ("Grid Relay", 0),
+                    ("Generator Relay", 1),
+                    ("Solar PV Relay", 2),
+                ]
+                print_section("🔧", "Relay States")
+                for name, idx in relay_defs:
+                    if idx < len(main_sw):
+                        val = main_sw[idx]
+                        state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
+                        print_kv(name, state)
+
+                # Additional relays from runtimeData (if present)
+                for key, label in [
+                    ("gridRelay2", "Grid Relay 2"),
+                    ("blackStartRelay", "Black Start Relay"),
+                    ("pvRelay2", "PV Relay 2"),
+                    ("BFPVApboxRelay", "BFPV/aPBox Relay"),
+                ]:
+                    val = rt.get(key)
+                    if val is not None:
+                        state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
+                        print_kv(label, state)
+            else:
+                print_section("🔧", "Relay States")
+                print_kv("Status", c("dim", "No relay data in runtimeData"))
+        except Exception:
+            pass  # relay display is best-effort
+
+    # ── 5c. Solar Port Configuration ─────────────────────────────────
+
+    if not json_output and "error" not in gateway_info:
+        try:
+            solar_vo = data.get("solarHaveVo", {})
+            if solar_vo:
+                solar_ports = []
+                if solar_vo.get("installProximalsolar"):
+                    solar_ports.append("Proximal Solar (AC-coupled)")
+                if solar_vo.get("installPv1Port"):
+                    solar_ports.append("PV1 Port (DC)")
+                if solar_vo.get("installPv2Port"):
+                    solar_ports.append("PV2 Port (DC)")
+                if solar_vo.get("installApboxSolar"):
+                    solar_ports.append("aPower Solar")
+                if solar_vo.get("remoteSolarEn"):
+                    solar_ports.append("Remote Solar")
+                if solar_vo.get("mpptEnFlag"):
+                    solar_ports.append("MPPT Enabled")
+
+                print_section("☀️", "Solar Configuration")
+                if solar_ports:
+                    for port in solar_ports:
+                        print_kv("Port", c("yellow", port))
+                else:
+                    print_kv("Ports", c("dim", "No solar ports detected"))
+
+                # Additional solar details
+                pv_cap = solar_vo.get("pvCapacity")
+                if pv_cap:
+                    print_kv("PV Capacity", f"{pv_cap} kW")
+                off_grid = solar_vo.get("offGridFlag", 0)
+                if off_grid:
+                    reason = solar_vo.get("offGridReason", "Unknown")
+                    print_kv("Off-Grid", c("red", f"YES (reason: {reason})"))
+        except Exception:
+            pass  # solar display is best-effort
+
     # ── 6. Power Snapshot ────────────────────────────────────────────
 
     power_info = {}
