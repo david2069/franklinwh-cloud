@@ -33,6 +33,7 @@ AVAILABLE_METHODS = {
     "get_bms_info": {"args": 1, "desc": "BMS info for aPower (arg: serial_no)"},
     "get_network_info": {"args": 0, "desc": "aGate network config (WiFi/Eth/4G via MQTT)"},
     "get_wifi_config": {"args": 0, "desc": "WiFi SSID, AP config, security (via MQTT)"},
+    "scan_wifi_networks": {"args": 0, "desc": "Scan for available WiFi networks (via MQTT)"},
     # Account mixin
     "get_home_gateway_list": {"args": 0, "desc": "Home gateway list"},
     "siteinfo": {"args": 0, "desc": "Site / account info"},

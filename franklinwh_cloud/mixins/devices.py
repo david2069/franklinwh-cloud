@@ -393,3 +393,27 @@ class DevicesMixin:
             "ap_password": parsed.get("ap_Pw"),
             "wifi_safety": parsed.get("wifi_Safety"),
         }
+
+    async def scan_wifi_networks(self):
+        """Trigger a WiFi network scan on the aGate via MQTT.
+
+        Sends cmdType 337 with opt 1 to scan for available WiFi networks
+        that the aGate can see. This is the same scan triggered by the
+        FranklinWH mobile app's WiFi Configuration wizard (step 2/3).
+
+        Returns
+        -------
+        dict
+            Raw scan result from the aGate. Contains available network
+            SSIDs visible to the aGate's WiFi radio.
+
+        Note
+        ----
+        This command talks to the aGate hardware via MQTT relay through the
+        cloud. The aGate must be online (even via 4G) for this to work.
+        """
+        dataArea = {"opt": 1}
+        wire_payload = self._build_payload(337, dataArea)
+        raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        parsed = json.loads(raw)
+        return parsed
