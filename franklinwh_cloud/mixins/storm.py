@@ -98,7 +98,7 @@ class StormMixin:
         if stormEn is not None:
             url = self.url_base + "hes-gateway/terminal/weather/switchStorm"
             payload = {"equipNo": self.gateway, "stormEn": stormEn}
-            data = await self._post(url, payload, supressParams=True, supressGateway=True)
+            data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
             if data.get("code") == 200:
                 mode = "enabled" if stormEn == 1 else "disabled"
                 logger.info(f"Storm Hedge set to: {mode}")
@@ -109,7 +109,7 @@ class StormMixin:
         if setAdvanceBackupTime is not None:
             url = self.url_base + "hes-gateway/terminal/weather/setAdvanceBackupTime"
             payload = {"equipNo": self.gateway, "advanceBackupTime": setAdvanceBackupTime}
-            data = await self._post(url, payload, supressParams=True, supressGateway=True)
+            data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
             if data.get("code") == 200:
                 logger.info(f"Advanced backup start set to {setAdvanceBackupTime} minutes")
             else:
@@ -123,7 +123,7 @@ class StormMixin:
                 payload["stormNoticeEn"] = stormNoticeEn
             if advanceTime is not None:
                 payload["advanceTime"] = advanceTime
-            data = await self._post(url, payload, supressParams=True, supressGateway=True)
+            data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
             if data.get("code") == 200:
                 logger.info("Storm notification settings updated")
             else:
