@@ -37,7 +37,12 @@ MODBUS_TIME_OF_USE = 3
 
 
 class modbusWorkMode(Enum):
-    """Operating work mode enumeration (Modbus TCP / oldIndex codes)."""
+    """Modbus TCP operating mode enumeration (oldIndex values).
+
+    These are the mode numbers used on the Modbus TCP interface,
+    which differ from the Cloud API workMode numbering.
+    Mapping: TOU=3, Self-Consumption=2, Emergency Backup=1.
+    """
     EMERGENCY_BACKUP = 1
     SELF_CONSUMPTION = 2
     TIME_OF_USE = 3
