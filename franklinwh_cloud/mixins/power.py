@@ -4,7 +4,6 @@ import json
 import logging
 
 from franklinwh_cloud.models import GridStatus
-from franklinwh_cloud.api import DEFAULT_URL_BASE
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -97,7 +96,7 @@ class PowerMixin:
 
         logger.info(f"set_power_control_settings: globalGridChargeMax = {option}")
 
-        url = DEFAULT_URL_BASE + f"hes-gateway/terminal/tou/setPowerControl?gatewayId={self.gateway}"
+        url = self.url_base + f"hes-gateway/terminal/tou/setPowerControl?gatewayId={self.gateway}"
         payload = {
             "gatewayId": self.gateway,
             "globalGridDischargeMax": globalGridDischargeMax,

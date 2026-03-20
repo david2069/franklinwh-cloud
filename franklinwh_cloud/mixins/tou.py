@@ -23,7 +23,6 @@ from datetime import datetime, timedelta
 
 from jsonschema import validate, ValidationError
 
-from franklinwh_cloud.api import DEFAULT_URL_BASE
 from franklinwh_cloud.const import (
     dispatchCodeType, DISPATCH_CODES, WaveType, WAVE_TYPES,
     valid_tou_modes, tou_json_schema,
@@ -91,7 +90,7 @@ class TouMixin:
         dict
             API response with result containing the saved touId
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/tou/saveTouDispatch"
+        url = self.url_base + "hes-gateway/terminal/tou/saveTouDispatch"
         data = await self._post(url, payload, params=None, suppress_params=True)
         return data
 
@@ -104,7 +103,7 @@ class TouMixin:
             TOU dispatch template including detailVoList (schedule blocks),
             detailDefaultVo (default mode), and strategyList (tariff config)
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/tou/getTouDispatchDetail"
+        url = self.url_base + "hes-gateway/terminal/tou/getTouDispatchDetail"
         params = {"gatewayId": self.gateway, "lang": "EN_US"}
         data = await self._get(url, params=params)
         return data

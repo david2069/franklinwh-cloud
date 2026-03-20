@@ -5,7 +5,6 @@ import logging
 from datetime import datetime, timedelta
 
 from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, empty_stats
-from franklinwh_cloud.api import DEFAULT_URL_BASE
 from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
 
 logger = logging.getLogger("franklinwh_cloud")
@@ -197,7 +196,7 @@ class StatsMixin:
         dict
             Runtime data including relay states and temperature readings
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectIotUserRuntimeDataLog"
+        url = self.url_base + "hes-gateway/terminal/selectIotUserRuntimeDataLog"
         params = {"gatewayId": self.gateway, "type": 1, "lang": "EN_US"}
         data = await self._get(url, params=params)
         return data["result"]
@@ -215,7 +214,7 @@ class StatsMixin:
         dict
             Power details for the specified day
         """
-        url = DEFAULT_URL_BASE + "/hes-gateway/api-energy/power/getFhpPowerByDay"
+        url = self.url_base + "/hes-gateway/api-energy/power/getFhpPowerByDay"
         params = {"gatewayId": self.gateway, "dayTime": f"{dayTime}"}
         data = await self._get(url, params=params)
         return data.get("result", data)
@@ -230,7 +229,7 @@ class StatsMixin:
         timeperiod : str
             Target date of the date range
         """
-        url = DEFAULT_URL_BASE + "/hes-gateway/api-energy/electic/getFhpPowerData"
+        url = self.url_base + "/hes-gateway/api-energy/electic/getFhpPowerData"
         params = {"gatewayId": self.gateway, "type": type, "dayTime": f"{timeperiod}"}
         data = await self._get(url, params=params)
         return data.get("result", data)

@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **Login type was wrong** — hardcoded `type: 1` (installer) instead of `type: 0` (user); now defaults to `LOGIN_TYPE_USER` (0) `DEF-AUTH-LOGIN-TYPE`
+- **`url_base` inconsistency** — 34 methods used hardcoded `DEFAULT_URL_BASE` instead of configurable `self.url_base`; now all methods respect the `url_base` parameter passed to `Client()` `DEF-CLIENT-URL-BASE`
 - `franklinwh-cli mode` — resilient to `get_mode()` API failures; falls back to `get_all_mode_soc()` for SoC summary `DEF-MODE-CRASH`
 - `franklinwh-cli mode` — displays proper mode name (`Self-Consumption`) instead of snake_case (`self_consumption`) `DEF-MODE-NAME`
 - `suppress_params`/`suppress_gateway` — standardised kwarg spelling across `_get()`, `_post()`, and all callers; `get_unread_count()` and `set_mode()` were silently ignoring the flag due to typo mismatch `DEF-MODE-SUPPRESS`

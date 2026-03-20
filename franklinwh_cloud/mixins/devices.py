@@ -3,7 +3,6 @@
 import json
 import logging
 
-from franklinwh_cloud.api import DEFAULT_URL_BASE
 from franklinwh_cloud.exceptions import BadRequestParsingError
 
 logger = logging.getLogger("franklinwh_cloud")
@@ -66,7 +65,7 @@ class DevicesMixin:
         dict
             Protocol, software/firmware releases, connectivity type
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/obtainAgateInfo"
+        url = self.url_base + "hes-gateway/terminal/obtainAgateInfo"
         data = await self._get(url)
         return data
 
@@ -79,7 +78,7 @@ class DevicesMixin:
             aPowers grouped by serial number: power rating, rated capacity,
             status, remaining capacity, SoC, firmware versions
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/obtainApowersInfo"
+        url = self.url_base + "hes-gateway/terminal/obtainApowersInfo"
         data = await self._get(url)
         return data
 
@@ -172,7 +171,7 @@ class DevicesMixin:
         dict
             Device Info V2 payload with hardware details
         """
-        url = DEFAULT_URL_BASE + f"hes-gateway/terminal/getDeviceInfoV2?gatewayId={self.gateway}&lang=EN_US"
+        url = self.url_base + f"hes-gateway/terminal/getDeviceInfoV2?gatewayId={self.gateway}&lang=EN_US"
         data = await self._get(url)
         return data
 
@@ -269,7 +268,7 @@ class DevicesMixin:
         dict
             SPAN panel settings information
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/span/getSpanSettings"
+        url = self.url_base + "hes-gateway/terminal/span/getSpanSettings"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data["result"]
@@ -282,7 +281,7 @@ class DevicesMixin:
         dict
             {"spanFlag": 0|1} — 0 = no SPAN panel, 1 = SPAN panel detected
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/span/getSpanSetting"
+        url = self.url_base + "hes-gateway/terminal/span/getSpanSetting"
         data = await self._get(url)
         return data["result"]
 
@@ -291,7 +290,7 @@ class DevicesMixin:
 
         https://www.franklinwh.com/support/overview/generator/
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectIotGenerator"
+        url = self.url_base + "hes-gateway/terminal/selectIotGenerator"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data["result"]
@@ -305,7 +304,7 @@ class DevicesMixin:
             1 = Auto-schedule, 2 = Manual
         """
         payload = {"gatewayId": self.gateway, "manuSw": mode, "opt": 1}
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/updateIotGenerator"
+        url = self.url_base + "hes-gateway/terminal/updateIotGenerator"
         params = {"gatewayId": self.gateway}
         data = await self._post(url, params=params, payload=payload)
         return data["result"]
