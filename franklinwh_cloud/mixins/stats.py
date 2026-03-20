@@ -15,6 +15,7 @@ class StatsMixin:
     """Runtime stats, power data, and status methods."""
 
     async def _status(self):
+        """Send a 203 — high-level device status query."""
         payload = self._build_payload(203, {"opt": 1, "refreshData": 1})
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)

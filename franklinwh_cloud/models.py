@@ -14,6 +14,10 @@ class GridStatus(Enum):
         NORMAL (int): Grid connection is normal / up.
         DOWN (int): Grid connection is abnormal / down.
         OFF (int): Grid connection is turned off at the gateway.
+
+    OFF is set by software, specifically Settings / Go Off-Grid in the app.
+    DOWN is external to the gateway.
+    NORMAL indicates normal operation.
     """
 
     NORMAL = 0
