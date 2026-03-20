@@ -246,165 +246,156 @@ class ModesMixin:
     async def get_mode(self, requestedMode=None):
         """Return the current or requested operating mode details.
 
+        Calls two required APIs (composite info + TOU list) and one optional
+        (unread count).  Returns a flat dict consumed by CLI mode command.
+
         Parameters
         ----------
         requestedMode : int, optional
             Mode to query. If None, returns current mode details.
+
+        Returns
+        -------
+        dict
+            Mode details including workMode, soc, run_status, deviceStatus, etc.
+            On failure returns dict with 'error' key.
         """
-        res = await self.get_device_composite_info()
-        runtimeData = res["result"]["runtimeData"]
-        solarHaveVo = res["result"]["solarHaveVo"]
-        soc = runtimeData["soc"]
-        currentWorkMode = str(res["result"]["currentWorkMode"])
-        runMode = str(res["result"]["runtimeData"]["mode"])
-        if requestedMode is not None:
-            logger.info(f"get_mode: requestedMode = {requestedMode}")
-            targetMode = requestedMode
-        else:
-            logger.info(f"get_mode: Retrieving current operating mode for aGate {self.gateway}")
-            targetMode = currentWorkMode
+        # ── Step 1: Composite info (required) ─────────────────────────
+        try:
+            composite = await self.get_device_composite_info()
+        except Exception as exc:
+            logger.error(f"get_mode: get_device_composite_info failed: {exc}")
+            return {"error": f"Failed to get composite info: {exc}"}
 
-        deviceStatus = res["result"]["deviceStatus"]
-        valid = str(res["result"]["valid"])
-        currentAlarmVOList = res["result"]["currentAlarmVOList"]
-        run_status = int(res["result"]["runtimeData"]["run_status"])
-        if run_status is not None:
-            run_desc = RUN_STATUS.get(run_status, f"Unknown run_status value = {run_status}")
-        else:
-            run_desc = "Unknown"
+        composite_result = composite.get("result")
+        if not composite_result:
+            return {"error": f"Composite info returned no result (code={composite.get('code')})"}
 
-        report_type = str(res["result"]["runtimeData"]["report_type"])
-        if not currentAlarmVOList or currentAlarmVOList == []:
-            currentAlarmVOList = None
-            alarmsCount = 0
-        else:
-            alarmsCount = sum(1 for obj in currentAlarmVOList if isinstance(obj, dict) and obj.get('id') is not None)
+        runtime = composite_result.get("runtimeData", {})
+        current_work_mode = int(composite_result.get("currentWorkMode", 0))
+        target_mode = int(requestedMode) if requestedMode is not None else current_work_mode
 
-        res = await self.get_unread_count()
-        unreadMsgCount = res["result"]
-        logger.info(f"get_mode: aGate {self.gateway} targetMode={targetMode}  ({OPERATING_MODES.get(int(currentWorkMode))}), soc={soc}, runMode={runMode},   run_status={run_status} ({run_desc}), deviceStatus={deviceStatus}, alarmsCount={alarmsCount}")
+        device_status = composite_result.get("deviceStatus")
+        valid = str(composite_result.get("valid", ""))
+        run_status = int(runtime.get("run_status", 0) or 0)
+        run_desc = RUN_STATUS.get(run_status, f"Unknown run_status value = {run_status}")
+        report_type = str(runtime.get("report_type", ""))
+        run_mode = str(runtime.get("mode", ""))
 
-        offGridReason = solarHaveVo.get("offGridReason", runtimeData.get("offgridreason", 0))
-        offGridFlag = solarHaveVo.get("offGridFlag", runtimeData.get("offGridFlag", 0))
-        main_sw = runtimeData["main_sw"]
-        grid_relay1 = main_sw[0]
-        generator_relay = main_sw[1]
-        solar_relay1 = main_sw[2]
-        logger.info(f"offGridReason={offGridReason}, offGridFlag={offGridFlag}, grid_relay1={grid_relay1}, generator_relay={generator_relay}, solar_relay1={solar_relay1} ")
+        # Alarms — operate on original list, never stringify
+        alarm_list = composite_result.get("currentAlarmVOList") or []
+        alarms_count = sum(
+            1 for obj in alarm_list
+            if isinstance(obj, dict) and obj.get("id") is not None
+        )
 
-        logger.info(f"get_mode: Retrieving current TOU schedule for aGate {self.gateway} to match runMode with currendId")
-        res = await self.get_gateway_tou_list()
-        if res["code"] != 200:
-            logger.info("get_mode: Error in getGatewayTouListV2: Unable to retrieve TOU List")
-        else:
-            currendId = res["result"]["currendId"]
-            modeDetails = res["result"]["list"]
-            touList = [x for x in modeDetails if x["id"] == int(currendId)]
-            if touList:
-                logger.info(f"get_mode: Success: currendId={currendId} was found")
+        # Off-grid state
+        solar_have_vo = composite_result.get("solarHaveVo", {})
+        off_grid_reason = solar_have_vo.get(
+            "offGridReason", runtime.get("offgridreason", 0)
+        )
+
+        logger.info(
+            f"get_mode: aGate {self.gateway} currentWorkMode={current_work_mode} "
+            f"({OPERATING_MODES.get(current_work_mode)}), targetMode={target_mode}, "
+            f"run_status={run_status} ({run_desc}), deviceStatus={device_status}"
+        )
+
+        # ── Step 2: TOU list (required — contains mode SoC details) ──
+        try:
+            tou_res = await self.get_gateway_tou_list()
+        except Exception as exc:
+            logger.error(f"get_mode: get_gateway_tou_list failed: {exc}")
+            return {"error": f"Failed to get TOU list: {exc}"}
+
+        if not tou_res or tou_res.get("code") != 200:
+            return {"error": f"TOU list returned error (code={tou_res.get('code') if tou_res else 'None'})"}
+
+        tou_result = tou_res["result"]
+        tou_list = tou_result.get("list", [])
+
+        # Find the matching mode entry
+        mode_entry = next(
+            (x for x in tou_list if x["workMode"] == target_mode), None
+        )
+        if not mode_entry:
+            logger.error(f"get_mode: target mode {target_mode} not found in TOU list")
+            return {"error": f"Mode {target_mode} ({OPERATING_MODES.get(target_mode, '?')}) not found in TOU list"}
+
+        work_mode = mode_entry["workMode"]
+        old_index = mode_entry["oldIndex"]
+        current_soc = mode_entry["soc"]
+        edit_soc_flag = mode_entry["editSocFlag"]
+        electricity_type = mode_entry["electricityType"]
+        max_soc = mode_entry["maxSoc"]
+        min_soc = mode_entry["minSoc"]
+
+        logger.info(
+            f"get_mode: matched mode: workMode={work_mode}, oldIndex={old_index}, "
+            f"soc={current_soc}, editSocFlag={edit_soc_flag}, "
+            f"maxSoc={max_soc}, minSoc={min_soc}"
+        )
+
+        # ── Step 3: Unread count (optional — never crash if it fails) ─
+        unread_msg_count = None
+        try:
+            unread_res = await self.get_unread_count()
+            unread_msg_count = unread_res.get("result", 0)
+        except Exception as exc:
+            logger.warning(f"get_mode: get_unread_count failed (non-fatal): {exc}")
+
+        # ── Step 4: Mode-specific data ────────────────────────────────
+        mode_specific = {}
+        if work_mode == workModeType.TIME_OF_USE.value:
+            try:
+                tou_schedule = await self.get_tou_info(1)
+                mode_specific["touScheduleList"] = tou_schedule
+            except Exception as exc:
+                logger.warning(f"get_mode: get_tou_info failed (non-fatal): {exc}")
+            mode_specific["touAlertMessage"] = str(tou_result.get("touAlertMessage", ""))
+            mode_specific["touSendStatus"] = str(tou_result.get("touSendStatus", ""))
+
+        elif work_mode == workModeType.EMERGENCY_BACKUP.value:
+            mode_specific["backupForeverFlag"] = str(tou_result.get("backupForeverFlag", ""))
+            mode_specific["oldIndex"] = old_index
+            mode_specific["nextWorkMode"] = str(tou_result.get("nextWorkMode", ""))
+            # Duration calculation
+            timer_end = str(tou_result.get("timerEndTime", "00:00:00.000000"))
+            timer_start = str(tou_result.get("timerStartTime", "00:00:00.000000"))
+            if timer_end != "00:00:00.000000" and timer_start != "00:00:00.000000":
+                try:
+                    end_dt = datetime.strptime(timer_end.split(".")[0], "%H:%M:%S")
+                    start_dt = datetime.strptime(timer_start.split(".")[0], "%H:%M:%S")
+                    mode_specific["durationMinute"] = str(end_dt - start_dt)
+                except ValueError:
+                    mode_specific["durationMinute"] = "0"
             else:
-                logger.info(f"get_mode: Error: currendId={currendId} was NOT found in result list")
+                mode_specific["durationMinute"] = "0"
 
-        stopMode = str(res["result"]["stopMode"])
-        stromEn = str(res["result"]["stromEn"])
-        gridChargeEn = str(res["result"]["gridChargeEn"])
-        touSendStatus = str(res["result"]["touSendStatus"])
-        touAlertMessage = str(res["result"]["touAlertMessage"])
-        nextWorkMode = str(res["result"]["nextWorkMode"])
-        backupForeverFlag = str(res["result"]["backupForeverFlag"])
-        timerEndTime = str(res["result"]["timerEndTime"])
-        timerEndTimeZero = str(res["result"]["timerEndTimeZero"])
-        timerStartTime = str(res["result"]["timerStartTime"])
-        timerStartTimeZero = str(res["result"]["timerStartTimeZero"])
-        if timerEndTime != "00:00:00.000000" and timerStartTime != "00:00:00.000000":
-            durationMinute = "0"
-        else:
-            EndTime = datetime.strptime(timerEndTime, "%H:%M:%S")
-            StartTime = datetime.strptime(timerStartTime, "%H:%M:%S")
-            durationMinute = EndTime - StartTime
-        zoneInfo = str(res["result"]["zoneInfo"])
-        stopTime = None
+        # ── Step 5: Build return dict ─────────────────────────────────
+        results = {
+            "currendId": mode_entry["id"],
+            "workMode": work_mode,
+            "modeName": MODE_MAP[work_mode],
+            "name": OPERATING_MODES[work_mode],
+            "soc": current_soc,
+            "minSoc": min_soc,
+            "maxSoc": max_soc,
+            "run_status": run_status,
+            "run_desc": run_desc,
+            "electricityType": electricity_type,
+            "deviceStatus": device_status,
+            "valid": valid,
+            "unreadMsgCount": unread_msg_count,
+            "alarmsCount": alarms_count,
+            "currentAlarmVOList": alarm_list if alarm_list else None,
+            "report_type": report_type,
+            "offgridState": off_grid_reason,
+            "editSocFlag": edit_soc_flag,
+        }
+        results.update(mode_specific)
 
-        modeDetails = res["result"]["list"]
-        touList = list(filter(lambda x: x["workMode"] == int(targetMode), modeDetails))
-        logger.info(f"get_mode: Found currentWorkMode in touList = {touList}")
-        if touList:
-            touId = touList[0]["id"]
-            workMode = touList[0]["workMode"]
-            oldIndex = touList[0]["oldIndex"]
-            name = touList[0]["name"]
-            current_soc = touList[0]["soc"]
-            editSocFlag = touList[0]["editSocFlag"]
-            electricityType = touList[0]["electricityType"]
-            maxSoc = touList[0]["maxSoc"]
-            minSoc = touList[0]["minSoc"]
-            logger.info(f"get_mode: Retrieved operating mode details for currendId={currendId}: targetMode={targetMode}, workMode={workMode}, oldIndex={oldIndex}, name={name}, soc={current_soc}, editSocFlag={editSocFlag}, electricityType={electricityType}, maxSoc={maxSoc}, minSoc={minSoc}")
-            logger.info(f"get_mode: aGate {self.gateway} matched runMode={runMode} with currendId={touId}, workMode={workMode} ({OPERATING_MODES.get(int(workMode), 'Unknown')}), run_status={run_status} ({run_desc}), soc={soc}, oldIndex={oldIndex}")
-
-            mode_specific = {}
-            common_list = {}
-            currentWorkMode = int(currentWorkMode)
-            logger.info(f"get_mode: targetMode={targetMode}, currentWorkMode={currentWorkMode}")
-
-            match currentWorkMode:
-                case workModeType.TIME_OF_USE.value:
-                    logger.info(f"get_mode: workModeType.TIME_OF_USE.value: = {workModeType.TIME_OF_USE.value}")
-                    url = f"&currendId={touId}&soc={current_soc}&oldIndex={oldIndex}&workMode={workMode}&electricityType={electricityType}"
-                    OPTION = 1
-                    touScheduleList = await self.get_tou_info(OPTION)
-                    mode_specific = {
-                        "touScheduleList": touScheduleList,
-                        "touAlertMessage": touAlertMessage,
-                        "touSendStatus": touSendStatus,
-                    }
-                case workModeType.SELF_CONSUMPTION.value:
-                    logger.info(f" workModeType.SELF_CONSUMPTION.value: = {workModeType.SELF_CONSUMPTION.value}")
-                    url = f"&currendId={touId}&soc={current_soc}&oldIndex={oldIndex}&workMode={workMode}&electricityType={electricityType}"
-                case workModeType.EMERGENCY_BACKUP.value:
-                    logger.info(f" workModeType.EMERGENCY_BACKUP.value: = {workModeType.EMERGENCY_BACKUP.value}")
-                    url = f"&currendId={touId}&electricityType={electricityType}&oldIndex={oldIndex}&workMode={workMode}&backupForeverFlag={backupForeverFlag}&nextWorkMode={nextWorkMode}&durationMinute={durationMinute}"
-                    mode_specific = {
-                        "backupForeverFlag": backupForeverFlag,
-                        "oldIndex": oldIndex,
-                        "nextWorkMode": nextWorkMode,
-                        "durationMinute": durationMinute,
-                    }
-
-            common_list = {
-                "currendId": touId,
-                "workMode": workMode,
-                "modeName": MODE_MAP[int(workMode)],
-                "name": OPERATING_MODES[int(workMode)],
-                "soc": current_soc,
-                "minSoc": minSoc,
-                "maxSoc": maxSoc,
-                "run_status": run_status,
-                "run_desc": run_desc,
-                "electricityType": electricityType,
-                "url": url,
-                "deviceStatus": deviceStatus,
-                "valid": valid,
-                "unreadMsgCount": unreadMsgCount,
-                "alarmsCount": alarmsCount,
-                "currentAlarmVOList": currentAlarmVOList,
-                "report_type": report_type,
-                "offgridState": offGridReason,
-                "editSocFlag": editSocFlag,
-            }
-            results = common_list
-            if mode_specific:
-                results.update(mode_specific)
-            logger.info("get_mode: successfully returned results")
-            return results
-
-        results = {"Failed to find current mode details:  workMode = " + str(currentWorkMode) + ", " +
-                   OPERATING_MODES[int(currentWorkMode)] +
-                   ", run_status = " + str(run_status) +
-                   ", run_desc = " + str(run_desc) +
-                   ", runMode = " + str(runMode) +
-                   ", currentAlarmVOList = " + str(currentAlarmVOList)
-                   }
-        logger.error(f"get_mode: Failed to find current mode details {results}")
+        logger.info("get_mode: successfully returned results")
         return results
 
     async def update_soc(self, requestedSOC=0, workMode=0, electricityType=1):
