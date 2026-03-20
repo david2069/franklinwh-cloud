@@ -397,23 +397,67 @@ class DevicesMixin:
     async def scan_wifi_networks(self):
         """Trigger a WiFi network scan on the aGate via MQTT.
 
-        Sends cmdType 337 with opt 1 to scan for available WiFi networks
-        that the aGate can see. This is the same scan triggered by the
-        FranklinWH mobile app's WiFi Configuration wizard (step 2/3).
+        Sends cmdType 335 with wifi_ScanTime 0 to scan for available WiFi
+        networks that the aGate can see. This is the same scan triggered by
+        the FranklinWH mobile app's WiFi Configuration wizard (step 2/3).
 
         Returns
         -------
         dict
-            Raw scan result from the aGate. Contains available network
-            SSIDs visible to the aGate's WiFi radio.
+            Scan result from the aGate. Keys:
+            - result: 0 = scan complete with data, 1 = scan initiated/pending
+            - reason: status code (3 = scan in progress)
+            - Additional keys with SSID list when scan completes
 
         Note
         ----
+        The scan is asynchronous — the aGate may return result=1 (pending)
+        on the first call. The app typically polls until results appear.
         This command talks to the aGate hardware via MQTT relay through the
         cloud. The aGate must be online (even via 4G) for this to work.
         """
-        dataArea = {"opt": 1}
-        wire_payload = self._build_payload(337, dataArea)
+        dataArea = {"wifi_ScanTime": 0}
+        wire_payload = self._build_payload(335, dataArea)
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         parsed = json.loads(raw)
         return parsed
+
+    async def get_connection_status(self):
+        """Get aGate connection status for router, network, and AWS cloud.
+
+        Sends cmdType 339 to check the connectivity state of the aGate.
+
+        Returns
+        -------
+        dict
+            Connection status:
+            - routerStatus: 0 = disconnected, 1 = connected
+            - netStatus: 0 = no internet, 1 = internet available
+            - awsStatus: 0 = offline, 1 = connected to AWS cloud
+        """
+        dataArea = {"opt": 0}
+        wire_payload = self._build_payload(339, dataArea)
+        raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        parsed = json.loads(raw)
+        return parsed
+
+    async def get_network_switches(self):
+        """Get aGate network interface enable/disable switches.
+
+        Sends cmdType 341 to check which network interfaces are enabled.
+
+        Returns
+        -------
+        dict
+            Interface switch states (1 = enabled, 0 = disabled):
+            - ethernet0NetSwitch: Ethernet 0 interface
+            - ethernet1NetSwitch: Ethernet 1 interface
+            - wifiNetSwitch: WiFi interface
+            - 4GNetSwitch: Cellular 4G interface
+        """
+        dataArea = {"opt": 0}
+        wire_payload = self._build_payload(341, dataArea)
+        raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        parsed = json.loads(raw)
+        return parsed
+
