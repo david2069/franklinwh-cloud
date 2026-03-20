@@ -31,6 +31,8 @@ AVAILABLE_METHODS = {
     "get_device_info": {"args": 0, "desc": "Device detail info"},
     "get_smart_circuits_info": {"args": 0, "desc": "Smart circuit configuration"},
     "get_bms_info": {"args": 1, "desc": "BMS info for aPower (arg: serial_no)"},
+    "get_network_info": {"args": 0, "desc": "aGate network config (WiFi/Eth/4G via MQTT)"},
+    "get_wifi_config": {"args": 0, "desc": "WiFi SSID, AP config, security (via MQTT)"},
     # Account mixin
     "get_home_gateway_list": {"args": 0, "desc": "Home gateway list"},
     "siteinfo": {"args": 0, "desc": "Site / account info"},
