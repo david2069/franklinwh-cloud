@@ -22,8 +22,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/TOU_SCHEDULE_GUIDE.md` — TOU API reference with mermaid diagrams and code examples
 - GitHub Issues for public issue tracking (#1–#6)
 - AP-12 Change Management Policy and enhanced Release Policy with traceability rules
+- `LOGIN_TYPE_USER` (0) and `LOGIN_TYPE_INSTALLER` (1) constants for `appUserOrInstallerLogin` endpoint `FEAT-AUTH-INSTALLER`
+- `login_type` parameter on `TokenFetcher`, `login()`, and `_login()` — supports both homeowner and installer accounts `FEAT-AUTH-INSTALLER`
 
 ### Fixed
+- **Login type was wrong** — hardcoded `type: 1` (installer) instead of `type: 0` (user); now defaults to `LOGIN_TYPE_USER` (0) `DEF-AUTH-LOGIN-TYPE`
 - `franklinwh-cli mode` — resilient to `get_mode()` API failures; falls back to `get_all_mode_soc()` for SoC summary `DEF-MODE-CRASH`
 - `franklinwh-cli mode` — displays proper mode name (`Self-Consumption`) instead of snake_case (`self_consumption`) `DEF-MODE-NAME`
 - `suppress_params`/`suppress_gateway` — standardised kwarg spelling across `_get()`, `_post()`, and all callers; `get_unread_count()` and `set_mode()` were silently ignoring the flag due to typo mismatch `DEF-MODE-SUPPRESS`

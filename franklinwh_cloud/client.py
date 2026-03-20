@@ -204,13 +204,24 @@ class Mode:
             "workMode": str(self.workMode),
         }
 
+# Login account types for appUserOrInstallerLogin endpoint
+LOGIN_TYPE_USER = 0         # Homeowner / app user
+LOGIN_TYPE_INSTALLER = 1    # Installer / professional
+
 class TokenFetcher:
     """Fetches and refreshes authentication tokens for FranklinWH API."""
 
-    def __init__(self, username: str, password: str) -> None:
-        """Initialize the TokenFetcher with the provided username and password."""
+    def __init__(self, username: str, password: str, login_type: int = LOGIN_TYPE_USER) -> None:
+        """Initialize the TokenFetcher.
+
+        Parameters
+        ----------
+        login_type : int
+            0 = App user (homeowner), 1 = Installer.
+        """
         self.username = username
         self.password = password
+        self.login_type = login_type
         self.info: dict | None = None
 
     async def get_token(self, force_refresh=False):
@@ -221,7 +232,7 @@ class TokenFetcher:
         if self.info and self.info.get("token") and not force_refresh:
             return self.info["token"]
         
-        result = await TokenFetcher._login(self.username, self.password)
+        result = await TokenFetcher._login(self.username, self.password, self.login_type)
         if not result or "token" not in result:
              raise InvalidCredentialsException("Login failed: No token returned in response")
              
@@ -253,13 +264,26 @@ class TokenFetcher:
             return loop.run_until_complete(self.get_token())
 
     @staticmethod
-    async def login(username: str, password: str):
-        """Log in to the FranklinWH API and retrieve an authentication token."""
-        return (await TokenFetcher._login(username, password))["token"]
+    async def login(username: str, password: str, login_type: int = 0):
+        """Log in to the FranklinWH API and retrieve an authentication token.
+
+        Parameters
+        ----------
+        login_type : int
+            0 = App user (homeowner), 1 = Installer
+        """
+        return (await TokenFetcher._login(username, password, login_type))["token"]
 
     @staticmethod
-    async def _login(username: str, password: str) -> dict:
-        """Log in to the FranklinWH API and retrieve account information."""
+    async def _login(username: str, password: str, login_type: int = 0) -> dict:
+        """Log in to the FranklinWH API and retrieve account information.
+
+        Parameters
+        ----------
+        login_type : int
+            Account type: 0 = App user (homeowner), 1 = Installer.
+            The API endpoint ``appUserOrInstallerLogin`` supports both.
+        """
         url = (
             DEFAULT_URL_BASE + "hes-gateway/terminal/initialize/appUserOrInstallerLogin"
         )
@@ -267,7 +291,7 @@ class TokenFetcher:
             "account": username,
             "password": hashlib.md5(bytes(password, "ascii")).hexdigest(),
             "lang": "en_US",
-            "type": 1,
+            "type": login_type,
         }
         async with httpx.AsyncClient(http2=True) as client:
             res = await client.post(url, data=form, timeout=30)
