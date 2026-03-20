@@ -364,3 +364,32 @@ class DevicesMixin:
             },
             "awsStatus": comm.get("awsStatus"),
         }
+
+    async def get_wifi_config(self):
+        """Get aGate WiFi configuration and access point details via MQTT.
+
+        Sends cmdType 337 with opt 0 to retrieve the current WiFi connection
+        and the aGate's own access point (AP) configuration.
+
+        Returns
+        -------
+        dict
+            WiFi configuration with keys:
+            - wifi_ssid: SSID of the connected WiFi network
+            - wifi_password: password of the connected WiFi network
+            - ap_ssid: SSID of the aGate's own access point
+            - ap_password: password of the aGate's own access point
+            - wifi_safety: security mode (1 = WPA/WPA2)
+        """
+        dataArea = {"opt": 0}
+        wire_payload = self._build_payload(337, dataArea)
+        raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        parsed = json.loads(raw)
+
+        return {
+            "wifi_ssid": parsed.get("wifi_SSID"),
+            "wifi_password": parsed.get("wifi_Pw"),
+            "ap_ssid": parsed.get("ap_SSID"),
+            "ap_password": parsed.get("ap_Pw"),
+            "wifi_safety": parsed.get("wifi_Safety"),
+        }
