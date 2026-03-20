@@ -17,6 +17,9 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
 | DEF-CLIENT-TIMEOUT | Client / API Core | `_post()` has `timeout=30` but no graceful recovery on timeout | 2026-03-20 |
+| FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
+| FEAT-AUTH-CLI-OPTION | CLI Commands | `--installer` flag on CLI to pass `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-21 |
+| FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
 
 ---
 
