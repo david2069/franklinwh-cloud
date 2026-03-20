@@ -414,7 +414,6 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             )
 
 
-    # TODO(richo) Setup timeouts and deal with them gracefully.
     async def _post2(self, url, payload, params: dict | None = None):
         if params is not None:
             params = params.copy()
@@ -443,7 +442,6 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
 
 
-    # TODO(richo) Setup timeouts and deal with them gracefully.
     async def _post(self, url, payload, params: dict = None, **kwargs):
 
         logger.info(f"_post: url={url}\n params = {params}\n payload = {payload}\n kwargs = {kwargs}   \n ")
@@ -504,19 +502,19 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         if "&" in url:
             url, params = extract_url_params(url)
         gateway_params = {tag: str(self.gateway), "lang": "en_US"}
-        supressParams = kwargs.get("supressParams") in (True, "Y")
-        supressGateway = kwargs.get("supressGateway") in (True, "Y")
-        logger.info(f"suppressParams = {supressParams}")
-        logger.info(f"supressGateway = {supressGateway}")
+        suppress_params = kwargs.get("suppress_params") in (True, "Y")
+        suppress_gateway = kwargs.get("suppress_gateway") in (True, "Y")
+        logger.info(f"suppress_params = {suppress_params}")
+        logger.info(f"suppress_gateway = {suppress_gateway}")
         logger.info(f"params = {params}")
         logger.info(f"gateway_params = {gateway_params}")
-        if supressParams is True:
-            params = {} if supressGateway is False else None
-            if supressGateway is False:
+        if suppress_params is True:
+            params = {} if suppress_gateway is False else None
+            if suppress_gateway is False:
                 params = gateway_params
-                logger.info(f"supress both params and gateway")
+                logger.info(f"suppress both params and gateway")
 
-        if supressGateway is False and params is not None:
+        if suppress_gateway is False and params is not None:
             params.update(gateway_params)
 
         logger.info(f"params = {params}")
@@ -606,14 +604,14 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             params = params.copy()
             if "equipNo" in params:
                 tag = "equipNo"
-        supressParams = kwargs.get("supressParams") in (True, "Y")
-        supressGateway = kwargs.get("supressGateway") in (True, "Y")
-        logger.info(f"suppressParams = {supressParams}")
-        logger.info(f"supressGateway = {supressGateway}")
+        suppress_params = kwargs.get("suppress_params") in (True, "Y")
+        suppress_gateway = kwargs.get("suppress_gateway") in (True, "Y")
+        logger.info(f"suppress_params = {suppress_params}")
+        logger.info(f"suppress_gateway = {suppress_gateway}")
         
-        if supressParams:
+        if suppress_params:
             params = {}
-        if not supressGateway:
+        if not suppress_gateway:
             if params is None: params = {}
             params.update({tag: self.gateway, "lang": "en_US"})
     

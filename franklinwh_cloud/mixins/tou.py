@@ -92,7 +92,7 @@ class TouMixin:
             API response with result containing the saved touId
         """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/tou/saveTouDispatch"
-        data = await self._post(url, payload, params=None, supressParams=True)
+        data = await self._post(url, payload, params=None, suppress_params=True)
         return data
 
     async def get_tou_dispatch_detail(self):

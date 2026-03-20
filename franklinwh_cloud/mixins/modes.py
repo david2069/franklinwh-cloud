@@ -233,7 +233,7 @@ class ModesMixin:
         logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
         logger.info(f"set_mode: POST URL = {url}")
 
-        res = await self._post(url, payload=None, supressGateway=True, suppressParams=True)
+        res = await self._post(url, payload=None, suppress_gateway=True, suppress_params=True)
         if res['code'] == 200:
             result = True
             logger.info(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")
@@ -266,7 +266,7 @@ class ModesMixin:
 
         deviceStatus = res["result"]["deviceStatus"]
         valid = str(res["result"]["valid"])
-        currentAlarmVOList = str(res["result"]["currentAlarmVOList"])
+        currentAlarmVOList = res["result"]["currentAlarmVOList"]
         run_status = int(res["result"]["runtimeData"]["run_status"])
         if run_status is not None:
             run_desc = RUN_STATUS.get(run_status, f"Unknown run_status value = {run_status}")
@@ -274,11 +274,11 @@ class ModesMixin:
             run_desc = "Unknown"
 
         report_type = str(res["result"]["runtimeData"]["report_type"])
-        if currentAlarmVOList == "[]":
+        if not currentAlarmVOList or currentAlarmVOList == []:
             currentAlarmVOList = None
             alarmsCount = 0
         else:
-            alarmsCount = sum(1 for obj in currentAlarmVOList if obj['id'] is not None)
+            alarmsCount = sum(1 for obj in currentAlarmVOList if isinstance(obj, dict) and obj.get('id') is not None)
 
         res = await self.get_unread_count()
         unreadMsgCount = res["result"]

@@ -22,7 +22,7 @@ class AccountMixin:
             connectivity type (4G/WiFi/Ethernet)
         """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/getHomeGatewayList"
-        data = await self._get(url, supressParams=True, supressGateway=True)
+        data = await self._get(url, suppress_params=True, suppress_gateway=True)
         return data
 
     async def siteinfo(self):
@@ -69,7 +69,7 @@ class AccountMixin:
         https://www.franklinwh.com/support/overview/system-alerts-and-notifications/
         """
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectTerPushMessageUnreadCount"
-        data = await self._get(url, params=None, suppressParams=True)
+        data = await self._get(url, params=None, suppress_params=True)
         return data
 
     async def get_notifications(self, pageNum=1, pageSize=10):
