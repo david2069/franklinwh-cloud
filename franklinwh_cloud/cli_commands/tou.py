@@ -728,20 +728,33 @@ def _print_set_error(error: Exception, json_output: bool):
 # ── tou --next handler ──────────────────────────────────────────────
 
 async def _handle_next(client, json_output: bool):
-    """Handle tou --next: show current/next dispatch with remaining time."""
+    """Handle tou --next: show current/next dispatch with remaining time.
 
-    res = await client.get_tou_dispatch_detail()
-    result = res.get("result", {})
-    strategies = result.get("strategyList", [])
+    Uses get_tou_info(1) for current/next identification and
+    get_tou_info(2) for the full schedule table display.
+    """
+    # Get current/next block info from the API mixin (single source of truth)
+    tou_info = await client.get_tou_info(1)
 
-    if not strategies:
+    if not tou_info:
         if json_output:
-            print_json_output({"error": "No TOU schedule configured"})
+            print_json_output({"error": "No TOU schedule configured or no matching season"})
         else:
-            print_warning("No TOU schedule configured.")
+            print_warning("No TOU schedule configured or no matching season for current month.")
         return
 
-    # Build dispatch lookup from detailDefaultVo
+    # Get full schedule for table display
+    all_blocks = await client.get_tou_info(2)
+    if not all_blocks:
+        if json_output:
+            print_json_output({"error": "No time blocks configured"})
+        else:
+            print_warning("No time blocks configured.")
+        return
+
+    # Build dispatch lookup for display names
+    res = await client.get_tou_dispatch_detail()
+    result = res.get("result", {})
     default_vo = result.get("detailDefaultVo", {})
     tou_dispatch_list = default_vo.get("touDispatchList", [])
     dispatch_lookup = {}
@@ -749,83 +762,49 @@ async def _handle_next(client, json_output: bool):
         if d.get("id") is not None:
             dispatch_lookup[d["id"]] = d
 
-    # Get blocks from first season, first day type
-    day_types = strategies[0].get("dayTypeVoList", [])
-    if not day_types:
-        if json_output:
-            print_json_output({"error": "No day types configured"})
-        else:
-            print_warning("No day types configured.")
-        return
-
-    blocks = day_types[0].get("detailVoList", [])
-    if not blocks:
-        if json_output:
-            print_json_output({"error": "No time blocks configured"})
-        else:
-            print_warning("No time blocks configured.")
-        return
-
     now = datetime.now()
-    now_time = now.strftime("%H:%M")
     now_minutes = now.hour * 60 + now.minute
 
-    current_block = None
-    next_block = None
-    current_remaining = None
-    next_duration = None
+    # Sort blocks for display
+    sorted_blocks = sorted(all_blocks, key=lambda b: _time_to_minutes(b.get("startHourTime", "00:00")))
 
-    # Sort blocks by start time
-    sorted_blocks = sorted(blocks, key=lambda b: b.get("startHourTime", "00:00"))
+    # Identify active block from tou_info
+    active_start = tou_info.get("activeStartTime")
+    active_end = tou_info.get("activeEndTime")
+    active_remaining = tou_info.get("activeRemainingTime")
 
-    for i, block in enumerate(sorted_blocks):
-        start_str = block.get("startHourTime", "00:00")
-        end_str = block.get("endHourTime", "24:00")
-
-        start_mins = _time_to_minutes(start_str)
-        end_mins = _time_to_minutes(end_str)
-
-        if start_mins <= now_minutes < end_mins:
-            current_block = block
-            remaining_mins = end_mins - now_minutes
-            current_remaining = _format_duration(remaining_mins * 60 - now.second)
-            # Next block
-            if i + 1 < len(sorted_blocks):
-                next_block = sorted_blocks[i + 1]
-            elif len(sorted_blocks) > 0:
-                next_block = sorted_blocks[0]  # wraps to start of day
-
-            if next_block:
-                nb_start = _time_to_minutes(next_block.get("startHourTime", "00:00"))
-                nb_end = _time_to_minutes(next_block.get("endHourTime", "24:00"))
-                next_duration = _format_duration((nb_end - nb_start) * 60)
-            break
+    # Next block info from tou_info
+    next_start = tou_info.get("nextStartTime")
+    next_end = tou_info.get("nextEndTime")
+    next_dispatch_title = tou_info.get("nextTOUtitle", "")
 
     # JSON output
     if json_output:
         output = {"now": now.strftime("%H:%M:%S"), "blocks": []}
         for block in sorted_blocks:
+            b_start = block.get("startHourTime", "")
+            b_end = block.get("endHourTime", "")
+            is_active = (b_start == active_start and b_end == active_end)
             entry = {
-                "start": block.get("startHourTime"),
-                "end": block.get("endHourTime"),
+                "start": b_start,
+                "end": b_end,
                 "dispatchId": block.get("dispatchId"),
                 "dispatch": _resolve_dispatch_name(block.get("dispatchId"), dispatch_lookup),
                 "waveType": block.get("waveType"),
-                "active": block is current_block,
+                "active": is_active,
             }
-            if block is current_block:
-                entry["remaining"] = current_remaining
+            if is_active and active_remaining:
+                entry["remaining"] = active_remaining
             output["blocks"].append(entry)
-        if current_block:
+        if active_start:
             output["current"] = {
-                "dispatch": _resolve_dispatch_name(current_block.get("dispatchId"), dispatch_lookup),
-                "remaining": current_remaining,
+                "dispatch": tou_info.get("activeTOUtitle", ""),
+                "remaining": active_remaining,
             }
-        if next_block:
+        if next_start:
             output["next"] = {
-                "dispatch": _resolve_dispatch_name(next_block.get("dispatchId"), dispatch_lookup),
-                "duration": next_duration,
-                "start": next_block.get("startHourTime"),
+                "dispatch": next_dispatch_title,
+                "start": next_start,
             }
         print_json_output(output)
         return
@@ -851,7 +830,7 @@ async def _handle_next(client, json_output: bool):
         e_mins = _time_to_minutes(end_str)
         dur = _format_duration_short((e_mins - s_mins) * 60)
 
-        is_active = block is current_block
+        is_active = (start_str == active_start and end_str == active_end)
         marker = c("green", "▸ ") if is_active else "  "
         name_formatted = c("bold", c(disp_color, f"{disp_name:<32s}")) if is_active else c(disp_color, f"{disp_name:<32s}")
 
@@ -861,19 +840,22 @@ async def _handle_next(client, json_output: bool):
 
     # Current + Next summary
     print_section("⏱️ ", "Now")
-    if current_block:
-        cur_name = _resolve_dispatch_name(current_block.get("dispatchId"), dispatch_lookup)
-        cur_color = _dispatch_color(cur_name)
-        print_kv("Current", f"{c(cur_color, cur_name)}")
-        print_kv("Remaining", f"{c('bold', current_remaining)}")
+    if active_start:
+        cur_title = tou_info.get("activeTOUtitle", "Unknown")
+        cur_color = _dispatch_color(cur_title)
+        print_kv("Current", f"{c(cur_color, cur_title)}")
+        print_kv("Remaining", f"{c('bold', active_remaining or '?')}")
     else:
         print_kv("Current", c("dim", "Unknown (no matching block for current time)"))
 
-    if next_block:
-        next_name = _resolve_dispatch_name(next_block.get("dispatchId"), dispatch_lookup)
-        next_color = _dispatch_color(next_name)
-        print_kv("Next", f"{c(next_color, next_name)} at {next_block.get('startHourTime', '?')}")
-        print_kv("Duration", next_duration)
+    if next_start:
+        next_title = tou_info.get("nextTOUtitle", "Unknown")
+        next_color = _dispatch_color(next_title)
+        print_kv("Next", f"{c(next_color, next_title)} at {next_start}")
+        if next_end:
+            nb_start = _time_to_minutes(next_start)
+            nb_end = _time_to_minutes(next_end)
+            print_kv("Duration", _format_duration((nb_end - nb_start) * 60))
     print()
 
 

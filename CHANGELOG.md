@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `franklinwh-cli mode` — now shows reserve SoC for active mode and SoC summary for all modes
+- `franklinwh-cli status` — reserve SoC displayed in Operating Mode section
+- `get_all_mode_soc()` — new API method returning reserve SoC, min/max, and active flag for all modes
+- `get_mode()` — now includes `soc`, `minSoc`, `maxSoc` in return dict
 - `franklinwh-cli bms` — Battery Management System inspection (cell voltages, temperatures, SoC/SoH)
 - `franklinwh-cli diag` — System diagnostics report
 - `franklinwh-cli tou` — Full dispatch schedule with seasons, day types, pricing tiers

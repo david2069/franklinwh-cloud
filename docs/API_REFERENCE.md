@@ -105,9 +105,10 @@ asyncio.run(main())
 | Method | Arguments | Returns | Description |
 |--------|-----------|---------|-------------|
 | `set_mode(...)` | See below | `bool` | Switch operating mode |
-| `get_mode(requestedMode=None)` | `requestedMode: int` optional (1/2/3) | `dict` | Current or requested mode details + TOU info |
+| `get_mode(requestedMode=None)` | `requestedMode: int` optional (1/2/3) | `dict` | Current or requested mode details incl. `soc`, `minSoc`, `maxSoc` |
 | `update_soc(requestedSOC, workMode, electricityType)` | `requestedSOC: int` %, `workMode: int`, `electricityType: int` (default 1) | `dict` | Update backup reserve SoC setpoint |
 | `get_mode_info(requested_work_mode=1)` | `requested_work_mode: int` (1/2/3) | `list[dict]` | Raw TOU list entry for specified mode |
+| `get_all_mode_soc()` | — | `list[dict]` | Reserve SoC for all modes: `workMode`, `name`, `soc`, `minSoc`, `maxSoc`, `editSocFlag`, `active` |
 
 ### `set_mode()` arguments
 
