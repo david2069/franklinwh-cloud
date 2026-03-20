@@ -38,3 +38,5 @@ tests/results/test_history.log
 
 # Root-level scratch scripts
 test_library.py
+*.textClipping
+*.har
