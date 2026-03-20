@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `franklinwh-cli mode` — displays proper mode name (`Self-Consumption`) instead of snake_case (`self_consumption`) `DEF-MODE-NAME`
 - `suppress_params`/`suppress_gateway` — standardised kwarg spelling across `_get()`, `_post()`, and all callers; `get_unread_count()` and `set_mode()` were silently ignoring the flag due to typo mismatch `DEF-MODE-SUPPRESS`
 - `currentAlarmVOList` in `get_mode()` — was stringified then iterated over characters; now operates on the original list `DEF-MODE-ALARMS`
+- `get_mode()` refactored — was fragile (3 chained API calls, `res` reuse, scope leaks, set-not-dict error return); now uses separate variables per API call, try/except, optional unread count, proper error dicts `DEF-MODE-GETMODE`
 - **All CLI commands display wrong power units** — API returns kW but monitor/status/discover/diag displayed as W (#7)
 - Monitor power bar and direction thresholds used watt-scale values (±50) instead of kW-scale (±0.05)
 - Monitor CDN line now shows distribution count instead of overwhelming hash list
