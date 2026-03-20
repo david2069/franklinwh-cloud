@@ -12,7 +12,6 @@ API URL parameter reference (from richo/franklinwh-python original):
 import logging
 from datetime import datetime, timedelta
 
-from franklinwh_cloud.api import DEFAULT_URL_BASE
 from franklinwh_cloud.const import (
     RUN_STATUS, OPERATING_MODES, workModeType,
     TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP,
@@ -193,7 +192,7 @@ class ModesMixin:
         if stopMode:
             logger.info(f"set_mode: Warning: aGate {self.gateway} is in Stop Mode - current stopMode={stopMode}")
 
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/tou/updateTouModeV2"
+        url = self.url_base + "hes-gateway/terminal/tou/updateTouModeV2"
         url = url + f"?gatewayId={self.gateway}"
         url = url + f"&currendId={touId}"
 

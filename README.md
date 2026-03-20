@@ -12,11 +12,11 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 ## ✨ Features
 
-- **Authentication**: Automatic token management and refresh
+- **Authentication**: Automatic token management and refresh, homeowner + installer account types
 - **Real-time Data**: Battery status, solar production, grid usage, home loads
 - **Mode Control**: Switch between operating modes (Time-of-Use, Self-Consumption, Emergency Backup)
-- **TOU Schedules**: Manage Time-of-Use scheduling
-- **Device Info**: Gateway details, network status, device inventory
+- **TOU Schedules**: Manage Time-of-Use scheduling with multi-season, weekday/weekend support
+- **Device Info**: Gateway details, network status, device inventory, BMS cell-level data
 - **Performance Monitoring**: API call metrics, response timing (min/avg/max), error rates, and CloudFront edge tracking
 - **CloudFront Edge Tracking**: Automatic PoP location monitoring, failover detection, cache hit rates, and distribution ID tracking
 - **Client Identity**: Honest identification headers for responsible API citizenship
@@ -24,6 +24,18 @@ A Python client library for interacting with FranklinWH energy storage systems v
 - **Stale Data Cache**: Per-endpoint TTL caching for graceful degradation when the cloud is slow or unavailable
 - **Modular Architecture**: Domain-specific mixins (stats, modes, TOU, storm, power, devices, account)
 - **CLI Tool**: Subcommand-based CLI with `fetch` for arbitrary endpoint access, debug tracing, JSON output
+
+## 🔧 Technical Highlights
+
+| Capability | Implementation |
+|------------|----------------|
+| **HTTP/2** | All API calls use `httpx` with `http2=True` — multiplexed requests, header compression, persistent connections |
+| **CloudFront Monitoring** | Tracks PoP edge location, cache hit rate, distribution IDs, and failover transitions in real-time |
+| **Configurable Base URL** | `Client(fetcher, gw, url_base=...)` — ready for FranklinWH DNS migration (`energy.` → `api.`) |
+| **Dual Account Types** | `LOGIN_TYPE_USER` (0) and `LOGIN_TYPE_INSTALLER` (1) constants for homeowner and installer login |
+| **Stale-While-Revalidate** | Per-endpoint TTL cache returns last-known-good data during API outages |
+| **Modbus Mode Constants** | Bidirectional `CLOUD_TO_MODBUS_MODE` / `MODBUS_TO_CLOUD_MODE` mapping for Modbus TCP integration |
+| **60+ API Endpoints** | Comprehensive coverage across TOU scheduling, power control, BMS, storm, smart circuits, compliance |
 
 ## 📦 Installation
 
@@ -247,7 +259,7 @@ pytest -v
 cat tests/results/test_history.log
 ```
 
-**Current coverage**: 125 tests (92 unit + 33 live across all 7 domains)
+**Current coverage**: 192 tests across all 7 domains
 
 ## 📚 API Reference
 
@@ -282,7 +294,12 @@ stats.totals.home_use              # Daily home consumption (kWh)
 
 ### Installer Account Support (CLI-only, read-only)
 
-The FranklinWH Cloud API supports **installer accounts** — these are privileged accounts used by solar installers to manage fleets of customer aGate gateways. The login endpoint (`appUserOrInstallerLogin`) already supports both account types via a `type` parameter (currently hardcoded to `1` = user).
+The FranklinWH Cloud API supports **installer accounts** — these are privileged accounts used by solar installers to manage fleets of customer aGate gateways. The login endpoint (`appUserOrInstallerLogin`) supports both account types via a `type` parameter: `0` = app user, `1` = installer.
+
+**Already implemented:**
+- `LOGIN_TYPE_USER = 0` and `LOGIN_TYPE_INSTALLER = 1` constants
+- `login_type` parameter on `TokenFetcher`, `login()`, and `_login()`
+- Configurable `url_base` on `Client` for future DNS changes
 
 **Planned scope:**
 - CLI `--installer` flag to authenticate as an installer
@@ -290,6 +307,16 @@ The FranklinWH Cloud API supports **installer accounts** — these are privilege
 - `status` command with `--gateway SN` to view any customer's system
 - **Read-only only** — no write operations (mode changes, TOU updates) via installer CLI
 - Per-gateway selection required (no fleet-wide operations)
+
+**Usage:**
+```python
+from franklinwh_cloud.client import TokenFetcher, LOGIN_TYPE_INSTALLER
+
+# Installer login
+fetcher = TokenFetcher("installer@company.com", "password", login_type=LOGIN_TYPE_INSTALLER)
+client = Client(fetcher, "CUSTOMER_GATEWAY_SN")
+info = await client.siteinfo()  # returns installerId, userTypes, roles, etc.
+```
 
 > ⚠️ Installer accounts can access and modify multiple customer sites. This library intentionally **limits installer support to read-only CLI operations** as a matter of responsible API citizenship. Developers who fork this library assume their own responsibility for write operations.
 

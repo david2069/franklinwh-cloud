@@ -711,7 +711,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         return temp.replace('"DATA"', blob.decode("utf-8"))
 
     async def _mqtt_send(self, payload):
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/sendMqtt"
+        url = self.url_base + "hes-gateway/terminal/sendMqtt"
 
         res = await self._post(url, payload)
         if res["code"] == 102:

@@ -3,7 +3,6 @@
 import logging
 from datetime import datetime
 
-from franklinwh_cloud.api import DEFAULT_URL_BASE
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -21,7 +20,7 @@ class AccountMixin:
             aGate count, status (online/offline), model, firmware,
             connectivity type (4G/WiFi/Ethernet)
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/getHomeGatewayList"
+        url = self.url_base + "hes-gateway/terminal/getHomeGatewayList"
         data = await self._get(url, suppress_params=True, suppress_gateway=True)
         return data
 
@@ -68,7 +67,7 @@ class AccountMixin:
 
         https://www.franklinwh.com/support/overview/system-alerts-and-notifications/
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectTerPushMessageUnreadCount"
+        url = self.url_base + "hes-gateway/terminal/selectTerPushMessageUnreadCount"
         data = await self._get(url, params=None, suppress_params=True)
         return data
 
@@ -77,7 +76,7 @@ class AccountMixin:
 
         https://www.franklinwh.com/support/overview/system-alerts-and-notifications/
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectTerPushMessageListApp"
+        url = self.url_base + "hes-gateway/terminal/selectTerPushMessageListApp"
         params = {"equipNo": self.gateway, "pageNum": pageNum, "pageSize": pageSize, "lang": "en_US"}
         data = await self._get(url, params=params)
         return data["result"]
@@ -94,7 +93,7 @@ class AccountMixin:
         dict
             Notification event classifications and their enabled states
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectTerPusselectEventClassification"
+        url = self.url_base + "hes-gateway/terminal/selectTerPusselectEventClassification"
         params = {"gatewayId": self.gateway, "lang": "en_US"}
         data = await self._get(url, params=params)
         return data.get("result", data)
@@ -127,7 +126,7 @@ class AccountMixin:
             username = res["email"]
 
         logger.info("Using current login session")
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/site/list/siteAndDeviceInfo"
+        url = self.url_base + "hes-gateway/terminal/site/list/siteAndDeviceInfo"
         params = {"pageNum": 1, "pageSize": 999, "userAccount": username, "userId": userId}
         data = await self._get(url, params=params, supressGateway=True)
         return data
@@ -140,7 +139,7 @@ class AccountMixin:
         dict
             Warranty information including start/end dates and status
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/v2/warrantyInfo"
+        url = self.url_base + "hes-gateway/terminal/v2/warrantyInfo"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data
@@ -153,7 +152,7 @@ class AccountMixin:
         dict
             GPS coordinates and location details for installed equipment
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/getEquipmentLocationDetail"
+        url = self.url_base + "hes-gateway/terminal/getEquipmentLocationDetail"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data["result"]
@@ -169,7 +168,7 @@ class AccountMixin:
         dict
             Resource information and permissions
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/newApi/api-user/app/getUserResources/v2"
+        url = self.url_base + "hes-gateway/terminal/newApi/api-user/app/getUserResources/v2"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data["result"]
@@ -182,7 +181,7 @@ class AccountMixin:
         list
             Complete list of alarm codes with detailed information
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/common/selectDeviceRunLogList"
+        url = self.url_base + "hes-gateway/common/selectDeviceRunLogList"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data["result"]
@@ -195,7 +194,7 @@ class AccountMixin:
         list
             Programmes enabled and other detailed information
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectProgramFlag"
+        url = self.url_base + "hes-gateway/terminal/selectProgramFlag"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data.get("result", [])
@@ -208,7 +207,7 @@ class AccountMixin:
         dict
             Benefit earnings data for the account
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/bill/selectBenefitInfo"
+        url = self.url_base + "hes-gateway/bill/selectBenefitInfo"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data.get("result", [])
@@ -223,7 +222,7 @@ class AccountMixin:
         dict
             Active gateway alarm details at time of call
         """
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/selectGatewayAlarm"
+        url = self.url_base + "hes-gateway/terminal/selectGatewayAlarm"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
         return data["result"]
@@ -238,10 +237,10 @@ class AccountMixin:
         """
         match requestType:
             case 1:
-                url = DEFAULT_URL_BASE + "hes-gateway/terminal/newCompliance/getComplianceNameList"
+                url = self.url_base + "hes-gateway/terminal/newCompliance/getComplianceNameList"
                 params = {"gatewayId": self.gateway}
             case 2:
-                url = DEFAULT_URL_BASE + "hes-gateway/terminal/newCompliance/getComplianceDetailById"
+                url = self.url_base + "hes-gateway/terminal/newCompliance/getComplianceDetailById"
                 params = {"gatewayId": self.gateway, "systemId": 0}
 
         try:
@@ -265,7 +264,7 @@ class AccountMixin:
         dict
             List of states, provinces, etc. for the specified country
         """
-        url = DEFAULT_URL_BASE + f"hes-gateway/common/obtainGeographyList?countryId={countryId}"
+        url = self.url_base + f"hes-gateway/common/obtainGeographyList?countryId={countryId}"
         data = await self._get(url)
         return data
 
@@ -279,10 +278,10 @@ class AccountMixin:
         """
         match requestType:
             case "1":
-                url = DEFAULT_URL_BASE + "hes-gateway/terminal/backupHistorySummary"
+                url = self.url_base + "hes-gateway/terminal/backupHistorySummary"
                 params = {"gatewayId": self.gateway}
             case "2":
-                url = DEFAULT_URL_BASE + "hes-gateway/terminal/backupHistorySummary"
+                url = self.url_base + "hes-gateway/terminal/backupHistorySummary"
                 params = {"gatewayId": self.gateway, "pageNum": pageNum, "pageSize": pageSize}
 
         data = await self._get(url, params=params)
@@ -298,7 +297,7 @@ class AccountMixin:
         """
         match requestType:
             case "1":
-                url = DEFAULT_URL_BASE + f"hes-gateway/terminal/smartAssistant?gatewayId={self.gateway}&requestType={requestType}"
+                url = self.url_base + f"hes-gateway/terminal/smartAssistant?gatewayId={self.gateway}&requestType={requestType}"
                 data = await self._get(url)
             case "2":
                 payload = {
@@ -309,7 +308,7 @@ class AccountMixin:
                     "currentTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "sceneFlag": 1,
                 }
-                url = DEFAULT_URL_BASE + f"hes-gateway/terminal/smartAssistant?gatewayId={self.gateway}&requestType={requestType}&query={query}"
+                url = self.url_base + f"hes-gateway/terminal/smartAssistant?gatewayId={self.gateway}&requestType={requestType}&query={query}"
                 data = await self._post(url, payload=payload)
 
         return data
