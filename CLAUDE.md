@@ -5,9 +5,10 @@
 
 ## Critical Rules
 
-1. **Read `AGENT.md` and `.agents/policies/` before doing anything**
-2. **Focus Discipline** — one fix at a time, full cycle (code → test → verify → commit)
-3. **Syntax check is NON-NEGOTIABLE** before every commit:
+1. **Read `AGENT.md` from the WORKSPACE ROOT** — never from open files in other projects. Verify the path starts with this repo's directory before reading.
+2. **Read `.agents/policies/` before doing anything**
+3. **Focus Discipline** — one fix at a time, full cycle (code → test → verify → commit)
+4. **Syntax check is NON-NEGOTIABLE** before every commit:
    ```bash
    python3 -c "import ast; ast.parse(open('<file>').read()); print('OK')"
    ```

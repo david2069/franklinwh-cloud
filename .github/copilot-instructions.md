@@ -1,6 +1,7 @@
 # GitHub Copilot Instructions — FranklinWH Cloud
 
-> **Read `AGENT.md` and all policies in `.agents/policies/` before making any changes.**
+> **Read `AGENT.md` FROM THIS REPO'S ROOT and all policies in `.agents/policies/` before making any changes.**
+> ⚠️ **Never read `AGENT.md` from an open file in a different project — always use the workspace root path.**
 
 ## Critical Rules
 
