@@ -1,11 +1,41 @@
 """Device and accessory information API methods."""
 
+import asyncio
 import json
 import logging
+import warnings
 
-from franklinwh_cloud.exceptions import BadRequestParsingError
+from franklinwh_cloud.exceptions import BadRequestParsingError, DeviceTimeoutException
 
 logger = logging.getLogger("franklinwh_cloud")
+
+
+def _parse_mqtt_json(raw, cmd_type: int):
+    """Parse JSON from an MQTT dataArea response with error handling.
+
+    Parameters
+    ----------
+    raw : str
+        Raw JSON string from the MQTT response dataArea.
+    cmd_type : int
+        The cmdType that produced this response (for error messages).
+
+    Returns
+    -------
+    dict
+        Parsed JSON data.
+
+    Raises
+    ------
+    DeviceTimeoutException
+        If the response cannot be parsed as valid JSON.
+    """
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as e:
+        raise DeviceTimeoutException(
+            f"Invalid MQTT response for cmdType {cmd_type}: {e}"
+        ) from e
 
 
 class DevicesMixin:
@@ -178,11 +208,23 @@ class DevicesMixin:
     async def get_agate_network_info(self, requestType):
         """Get the specific aGate network settings.
 
+        .. deprecated::
+            Use the individual methods instead:
+            - ``get_network_info()`` (requestType "1" → cmdType 317)
+            - ``get_connection_status()`` (requestType "2" → cmdType 339)
+            - ``get_wifi_config()`` (requestType "3" → cmdType 337)
+
         Parameters
         ----------
         requestType : str
             1 = Network Settings, 2 = Connectivity status, 3 = WiFi Settings
         """
+        warnings.warn(
+            "get_agate_network_info() is deprecated. Use get_network_info(), "
+            "get_connection_status(), or get_wifi_config() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         dataArea = {"opt": 0}
 
         match requestType:
@@ -198,7 +240,7 @@ class DevicesMixin:
 
         wire_payload = self._build_payload(requestCode, dataArea)
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        return json.loads(data)
+        return _parse_mqtt_json(data, requestCode)
 
     async def get_power_info(self):
         """Get voltages, current, frequencies for grid, loads, genset, relay states.
@@ -329,7 +371,7 @@ class DevicesMixin:
         dataArea = {"optType": 0, "paraType": 6}
         wire_payload = self._build_payload(317, dataArea)
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        parsed = json.loads(raw)
+        parsed = _parse_mqtt_json(raw, 317)
 
         # Extract the commSetPara from the nested result
         comm = parsed.get("result", {}).get("commSetPara", parsed)
@@ -384,7 +426,7 @@ class DevicesMixin:
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(337, dataArea)
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        parsed = json.loads(raw)
+        parsed = _parse_mqtt_json(raw, 337)
 
         return {
             "wifi_ssid": parsed.get("wifi_SSID"),
@@ -419,8 +461,41 @@ class DevicesMixin:
         dataArea = {"wifi_ScanTime": 0}
         wire_payload = self._build_payload(335, dataArea)
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        parsed = json.loads(raw)
-        return parsed
+        return _parse_mqtt_json(raw, 335)
+
+    async def scan_wifi_networks_poll(self, max_attempts=3, delay_s=2.0):
+        """Poll for WiFi scan results until complete or max attempts reached.
+
+        Calls scan_wifi_networks() repeatedly, waiting between attempts.
+        The aGate WiFi scan is asynchronous — the first call typically
+        returns result=1 (pending). Subsequent calls return the SSID list
+        once the scan completes (result=0).
+
+        Parameters
+        ----------
+        max_attempts : int
+            Maximum number of scan attempts (default: 3).
+        delay_s : float
+            Seconds to wait between attempts (default: 2.0).
+
+        Returns
+        -------
+        dict
+            Final scan result from the aGate. If result=0, contains
+            the WiFi network list. If result=1, scan did not complete
+            within the allowed attempts.
+        """
+        for attempt in range(max_attempts):
+            result = await self.scan_wifi_networks()
+            if result.get("result") == 0:
+                logger.info(f"WiFi scan complete on attempt {attempt + 1}")
+                return result
+            if attempt < max_attempts - 1:
+                logger.info(f"WiFi scan pending (attempt {attempt + 1}/{max_attempts}), "
+                            f"retrying in {delay_s}s...")
+                await asyncio.sleep(delay_s)
+        logger.warning(f"WiFi scan did not complete after {max_attempts} attempts")
+        return result
 
     async def get_connection_status(self):
         """Get aGate connection status for router, network, and AWS cloud.
@@ -438,8 +513,7 @@ class DevicesMixin:
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(339, dataArea)
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        parsed = json.loads(raw)
-        return parsed
+        return _parse_mqtt_json(raw, 339)
 
     async def get_network_switches(self):
         """Get aGate network interface enable/disable switches.
@@ -458,6 +532,5 @@ class DevicesMixin:
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(341, dataArea)
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        parsed = json.loads(raw)
-        return parsed
+        return _parse_mqtt_json(raw, 341)
 
