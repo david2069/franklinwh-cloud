@@ -388,6 +388,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         # httpx event hook to capture CloudFront headers from every response
         async def _on_response(response: httpx.Response):
             self.edge_tracker.record_response(response.headers)
+            self.edge_tracker._last_request_url = str(response.url)
+            self.edge_tracker._last_request_method = response.request.method
 
         self.session = httpx.AsyncClient(
             http2=True,

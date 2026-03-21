@@ -129,6 +129,9 @@ async def run(client, method: str, values: list[str] | None = None,
             from franklinwh_cloud.cli_output import print_section, print_kv, c
             print_section("⏱", "Timing")
             print_kv("Method", method)
+            if hasattr(client, 'edge_tracker') and client.edge_tracker and client.edge_tracker._last_request_url:
+                http_method = client.edge_tracker._last_request_method or "?"
+                print_kv("URL", f"{http_method} {client.edge_tracker._last_request_url}")
             print_kv("Duration", f"{elapsed_ms:.0f}ms")
             if hasattr(client, 'edge_tracker') and client.edge_tracker:
                 h = client.edge_tracker._last_response_headers or {}

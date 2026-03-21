@@ -285,6 +285,8 @@ class EdgeTracker:
         self._distribution_ids: set[str] = set()       # unique CF distributions
         self._last_cf_id: str | None = None
         self._last_response_headers: dict | None = None  # last full response headers
+        self._last_request_url: str | None = None          # last request URL
+        self._last_request_method: str | None = None       # last HTTP method
 
     def record_response(self, headers: dict | object) -> None:
         """Extract and record CloudFront info from response headers.
