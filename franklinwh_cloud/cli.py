@@ -206,6 +206,16 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Compare current state against a previous snapshot file")
     sub_support.add_argument("--scope", choices=["all", "network", "software", "power"],
                              default="all", help="Scope for --compare (default: all)")
+    sub_support.add_argument("--nettest", "-t", action="store_true",
+                             help="Run hop-by-hop network connectivity test")
+    sub_support.add_argument("--interval", type=int, default=0, metavar="SECS",
+                             help="Repeat nettest every N seconds (0=single run)")
+    sub_support.add_argument("--duration", type=int, default=0, metavar="SECS",
+                             help="Total duration for interval testing (0=until Ctrl+C)")
+    sub_support.add_argument("--record", metavar="FILE",
+                             help="Save nettest results to JSON file")
+    sub_support.add_argument("--fem-url", metavar="URL",
+                             help="FEM URL for Tier 2 tests (default: auto-discover)")
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
@@ -358,13 +368,20 @@ async def async_main():
 
             case "support" | "snapshot":
                 from franklinwh_cloud.cli_commands import support
-                await support.run(client, json_output=args.json,
-                                  save=args.save,
-                                  redact=getattr(args, 'redact', None),
-                                  label=getattr(args, 'label', None),
-                                  analyze=getattr(args, 'analyze', False),
-                                  compare_file=getattr(args, 'compare_file', None),
-                                  scope=getattr(args, 'scope', 'all'))
+                if getattr(args, 'nettest', False):
+                    await support.run_nettest(client, json_output=args.json,
+                                             interval=getattr(args, 'interval', 0),
+                                             duration=getattr(args, 'duration', 0),
+                                             record_file=getattr(args, 'record', None),
+                                             fem_url=getattr(args, 'fem_url', None))
+                else:
+                    await support.run(client, json_output=args.json,
+                                      save=args.save,
+                                      redact=getattr(args, 'redact', None),
+                                      label=getattr(args, 'label', None),
+                                      analyze=getattr(args, 'analyze', False),
+                                      compare_file=getattr(args, 'compare_file', None),
+                                      scope=getattr(args, 'scope', 'all'))
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
