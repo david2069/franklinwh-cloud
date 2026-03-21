@@ -258,6 +258,36 @@ async def run(client, *, json_output: bool = False):
             phase_color = "cyan" if gateway_info.get("three_phase_flag") else "dim"
             print_kv("Phase Config", c(phase_color, gateway_info.get("phase", "Unknown")))
 
+    # ── 5a. Software Versions ────────────────────────────────────────
+    # Pull app/API version from siteinfo and software version from gateway
+
+    version_info = {}
+    try:
+        site = await client.siteinfo()
+        version_info["api_version"] = site.get("version")
+    except Exception:
+        pass
+
+    # Software version from gateway list (already fetched in section 2)
+    for g in gateways:
+        if g.get("id") == client.gateway:
+            version_info["software_version"] = g.get("softwareVersion", g.get("swVersion"))
+            version_info["protocol_version"] = g.get("protocolVer")
+            break
+
+    results["versions"] = version_info
+
+    if not json_output and version_info:
+        print_section("📱", "Software Versions")
+        if version_info.get("api_version"):
+            print_kv("App/API Version", c("cyan", str(version_info["api_version"])))
+        if version_info.get("software_version"):
+            print_kv("aGate Software", version_info["software_version"])
+        if gateway_info.get("firmware"):
+            print_kv("aGate Firmware", gateway_info["firmware"])
+        if version_info.get("protocol_version"):
+            print_kv("Protocol", version_info["protocol_version"])
+
     # ── 5b. Relay States ─────────────────────────────────────────────
     # Use runtimeData from the composite info call above (section 5)
 
