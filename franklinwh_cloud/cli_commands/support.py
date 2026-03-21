@@ -742,11 +742,16 @@ async def _test_device_data(client) -> dict:
         t0 = time.monotonic()
         res = await client.get_device_composite_info()
         elapsed = (time.monotonic() - t0) * 1000
-        # Count devices returned as a sanity check
-        devices = res.get("result", [])
-        count = len(devices) if isinstance(devices, list) else 0
-        detail = f"{elapsed:.0f}ms — {count} device(s)"
-        return {"hop": "Device Data", "ok": True, "ms": round(elapsed, 1), "detail": detail}
+        result = res.get("result", {})
+        # result is a dict with runtimeData, not a list
+        ok = res.get("success", res.get("code") == 200)
+        detail = f"{elapsed:.0f}ms"
+        if isinstance(result, dict) and result.get("runtimeData"):
+            rd = result["runtimeData"]
+            soc = rd.get("soc")
+            if soc is not None:
+                detail += f" — SoC {soc:.0f}%"
+        return {"hop": "Device Data", "ok": bool(ok), "ms": round(elapsed, 1), "detail": detail}
     except Exception as e:
         return {"hop": "Device Data", "ok": False, "ms": None, "detail": str(e)}
 
@@ -878,10 +883,11 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
         fem = _test_fem(fem_url)
         hops.append(fem)
 
-    # Calculate summary
+    # Calculate summary (FEM is optional — exclude from pass/fail)
+    core_hops = [h for h in hops if h["hop"] != "FEM"]
     total_ms = sum(h.get("ms", 0) or 0 for h in hops)
-    all_ok = all(h["ok"] for h in hops)
-    failures = [h for h in hops if not h["ok"]]
+    all_ok = all(h["ok"] for h in core_hops)
+    failures = [h for h in core_hops if not h["ok"]]
 
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
