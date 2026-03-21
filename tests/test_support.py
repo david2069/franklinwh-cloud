@@ -12,6 +12,8 @@ from franklinwh_cloud.cli_commands.support import (
     sign_snapshot,
     analyze_connectivity,
     compare_snapshots,
+    _collect_keys,
+    compute_schema_fingerprint,
 )
 
 
@@ -228,6 +230,8 @@ class TestAnalyzeConnectivity:
         warnings = [f for f in findings if f["severity"] == "warning" and "stale" in f.get("detail", "")]
         assert len(criticals) == 0
         assert len(warnings) == 1
+
+    def test_interface_disabled_warning(self):
         snapshot = {
             "connectivity": {},
             "network": {},
@@ -238,6 +242,58 @@ class TestAnalyzeConnectivity:
         disabled = [f for f in findings if "DISABLED" in f.get("detail", "")]
         assert len(disabled) == 1
         assert disabled[0]["check"] == "WiFi Switch"
+
+
+# ── Schema fingerprint tests ────────────────────────────────────────
+
+class TestSchemaFingerprint:
+    def test_collect_keys_flat(self):
+        obj = {"a": 1, "b": 2}
+        keys = _collect_keys(obj)
+        assert keys == ["a", "b"]
+
+    def test_collect_keys_nested(self):
+        obj = {"wifi": {"mac": "AA", "ip": "10.0.0.1"}}
+        keys = _collect_keys(obj, "network")
+        assert "network.wifi" in keys
+        assert "network.wifi.ip" in keys
+        assert "network.wifi.mac" in keys
+
+    def test_collect_keys_list(self):
+        obj = {"items": [{"id": 1, "name": "a"}]}
+        keys = _collect_keys(obj)
+        assert "items" in keys
+        assert "items[].id" in keys
+        assert "items[].name" in keys
+
+    def test_fingerprint_deterministic(self):
+        snap = {"versions": {"ibgVersion": "V1"}, "network": {"wifi": {"ip": "10.0.0.1"}}}
+        fp1 = compute_schema_fingerprint(snap)
+        fp2 = compute_schema_fingerprint(snap)
+        assert fp1["fingerprint"] == fp2["fingerprint"]
+        assert fp1["key_count"] == fp2["key_count"]
+
+    def test_fingerprint_changes_on_new_key(self):
+        snap1 = {"versions": {"ibgVersion": "V1"}}
+        snap2 = {"versions": {"ibgVersion": "V1", "newField": "x"}}
+        fp1 = compute_schema_fingerprint(snap1)
+        fp2 = compute_schema_fingerprint(snap2)
+        assert fp1["fingerprint"] != fp2["fingerprint"]
+        assert fp2["key_count"] > fp1["key_count"]
+
+    def test_fingerprint_ignores_values(self):
+        """Same keys, different values = same fingerprint."""
+        snap1 = {"versions": {"ibgVersion": "V1"}}
+        snap2 = {"versions": {"ibgVersion": "V999"}}
+        fp1 = compute_schema_fingerprint(snap1)
+        fp2 = compute_schema_fingerprint(snap2)
+        assert fp1["fingerprint"] == fp2["fingerprint"]
+
+    def test_fingerprint_skips_error_sections(self):
+        snap = {"versions": {"ibgVersion": "V1"}, "network": {"error": "timeout"}}
+        fp = compute_schema_fingerprint(snap)
+        # Should not include network keys since it has an error
+        assert not any("network" in k for k in fp["keys"])
 
 
 # ── Snapshot comparison tests ────────────────────────────────────────
