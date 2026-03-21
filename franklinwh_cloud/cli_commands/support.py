@@ -277,6 +277,8 @@ async def collect_snapshot(client) -> dict:
         "power": {},
         "batteries": {},
         "relays": {},
+        "warranty": {},
+        "tou_status": {},
         "api_health": {},
     }
 
@@ -288,6 +290,11 @@ async def collect_snapshot(client) -> dict:
         from franklinwh_cloud.const import FRANKLINWH_MODELS, COUNTRY_ID
         hw_ver = int(gw.get("sysHdVersion", 0))
         model_info = FRANKLINWH_MODELS.get(hw_ver, {})
+        # Convert epoch ms timestamps to ISO dates
+        active_time = gw.get("activeTime")
+        create_time = gw.get("createTime")
+        install_time = gw.get("installTime")
+
         snapshot["identity"] = {
             "serial": client.gateway,
             "model": model_info.get("model", f"HW v{hw_ver}"),
@@ -296,9 +303,14 @@ async def collect_snapshot(client) -> dict:
             "country": COUNTRY_ID.get(gw.get("countryId", 0), "Unknown"),
             "timezone": gw.get("zoneInfo", "?"),
             "email": gw.get("account", "?"),
+            "status": gw.get("status"),
+            "activeStatus": gw.get("activeStatus"),
             "simCardStatus": gw.get("simCardStatus"),
             "connType": gw.get("connType"),
-            "activeStatus": gw.get("activeStatus"),
+            "activatedDate": datetime.fromtimestamp(active_time / 1000.0).strftime("%Y-%m-%d") if active_time else None,
+            "createdDate": datetime.fromtimestamp(create_time / 1000.0).strftime("%Y-%m-%d") if create_time else None,
+            "installedDate": datetime.fromtimestamp(install_time / 1000.0).strftime("%Y-%m-%d") if install_time else None,
+            "deviceTime": gw.get("deviceTime"),
         }
     except Exception as e:
         snapshot["identity"]["error"] = str(e)
@@ -384,6 +396,47 @@ async def collect_snapshot(client) -> dict:
         }
     except Exception as e:
         snapshot["relays"]["error"] = str(e)
+
+    # ── Warranty ─────────────────────────────────────────────────
+    try:
+        w_res = await client.get_warranty_info()
+        w = w_res.get("result", {})
+        snapshot["warranty"] = {
+            "expirationTime": w.get("expirationTime"),
+            "throughput_kWh": (w.get("throughput", 0) or 0) * 1000,
+            "remainThroughput_kWh": w.get("remainThroughput", 0) or 0,
+        }
+        devices = w.get("deviceExpirationList", [])
+        if devices:
+            snapshot["warranty"]["devices"] = [
+                {"sn": d.get("sn"), "model": d.get("model"), "expires": d.get("expirationTime")}
+                for d in devices
+            ]
+    except Exception as e:
+        snapshot["warranty"]["error"] = str(e)
+
+    # ── TOU / Grid status ────────────────────────────────────────
+    try:
+        tou_res = await client.get_tou_dispatch_detail()
+        tou = tou_res.get("result", {})
+        template = tou.get("template", {})
+        snapshot["tou_status"] = {
+            "ptoDate": tou.get("ptoDate"),
+            "onlineFlag": tou.get("onlineFlag"),
+            "tariffSettingFlag": tou.get("tariffSettingFlag"),
+            "nemType": tou.get("nemType"),
+            "batterySavingsFlag": tou.get("batterySavingsFlag"),
+            "alertMessage": tou.get("alertMessage"),
+            "sendStatus": tou.get("sendStatus"),
+            "batteryRatedCapacity_kWh": tou.get("batteryRatedCapacity"),
+            "apowerCount": tou.get("apowerCount"),
+            "tariffPlan": template.get("name"),
+            "electricCompany": template.get("electricCompany"),
+            "workMode": template.get("workMode"),
+            "lastUpdated": template.get("updateTime"),
+        }
+    except Exception as e:
+        snapshot["tou_status"]["error"] = str(e)
 
     # ── API health ───────────────────────────────────────────────
     metrics = client.get_metrics()
@@ -764,6 +817,15 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             print_kv("Hardware", identity.get("hardware", "?"))
             print_kv("Country", identity.get("country", "?"))
             print_kv("Timezone", identity.get("timezone", "?"))
+            # Lifecycle dates
+            from franklinwh_cloud.const import AGATE_ACTIVE
+            active_st = identity.get("activeStatus")
+            if active_st is not None:
+                print_kv("Status", AGATE_ACTIVE.get(active_st, f"Unknown ({active_st})"))
+            for date_key, date_label in [("activatedDate", "Activated"), ("createdDate", "Created"), ("installedDate", "Installed")]:
+                val = identity.get(date_key)
+                if val:
+                    print_kv(date_label, val)
 
         # Versions
         versions = data.get("versions", {})
@@ -802,8 +864,10 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             # SIM subscription status
             sim = data.get("identity", {}).get("simCardStatus")
             if sim is not None:
-                SIM_STATUS = {0: c("dim", "No SIM"), 1: c("red", "Inactive/Expired"), 2: c("green", "Active")}
-                print_kv("SIM", SIM_STATUS.get(sim, f"Unknown ({sim})"))
+                sim_colors = {0: "dim", 1: "red", 2: "green", 3: "red"}
+                from franklinwh_cloud.const import SIM_STATUS as SIM_MAP_NET
+                sim_text = SIM_MAP_NET.get(sim, f"Unknown ({sim})")
+                print_kv("SIM", c(sim_colors.get(sim, ""), sim_text))
 
         # Connectivity
         conn = data.get("connectivity", {})
@@ -834,6 +898,46 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv(f["check"], c("red", f'🔴 {f["detail"]}'))
             for f in warnings_list:
                 print_kv(f["check"], c("yellow", f'🟡 {f["detail"]}'))
+
+        # Warranty
+        warranty = data.get("warranty", {})
+        if "error" not in warranty and warranty.get("expirationTime"):
+            print_section("📋", "Warranty")
+            print_kv("Expires", warranty.get("expirationTime", "?"))
+            tp = warranty.get("throughput_kWh", 0)
+            rem = warranty.get("remainThroughput_kWh", 0)
+            if tp > 0:
+                used = tp - rem
+                pct = round((used / tp) * 100)
+                print_kv("Throughput", f"{tp:.0f} kWh ({pct}% used)")
+            for dev in warranty.get("devices", []):
+                print_kv(f"  {dev.get('model', '?')}", f"Expires: {dev.get('expires', '?')}")
+
+        # TOU / Grid status
+        tou = data.get("tou_status", {})
+        if "error" not in tou and tou:
+            print_section("🏷️", "TOU / Grid")
+            pto = tou.get("ptoDate")
+            if pto:
+                print_kv("PTO Date", pto)
+            plan = tou.get("tariffPlan")
+            if plan:
+                company = tou.get("electricCompany", "")
+                print_kv("Tariff", f"{plan} ({company})" if company else plan)
+            tariff_set = tou.get("tariffSettingFlag")
+            print_kv("Tariff Configured", c("green", "Yes") if tariff_set else c("red", "No"))
+            online = tou.get("onlineFlag")
+            if online is not None:
+                print_kv("Online", c("green", "Yes") if online else c("red", "No"))
+            alert = tou.get("alertMessage")
+            if alert:
+                print_kv("Alert", c("yellow", str(alert)))
+            send = tou.get("sendStatus")
+            if send:
+                print_kv("Send Status", c("yellow", "Pending"))
+            cap = tou.get("batteryRatedCapacity_kWh")
+            if cap:
+                print_kv("Battery Capacity", f"{cap} kWh ({tou.get('apowerCount', '?')} aPower)")
 
         # Schema fingerprint
         schema = data.get("schema_fingerprint", {})
