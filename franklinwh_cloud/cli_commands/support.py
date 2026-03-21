@@ -869,17 +869,17 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 sim_text = SIM_MAP_NET.get(sim, f"Unknown ({sim})")
                 print_kv("SIM", c(sim_colors.get(sim, ""), sim_text))
 
-        # Connectivity
+        # Connectivity (from FranklinWH mobile app self-test)
         conn = data.get("connectivity", {})
         if "error" not in conn:
-            print_section("🔗", "Connectivity")
+            print_section("🔗", "App Connectivity Test")
             # Detect stale all-zero from sendMqtt cmdType 339
             all_zero = all(conn.get(k, 0) == 0 for k in ("routerStatus", "netStatus", "awsStatus"))
             api_ok = data.get("api_health", {}).get("total_errors", 1) == 0
             if all_zero and api_ok:
                 # API is working — connection status is stale
-                print_kv("Router", c("yellow", "⚠ Reported offline (stale — API reachable)"))
-                print_kv("Internet", c("yellow", "⚠ Reported offline (stale — API reachable)"))
+                print_kv("Router", c("yellow", "⚠ Stale (re-run from FranklinWH mobile app)"))
+                print_kv("Internet", c("yellow", "⚠ Stale (re-run from FranklinWH mobile app)"))
                 print_kv("AWS Cloud", c("green", "● Connected (API responding)"))
             else:
                 for key, label_name in [("routerStatus", "Router"), ("netStatus", "Internet"), ("awsStatus", "AWS Cloud")]:
