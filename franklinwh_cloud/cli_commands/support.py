@@ -296,18 +296,12 @@ async def collect_snapshot(client) -> dict:
             "country": COUNTRY_ID.get(gw.get("countryId", 0), "Unknown"),
             "timezone": gw.get("zoneInfo", "?"),
             "email": gw.get("account", "?"),
+            "simCardStatus": gw.get("simCardStatus"),
+            "connType": gw.get("connType"),
+            "activeStatus": gw.get("activeStatus"),
         }
     except Exception as e:
         snapshot["identity"]["error"] = str(e)
-
-    # ── SIM / 4G subscription (from getDeviceCompositeInfo) ──────
-    try:
-        composite = await client.get_device_composite_info()
-        result = composite.get("result", {})
-        snapshot["identity"]["sim"] = result.get("sim")
-        snapshot["identity"]["connType"] = result.get("connType")
-    except Exception:
-        pass
 
     # ── Versions ─────────────────────────────────────────────────
     try:
@@ -806,10 +800,10 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 rssi_label = f"RSSI: {rssi} dBm" if rssi != "?" else ""
                 print_kv("Cellular", f'{op["mac"]}  {rssi_label}')
             # SIM subscription status
-            sim = data.get("identity", {}).get("sim")
+            sim = data.get("identity", {}).get("simCardStatus")
             if sim is not None:
-                sim_status = c("green", "Active") if sim else c("red", "Inactive/Expired")
-                print_kv("SIM", sim_status)
+                SIM_STATUS = {0: c("dim", "No SIM"), 1: c("red", "Inactive/Expired"), 2: c("green", "Active")}
+                print_kv("SIM", SIM_STATUS.get(sim, f"Unknown ({sim})"))
 
         # Connectivity
         conn = data.get("connectivity", {})
