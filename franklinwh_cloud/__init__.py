@@ -14,7 +14,7 @@ from .exceptions import (
 # Operating Work and Run mode constants
 from .const import RUN_STATUS, OPERATING_MODES, workModeType
 from .const import MODE_MAP, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_EMERGENCY_BACKUP
-# Optional: Power Control Settings and Emeregency Backup periods (HA select action / User Input)
+# Power Control Settings and Emergency Backup periods
 from .const import PCS_CONTROL, EMERGENCY_BACKUP_PERIODS
 # TOU Schedule dispatch codes and wave types (tariffs)
 from .const import dispatchCodeType, DISPATCH_CODES, WaveType, WAVE_TYPES

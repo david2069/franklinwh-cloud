@@ -14,7 +14,7 @@ import time
 import zlib
 from datetime import datetime, timedelta
 import httpx
-import pprint
+
 
 from .api import DEFAULT_URL_BASE
 from .models import Stats, Current, Totals, GridStatus, empty_stats
@@ -28,7 +28,7 @@ from .exceptions import (
 from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
 from franklinwh_cloud.const import MODE_MAP, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_EMERGENCY_BACKUP, tou_json_schema
 
-# Optional: Power Control Settings and Emeregency Backup periods (HA select action / User Input)
+# Power Control Settings and Emergency Backup periods
 from franklinwh_cloud.const import PCS_CONTROL, EMERGENCY_BACKUP_PERIODS
 # TOU Schedule dispatch codes and wave types (tariffs)
 from franklinwh_cloud.const import dispatchCodeType, DISPATCH_CODES, WaveType, WAVE_TYPES, valid_tou_modes
@@ -395,10 +395,6 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             event_hooks={"response": [_on_response]},
         )
 
-        # to enable detailed logging add this to configuration.yaml:
-        # logger:
-        #   logs:
-        #     franklinwh: debug
         logger = logging.getLogger("franklinwh_cloud")
         if logger.isEnabledFor(logging.DEBUG):
 
@@ -438,37 +434,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             )
 
 
-    async def _post2(self, url, payload, params: dict | None = None):
-        if params is not None:
-            params = params.copy()
-            params.update({"gatewayId": self.gateway, "lang": "en_US"})
-
-        async def __post():
-            return (
-                await self.session.post(
-                    url,
-                    params=params,
-                    headers={
-                        "loginToken": self.token,
-                        "Content-Type": "application/json",
-                    },
-                    data=payload,
-                )
-            ).json()
-
-        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
-        return await instrumented_retry(
-            self.metrics, extract_endpoint(url), "POST",
-            __post, lambda j: j["code"] != 401, self.refresh_token,
-            rate_limiter=self.rate_limiter,
-            stale_cache=self.stale_cache,
-        )
-
 
 
     async def _post(self, url, payload, params: dict = None, **kwargs):
 
-        logger.info(f"_post: url={url}\n params = {params}\n payload = {payload}\n kwargs = {kwargs}   \n ")
+        logger.debug(f"_post: url={url} params={params} payload={payload} kwargs={kwargs}")
 
         from urllib.parse import urlparse, parse_qs
 
@@ -504,15 +474,6 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             return base_url, params_dict
 
 
-        """    # Example usage
-            url = "https://example.com/path?name=John&age=30&tags=python&tags=coding"
-            base_url, params = extract_url_params(url)
-
-            print(f"Base URL: {base_url}")
-            print(f"Parameters: {params}")
-        """
-
-
 
 
         headers = {"loginToken": str(self.token)}
@@ -528,20 +489,17 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         gateway_params = {tag: str(self.gateway), "lang": "en_US"}
         suppress_params = kwargs.get("suppress_params") in (True, "Y")
         suppress_gateway = kwargs.get("suppress_gateway") in (True, "Y")
-        logger.info(f"suppress_params = {suppress_params}")
-        logger.info(f"suppress_gateway = {suppress_gateway}")
-        logger.info(f"params = {params}")
-        logger.info(f"gateway_params = {gateway_params}")
+        logger.debug(f"suppress_params={suppress_params} suppress_gateway={suppress_gateway} params={params} gateway_params={gateway_params}")
         if suppress_params is True:
             params = {} if suppress_gateway is False else None
             if suppress_gateway is False:
                 params = gateway_params
-                logger.info(f"suppress both params and gateway")
+                logger.debug("suppress both params and gateway")
 
         if suppress_gateway is False and params is not None:
             params.update(gateway_params)
 
-        logger.info(f"params = {params}")
+        logger.debug(f"params={params}")
 
         async def __post():
             if payload is not None:
@@ -571,52 +529,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             __post, lambda j: j["code"] != 401, self.refresh_token,
         )
 
-    async def _post_form(self, url, payload):
-        async def __post():
-            return (
-                await self.session.post(
-                    url,
-                    headers={
-                        "loginToken": self.token,
-                        "Content-Type": "application/x-www-form-urlencoded",
-                        "optsource": "3",
-                    },
-                    data=payload,
-                )
-            ).json()
 
-        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
-        return await instrumented_retry(
-            self.metrics, extract_endpoint(url), "POST",
-            __post, lambda j: j["code"] != 401, self.refresh_token,
-            rate_limiter=self.rate_limiter,
-            stale_cache=self.stale_cache,
-        )
-
-    async def _get2(self, url, params: dict | None = None):
-        headers = {"loginToken": str(self.token)}
-        if params is None:
-            params = {}
-        else:
-            params = params.copy()
-        params.update({"gatewayId": self.gateway, "lang": "en_US"})
-
-        async def __get():
-            return (
-                await self.session.get(
-                    #url, params=params, headers=headers,
-                    url, params=params, headers={"loginToken": self.token},
-                    timeout=30,
-                )
-            ).json()
-
-        from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
-        return await instrumented_retry(
-            self.metrics, extract_endpoint(url), "GET",
-            __get, lambda j: j["code"] != 401, self.refresh_token,
-            rate_limiter=self.rate_limiter,
-            stale_cache=self.stale_cache,
-        )
 
     async def _get(self, url, params: dict | None = None, **kwargs):
 
@@ -630,8 +543,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 tag = "equipNo"
         suppress_params = kwargs.get("suppress_params") in (True, "Y")
         suppress_gateway = kwargs.get("suppress_gateway") in (True, "Y")
-        logger.info(f"suppress_params = {suppress_params}")
-        logger.info(f"suppress_gateway = {suppress_gateway}")
+        logger.debug(f"suppress_params={suppress_params} suppress_gateway={suppress_gateway}")
         
         if suppress_params:
             params = {}
@@ -639,12 +551,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             if params is None: params = {}
             params.update({tag: self.gateway, "lang": "en_US"})
     
-        logger.info(f"params = {params}")
+        logger.debug(f"params={params}")
 
         async def __get():
             return (
                 await self.session.get(
-                    #url, params=params, headers=headers,
                     url, params=params, headers={"loginToken": self.token},
                     timeout=30,
                 )
@@ -675,14 +586,6 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         """
         return self.metrics.snapshot()
 
-
-
-
-
-
-
-
-
     def next_snno(self):
         """Get the next sequence number for API requests."""
         self.snno += 1
@@ -690,7 +593,6 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
     def _build_payload(self, ty, data):
         blob = json.dumps(data, separators=(",", ":")).encode("utf-8")
-        # crc = to_hex(zlib.crc32(blob.encode("ascii")))
         crc = to_hex(zlib.crc32(blob))
         ts = int(time.time())
 
@@ -726,55 +628,3 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
 
 
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class UnknownMethodsClient(Client):
-    """A client that also implements some methods that don't obviously work, for research purposes."""
-
-    async def get_controllable_loads(self):
-        """Get the list of controllable loads connected to the gateway."""
-        url = (
-            self.url_base
-            + "hes-gateway/terminal/selectTerGatewayControlLoadByGatewayId"
-        )
-        params = {"id": self.gateway, "lang": "en_US"}
-        headers = {"loginToken": self.token}
-        res = await self.session.get(url, params=params, headers=headers)
-        return res.json()
-
-    async def get_accessory_list(self):
-        """Get the list of accessories connected to the gateway."""
-        url = self.url_base + "hes-gateway/terminal/getIotAccessoryList"
-        params = {"gatewayId": self.gateway, "lang": "en_US"}
-        headers = {"loginToken": self.token}
-        res = await self.session.get(url, params=params, headers=headers)
-        return res.json()
-
-    async def get_equipment_list(self):
-        """Get the list of equipment connected to the gateway."""
-        url = self.url_base + "hes-gateway/manage/getEquipmentList"
-        params = {"gatewayId": self.gateway, "lang": "en_US"}
-        headers = {"loginToken": self.token}
-        res = await self.session.get(url, params=params, headers=headers)
-        return res.json()

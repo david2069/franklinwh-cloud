@@ -62,7 +62,7 @@ class StatsMixin:
         offgridreason = runtimedata_v2.get("offgridreason", solarHaveVo.get("offGridReason", 0))
         offGridReason = solarHaveVo.get("offGridReason", runtimedata_v2.get("offgridreason", 0))
         offgridState = 1 if offGridFlag else 0
-        logger.info("get_sta: offGridFlag = {offGridFlag},\n offGridReason = {offGridReason}\noffgridState = {offgridState} ")
+        logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}, offgridState={offgridState}")
         grid_status: GridStatus = GridStatus.NORMAL
         if "offgridreason" in runtimedata_v2 or "offGridReason" in solarHaveVo:
             reason_val = int(offgridreason) if offgridreason is not None else 0

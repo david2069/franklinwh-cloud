@@ -30,7 +30,7 @@ class StormMixin:
         """
         url = self.url_base + "hes-gateway/terminal/weather/getStormList"
         params = {"equipNo": self.gateway, "pageNum": pageNum, "pageSize": pageSize, "lang": "en_US"}
-        logger.info(f"get_storm_list: url={url}, params={params}")
+        logger.debug(f"get_storm_list: url={url}, params={params}")
         data = await self._get(url, params=params)
         return data
 

@@ -38,6 +38,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Monitor CDN line now shows distribution count instead of overwhelming hash list
 - Monitor crash when edge tracker `cache_hit_rate` returns string instead of float (#2)
 - Status command now warns when runtimeData is empty instead of silently showing zeros
+- **Broken logger in `get_stats()`** — missing f-prefix meant offGridFlag/offGridReason variables were never interpolated `DEF-STATS-LOGGER`
+
+### Removed
+- Dead methods `_post2()`, `_get2()`, `_post_form()` — zero callers
+- `UnknownMethodsClient` class — never imported or used
+- Unused `import pprint` in `client.py`
+- HA-specific `configuration.yaml` comment and stale inline comments
+- Commented-out code lines and dead docstring example block
+- 28 consecutive blank lines in `client.py`
+
+### Changed
+- 12 debug-noise `logger.info()` calls → `logger.debug()` in `client.py`, `stats.py`, `storm.py`
+- HA-specific import comments → generic descriptions in `client.py`, `__init__.py`
 
 ---
 
