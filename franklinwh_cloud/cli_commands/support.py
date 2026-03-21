@@ -680,6 +680,386 @@ def compare_snapshots(old: dict, new: dict, scope: str = "all") -> list[dict]:
                     })
 
     return changes
+# ── Network Test ─────────────────────────────────────────────────────
+
+import time
+import urllib.request
+import urllib.error
+
+
+def _test_dns(host: str = "api-fhw.franklinwh.com") -> dict:
+    """Test DNS resolution and measure time."""
+    try:
+        t0 = time.monotonic()
+        results = socket.getaddrinfo(host, 443, socket.AF_INET)
+        elapsed = (time.monotonic() - t0) * 1000
+        ip = results[0][4][0] if results else "?"
+        return {"hop": "DNS", "ok": True, "ms": round(elapsed, 1), "detail": f"{host} → {ip}"}
+    except Exception as e:
+        return {"hop": "DNS", "ok": False, "ms": None, "detail": str(e)}
+
+
+async def _test_api(client) -> dict:
+    """Test cloud API round-trip and get edge POP."""
+    try:
+        t0 = time.monotonic()
+        await client.get_site_info()
+        elapsed = (time.monotonic() - t0) * 1000
+        edge = None
+        if hasattr(client, 'edge_tracker') and client.edge_tracker:
+            snap = client.edge_tracker.snapshot()
+            edge = snap.get("current_pop")
+        detail = f"HTTPS {elapsed:.0f}ms"
+        if edge:
+            detail += f" → {edge} (CloudFront)"
+        return {"hop": "Cloud API", "ok": True, "ms": round(elapsed, 1), "detail": detail}
+    except Exception as e:
+        return {"hop": "Cloud API", "ok": False, "ms": None, "detail": str(e)}
+
+
+async def _test_mqtt_rtt(client) -> dict:
+    """Test MQTT round-trip to aGate via sendMqtt (cmdType 339)."""
+    try:
+        t0 = time.monotonic()
+        result = await client.get_connection_status()
+        elapsed = (time.monotonic() - t0) * 1000
+        r = result.get("result", {})
+        router = r.get("routerStatus", 0)
+        net = r.get("netStatus", 0)
+        aws = r.get("awsStatus", 0)
+        detail = f"RTT {elapsed:.0f}ms — router={router} net={net} aws={aws}"
+        return {"hop": "MQTT→aGate", "ok": True, "ms": round(elapsed, 1), "detail": detail}
+    except Exception as e:
+        return {"hop": "MQTT→aGate", "ok": False, "ms": None, "detail": str(e)}
+
+
+async def _test_tou(client) -> dict:
+    """Test TOU dispatch detail — proves full functional path."""
+    try:
+        t0 = time.monotonic()
+        res = await client.get_tou_dispatch_detail()
+        elapsed = (time.monotonic() - t0) * 1000
+        tou = res.get("result", {})
+        online = tou.get("onlineFlag")
+        send = tou.get("sendStatus")
+        alert = tou.get("alertMessage")
+        parts = [f"{elapsed:.0f}ms"]
+        if online is not None:
+            parts.append(f"online={'Yes' if online else 'No'}")
+        if send:
+            parts.append(f"sendPending")
+        if alert:
+            parts.append(f"alert={alert}")
+        return {"hop": "TOU Schedule", "ok": True, "ms": round(elapsed, 1), "detail": " — ".join(parts)}
+    except Exception as e:
+        return {"hop": "TOU Schedule", "ok": False, "ms": None, "detail": str(e)}
+
+
+def _test_fem(fem_url: str) -> dict:
+    """Test FEM health via /api/identity and /api/diagnostics/connectivity."""
+    results = {"hop": "FEM", "ok": False, "detail": "not found", "sub_tests": {}}
+
+    # Try identity
+    try:
+        req = urllib.request.Request(f"{fem_url}/api/identity", method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            identity = json.loads(resp.read())
+        results["ok"] = True
+        results["detail"] = f"v{identity.get('version', '?')} — {identity.get('provider', '?')}"
+        results["fem_version"] = identity.get("version")
+        results["provider"] = identity.get("provider")
+        results["uptime"] = identity.get("uptime_seconds")
+    except Exception:
+        return results
+
+    # Try diagnostics
+    try:
+        req = urllib.request.Request(f"{fem_url}/api/diagnostics/connectivity", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            diag = json.loads(resp.read())
+        tests = diag.get("tests", diag)
+        if isinstance(tests, dict):
+            for test_name, test_data in tests.items():
+                if isinstance(test_data, dict):
+                    results["sub_tests"][test_name] = {
+                        "ok": test_data.get("ok", test_data.get("status") == "ok"),
+                        "detail": test_data.get("detail", test_data.get("message", "")),
+                        "ms": test_data.get("latency_ms"),
+                    }
+    except Exception:
+        pass
+
+    return results
+
+
+async def _collect_nettest_config(client) -> dict:
+    """Gather current network configuration for the test header."""
+    config = {}
+    try:
+        net = await client.get_network_info()
+        r = net.get("result", {}).get("dataArea", {})
+        if isinstance(r, str):
+            r = json.loads(r)
+        config["connType"] = r.get("currentNetType", 0)
+        config["connTypeName"] = NET_TYPES.get(config["connType"], f"Type {config['connType']}")
+
+        wifi = r.get("wifi", {})
+        if wifi.get("ip") and wifi["ip"] != "0.0.0.0":
+            config["primary"] = f"WiFi (DHCP)  IP: {wifi['ip']}"
+        eth0 = r.get("eth0", {})
+        if eth0.get("ip") and eth0["ip"] != "0.0.0.0":
+            config["primary"] = f"Ethernet (IP: {eth0['ip']})"
+
+        op = r.get("operator", {})
+        if op.get("mac"):
+            config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')} dBm"
+    except Exception:
+        pass
+
+    try:
+        sw = await client.get_network_switches()
+        sw_r = sw.get("result", {}).get("dataArea", {})
+        if isinstance(sw_r, str):
+            sw_r = json.loads(sw_r)
+        config["sim_active"] = sw_r.get("4GNetSwitch", 0) == 1
+    except Exception:
+        pass
+
+    return config
+
+
+async def run_nettest(client, *, json_output: bool = False,
+                      interval: int = 0, duration: int = 0,
+                      record_file: str | None = None,
+                      fem_url: str | None = None):
+    """Run network connectivity test."""
+
+    # FEM auto-discovery
+    fem_urls_to_try = []
+    if fem_url:
+        fem_urls_to_try = [fem_url]
+    else:
+        fem_urls_to_try = ["http://localhost:9090", "http://homeassistant.local:9090"]
+
+    discovered_fem = None
+    for url in fem_urls_to_try:
+        try:
+            req = urllib.request.Request(f"{url}/api/health", method="GET")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if resp.status == 200:
+                    discovered_fem = url
+                    break
+        except Exception:
+            continue
+
+    # Collect network config
+    net_config = await _collect_nettest_config(client)
+
+    if interval > 0:
+        await _run_nettest_interval(client, net_config, discovered_fem,
+                                    interval=interval, duration=duration,
+                                    record_file=record_file, json_output=json_output)
+    else:
+        await _run_nettest_single(client, net_config, discovered_fem,
+                                  record_file=record_file, json_output=json_output)
+
+
+async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
+                              record_file: str | None = None,
+                              json_output: bool = False):
+    """Single network test run."""
+    import asyncio
+
+    # Run tier 1 tests
+    dns = _test_dns()
+    api = await _test_api(client)
+    mqtt = await _test_mqtt_rtt(client)
+    tou = await _test_tou(client)
+
+    hops = [dns, api, mqtt, tou]
+
+    # Run tier 2 if FEM available
+    fem = None
+    if fem_url:
+        fem = _test_fem(fem_url)
+        hops.append(fem)
+
+    # Calculate summary
+    total_ms = sum(h.get("ms", 0) or 0 for h in hops)
+    all_ok = all(h["ok"] for h in hops)
+    failures = [h for h in hops if not h["ok"]]
+
+    result = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "network_config": net_config,
+        "fem_detected": fem_url,
+        "hops": hops,
+        "total_ms": round(total_ms, 1),
+        "all_ok": all_ok,
+    }
+    if fem and fem.get("sub_tests"):
+        result["fem_diagnostics"] = fem["sub_tests"]
+
+    if json_output:
+        print_json_output(result)
+    else:
+        print_header("FranklinWH Network Test")
+        _display_nettest_config(net_config)
+        _display_nettest_hops(hops, fem)
+        _display_nettest_summary(total_ms, all_ok, failures)
+
+    if record_file:
+        with open(record_file, "w") as f:
+            json.dump(result, f, indent=2, default=str)
+        if not json_output:
+            print_success(f"Results saved to {record_file}")
+            print()
+
+
+async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
+                                interval: int, duration: int,
+                                record_file: str | None = None,
+                                json_output: bool = False):
+    """Run network test at intervals."""
+    import asyncio
+
+    samples = []
+    start_time = datetime.now(timezone.utc)
+    elapsed = 0
+
+    if not json_output:
+        print_header(f"FranklinWH Network Monitor — {interval}s intervals")
+        _display_nettest_config(net_config)
+        print()
+        # Table header
+        fem_cols = "  FEM   " if fem_url else ""
+        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'MQTT':>8}{'TOU':>8}{fem_cols}  STATUS")
+        print(f"  {'─'*9} {'─'*5} {'─'*7} {'─'*7} {'─'*7} {'─' * (6 if fem_url else 0)} {'─'*12}")
+
+    try:
+        while duration == 0 or elapsed < duration:
+            now = datetime.now()
+            dns = _test_dns()
+            api = await _test_api(client)
+            mqtt = await _test_mqtt_rtt(client)
+            tou = await _test_tou(client)
+
+            sample = {
+                "time": now.strftime("%H:%M:%S"),
+                "dns_ms": dns.get("ms"),
+                "api_ms": api.get("ms"),
+                "mqtt_ms": mqtt.get("ms"),
+                "tou_ms": tou.get("ms"),
+                "ok": all(h["ok"] for h in [dns, api, mqtt, tou]),
+            }
+
+            fem_status = ""
+            if fem_url:
+                fem = _test_fem(fem_url)
+                sample["fem_ok"] = fem["ok"]
+                fem_status = f"  {'✓' if fem['ok'] else '✗':>5} "
+
+            samples.append(sample)
+
+            if not json_output:
+                dns_str = f"{dns['ms']:.0f}ms" if dns["ok"] else "✗"
+                api_str = f"{api['ms']:.0f}ms" if api["ok"] else "✗"
+                mqtt_str = f"{mqtt['ms']:.0f}ms" if mqtt["ok"] else "✗"
+                tou_str = f"{tou['ms']:.0f}ms" if tou["ok"] else "✗"
+                status = c("green", "✓ All OK") if sample["ok"] else c("red", "⚠ FAIL")
+                print(f"  {sample['time']:<10}{dns_str:>6}{api_str:>8}{mqtt_str:>8}{tou_str:>8}{fem_status}  {status}")
+
+            if duration > 0 and elapsed + interval >= duration:
+                break
+            await asyncio.sleep(interval)
+            elapsed += interval
+    except KeyboardInterrupt:
+        if not json_output:
+            print(f"\n  {c('dim', 'Stopped by user')}")
+
+    # Summary
+    if not json_output:
+        print()
+        total = len(samples)
+        fails = sum(1 for s in samples if not s["ok"])
+        avg_api = sum(s.get("api_ms", 0) or 0 for s in samples) / max(total, 1)
+        print_kv("Samples", f"{total} ({fails} failures)")
+        print_kv("Avg API latency", f"{avg_api:.0f}ms")
+        print()
+
+    if record_file:
+        output = {
+            "start": start_time.isoformat(),
+            "interval_s": interval,
+            "duration_s": duration,
+            "network_config": net_config,
+            "fem_detected": fem_url,
+            "samples": samples,
+            "summary": {
+                "total_samples": len(samples),
+                "failures": sum(1 for s in samples if not s["ok"]),
+                "avg_api_ms": round(sum(s.get("api_ms", 0) or 0 for s in samples) / max(len(samples), 1), 1),
+            },
+        }
+        with open(record_file, "w") as f:
+            json.dump(output, f, indent=2, default=str)
+        if not json_output:
+            print_success(f"Results saved to {record_file}")
+            print()
+
+    if json_output:
+        print_json_output({
+            "start": start_time.isoformat(),
+            "samples": samples,
+            "total": len(samples),
+            "failures": sum(1 for s in samples if not s["ok"]),
+        })
+
+
+def _display_nettest_config(net_config: dict):
+    """Display network configuration header."""
+    print_section("🔌", "Active Configuration")
+    primary = net_config.get("primary", "Unknown")
+    print_kv("Primary", primary)
+    backup = net_config.get("backup")
+    if backup:
+        sim = "SIM: Active" if net_config.get("sim_active") else ""
+        print_kv("Backup", f"{backup}  {sim}")
+    conn_name = net_config.get("connTypeName", "?")
+    print_kv("connType", f"{net_config.get('connType', '?')} ({conn_name})")
+
+
+def _display_nettest_hops(hops: list, fem: dict | None = None):
+    """Display hop-by-hop results."""
+    print_section("🏓", "Cloud Path")
+    for i, hop in enumerate(hops):
+        if hop["hop"] == "FEM":
+            continue  # Display separately
+        icon = c("green", "✓") if hop["ok"] else c("red", "✗")
+        ms_str = f"{hop['ms']:.0f}ms" if hop.get("ms") else "—"
+        print_kv(f"  {i+1}. {hop['hop']}", f"{icon}  {ms_str:<8} {hop.get('detail', '')}")
+
+    if fem and fem["ok"]:
+        print_section("🏠", f"FEM ({fem.get('detail', '')})")
+        for name, test in fem.get("sub_tests", {}).items():
+            icon = c("green", "✓") if test.get("ok") else c("red", "✗")
+            ms_str = f"{test.get('ms', 0):.0f}ms" if test.get("ms") else ""
+            detail = test.get("detail", "")
+            print_kv(f"  {name}", f"{icon}  {ms_str:<8} {detail}")
+    elif fem and not fem["ok"]:
+        print_section("🏠", "FEM")
+        print_kv("  Status", c("dim", "Not detected"))
+
+
+def _display_nettest_summary(total_ms: float, all_ok: bool, failures: list):
+    """Display test summary."""
+    print_section("📊", "Summary")
+    if all_ok:
+        print_kv("End-to-end", c("green", f"✓ All hops passed ({total_ms:.0f}ms total)"))
+    else:
+        fail_names = ", ".join(f["hop"] for f in failures)
+        print_kv("End-to-end", c("red", f"✗ Failed: {fail_names} ({total_ms:.0f}ms total)"))
+    print()
 
 
 # ── CLI entry point ──────────────────────────────────────────────────
