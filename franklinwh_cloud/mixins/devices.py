@@ -374,13 +374,18 @@ class DevicesMixin:
         parsed = _parse_mqtt_json(raw, 317)
 
         # Extract the commSetPara from the nested result — with type safety
-        # The MQTT response structure can vary; guard against non-dict values
+        # MQTT response variants seen in the wild:
+        #   {"result": {"commSetPara": {...}}}    — commSetPara nested under result dict
+        #   {"result": 0, "commSetPara": {...}}   — result is int (success code), commSetPara at top level
         result = parsed.get("result") if isinstance(parsed, dict) else parsed
         if isinstance(result, dict):
-            comm = result.get("commSetPara", parsed)
-            if not isinstance(comm, dict):
-                comm = parsed  # fallback to top-level
+            comm = result.get("commSetPara", result)
+        elif isinstance(parsed, dict):
+            # result is an int/scalar — look for commSetPara at top level
+            comm = parsed.get("commSetPara", parsed)
         else:
+            comm = {}
+        if not isinstance(comm, dict):
             comm = parsed if isinstance(parsed, dict) else {}
 
         return {
