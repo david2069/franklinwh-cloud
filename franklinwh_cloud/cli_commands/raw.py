@@ -69,7 +69,8 @@ def print_available():
 
 
 async def run(client, method: str, values: list[str] | None = None,
-              *, json_output: bool = False):
+              *, json_output: bool = False,
+              show_headers: bool = False, show_timings: bool = False):
     """Execute a raw API method call."""
 
     if method in ("help", "list", "?"):
@@ -92,8 +93,10 @@ async def run(client, method: str, values: list[str] | None = None,
             print(f"  Description: {info['desc']}")
         return
 
-    # Call the method
+    # Call the method (with timing)
+    import time
     func = getattr(client, method)
+    t0 = time.monotonic()
     try:
         if args:
             result = await func(*args)
@@ -102,11 +105,61 @@ async def run(client, method: str, values: list[str] | None = None,
     except Exception as e:
         print_error(f"{method} failed: {e}")
         return
+    elapsed_ms = (time.monotonic() - t0) * 1000
 
     # Output
     if json_output:
-        print_json_output(result)
+        output = result
+        if show_timings or show_headers:
+            # Wrap result with metadata
+            output = {"_result": result}
+            if show_timings:
+                output["_timing"] = {"elapsed_ms": round(elapsed_ms, 1)}
+                if hasattr(client, 'edge_tracker') and client.edge_tracker:
+                    et = client.edge_tracker
+                    if et._last_response_headers:
+                        output["_timing"]["edge_pop"] = et._last_response_headers.get("x-amz-cf-pop")
+                        output["_timing"]["cache"] = et._last_response_headers.get("x-cache")
+            if show_headers and hasattr(client, 'edge_tracker') and client.edge_tracker:
+                output["_headers"] = client.edge_tracker._last_response_headers
+        print_json_output(output)
     else:
+        # Timings banner
+        if show_timings:
+            from franklinwh_cloud.cli_output import print_section, print_kv, c
+            print_section("⏱", "Timing")
+            print_kv("Method", method)
+            print_kv("Duration", f"{elapsed_ms:.0f}ms")
+            if hasattr(client, 'edge_tracker') and client.edge_tracker:
+                h = client.edge_tracker._last_response_headers or {}
+                pop = h.get("x-amz-cf-pop")
+                cache = h.get("x-cache")
+                if pop:
+                    print_kv("CloudFront", f"{pop}  {cache or ''}")
+                via = h.get("via")
+                if via:
+                    print_kv("Via", via)
+                age = h.get("age")
+                if age:
+                    print_kv("Cache age", f"{age}s")
+            print()
+
+        # Response headers
+        if show_headers:
+            from franklinwh_cloud.cli_output import print_section, c
+            print_section("📨", "Response Headers")
+            headers = {}
+            if hasattr(client, 'edge_tracker') and client.edge_tracker:
+                headers = client.edge_tracker._last_response_headers or {}
+            if headers:
+                max_key = max(len(k) for k in headers) if headers else 0
+                for key, val in headers.items():
+                    print(f"  {key:<{max_key + 2}} {val}")
+            else:
+                print("  (no headers captured — MQTT-based methods don't have HTTP headers)")
+            print()
+
+        # Result
         if isinstance(result, dict):
             pprint.pprint(result, indent=4, width=120, sort_dicts=False)
         else:
