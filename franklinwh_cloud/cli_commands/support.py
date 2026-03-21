@@ -687,7 +687,7 @@ import urllib.request
 import urllib.error
 
 
-def _test_dns(host: str = "api-fhw.franklinwh.com") -> dict:
+def _test_dns(host: str = "energy.franklinwh.com") -> dict:
     """Test DNS resolution and measure time."""
     try:
         t0 = time.monotonic()
@@ -703,7 +703,7 @@ async def _test_api(client) -> dict:
     """Test cloud API round-trip and get edge POP."""
     try:
         t0 = time.monotonic()
-        await client.get_site_info()
+        await client.get_home_gateway_list()
         elapsed = (time.monotonic() - t0) * 1000
         edge = None
         if hasattr(client, 'edge_tracker') and client.edge_tracker:
@@ -721,12 +721,15 @@ async def _test_mqtt_rtt(client) -> dict:
     """Test MQTT round-trip to aGate via sendMqtt (cmdType 339)."""
     try:
         t0 = time.monotonic()
-        result = await client.get_connection_status()
+        r = await client.get_connection_status()
         elapsed = (time.monotonic() - t0) * 1000
-        r = result.get("result", {})
-        router = r.get("routerStatus", 0)
-        net = r.get("netStatus", 0)
-        aws = r.get("awsStatus", 0)
+        # get_connection_status returns flat dict: {routerStatus, netStatus, awsStatus}
+        if isinstance(r, dict):
+            router = r.get("routerStatus", 0)
+            net = r.get("netStatus", 0)
+            aws = r.get("awsStatus", 0)
+        else:
+            router = net = aws = "?"
         detail = f"RTT {elapsed:.0f}ms — router={router} net={net} aws={aws}"
         return {"hop": "MQTT→aGate", "ok": True, "ms": round(elapsed, 1), "detail": detail}
     except Exception as e:
