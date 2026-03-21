@@ -717,8 +717,8 @@ async def _test_api(client) -> dict:
         return {"hop": "Cloud API", "ok": False, "ms": None, "detail": str(e)}
 
 
-async def _test_mqtt_rtt(client) -> dict:
-    """Test MQTT round-trip to aGate via sendMqtt (cmdType 339)."""
+async def _test_agate_rtt(client) -> dict:
+    """Test round-trip to aGate via sendMqtt (cmdType 339)."""
     try:
         t0 = time.monotonic()
         r = await client.get_connection_status()
@@ -731,9 +731,9 @@ async def _test_mqtt_rtt(client) -> dict:
         else:
             router = net = aws = "?"
         detail = f"RTT {elapsed:.0f}ms — router={router} net={net} aws={aws}"
-        return {"hop": "MQTT→aGate", "ok": True, "ms": round(elapsed, 1), "detail": detail}
+        return {"hop": "aGate RTT", "ok": True, "ms": round(elapsed, 1), "detail": detail}
     except Exception as e:
-        return {"hop": "MQTT→aGate", "ok": False, "ms": None, "detail": str(e)}
+        return {"hop": "aGate RTT", "ok": False, "ms": None, "detail": str(e)}
 
 
 async def _test_tou(client) -> dict:
@@ -874,7 +874,7 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
     # Run tier 1 tests
     dns = _test_dns()
     api = await _test_api(client)
-    mqtt = await _test_mqtt_rtt(client)
+    mqtt = await _test_agate_rtt(client)
     tou = await _test_tou(client)
 
     hops = [dns, api, mqtt, tou]
@@ -942,7 +942,7 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
             now = datetime.now()
             dns = _test_dns()
             api = await _test_api(client)
-            mqtt = await _test_mqtt_rtt(client)
+            mqtt = await _test_agate_rtt(client)
             tou = await _test_tou(client)
 
             sample = {
