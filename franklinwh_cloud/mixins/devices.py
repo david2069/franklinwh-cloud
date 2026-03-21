@@ -121,44 +121,42 @@ class DevicesMixin:
         In the mobile app, the second response is sometimes not received
         (known issue).
 
-        Both requests are sent concurrently. If both respond, we log the
-        delta between them (key differences) and return the richer payload.
-        If only one responds, we return that one.
+        Requests MUST be sequential — concurrent asyncio.gather causes both
+        to fail (the MQTT layer cannot multiplex simultaneous requests).
+
+        If both respond, we log the delta between them and return the richer
+        payload. If only one responds, we return that one.
 
         Parameters
         ----------
         apower_serial_no : str
             Serial number of the aPower battery.
         """
-        payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
-        payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
-        wire2 = self._build_payload(211, payload2)
-        wire3 = self._build_payload(211, payload3)
+        logger.info(f"get_bms_info: sending type 2 then type 3 for aPower {apower_serial_no}")
 
-        logger.info(f"get_bms_info: sending type 2 + type 3 concurrently for aPower {apower_serial_no}")
+        # Type 2 — send first (must be sequential, not concurrent)
+        data2 = None
+        try:
+            payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
+            wire2 = self._build_payload(211, payload2)
+            raw2 = (await self._mqtt_send(wire2))["result"]["dataArea"]
+            if raw2:
+                data2 = json.loads(raw2)
+                logger.debug(f"get_bms_info: type2 raw payload: {raw2}")
+        except Exception as e:
+            logger.warning(f"get_bms_info: type2 failed: {e}")
 
-        # Send both concurrently — don't wait for type 2 before starting type 3
-        results = await asyncio.gather(
-            self._mqtt_send(wire2),
-            self._mqtt_send(wire3),
-            return_exceptions=True,
-        )
-
-        # Extract dataArea from each (may be None or an exception)
-        parsed = [None, None]
-        for i, (label, res) in enumerate(zip(["type2", "type3"], results)):
-            if isinstance(res, Exception):
-                logger.warning(f"get_bms_info: {label} failed: {res}")
-            else:
-                try:
-                    raw = res["result"]["dataArea"]
-                    if raw:
-                        parsed[i] = json.loads(raw)
-                        logger.debug(f"get_bms_info: {label} raw payload: {raw}")
-                except (KeyError, json.JSONDecodeError) as e:
-                    logger.warning(f"get_bms_info: {label} parse error: {e}")
-
-        data2, data3 = parsed
+        # Type 3 — send second
+        data3 = None
+        try:
+            payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
+            wire3 = self._build_payload(211, payload3)
+            raw3 = (await self._mqtt_send(wire3))["result"]["dataArea"]
+            if raw3:
+                data3 = json.loads(raw3)
+                logger.debug(f"get_bms_info: type3 raw payload: {raw3}")
+        except Exception as e:
+            logger.warning(f"get_bms_info: type3 failed: {e}")
 
         # Log response status
         got2 = data2 is not None
