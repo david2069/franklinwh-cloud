@@ -737,7 +737,10 @@ async def _test_agate_rtt(client) -> dict:
 
 
 async def _test_device_data(client) -> dict:
-    """Test device data retrieval — proves full API data path."""
+    """Test device data retrieval — proves full API data path.
+
+    Returns hop dict with extra 'apower_serial' key for BMS chaining.
+    """
     try:
         t0 = time.monotonic()
         res = await client.get_device_composite_info()
@@ -746,14 +749,46 @@ async def _test_device_data(client) -> dict:
         # result is a dict with runtimeData, not a list
         ok = res.get("success", res.get("code") == 200)
         detail = f"{elapsed:.0f}ms"
+        apower_serial = None
         if isinstance(result, dict) and result.get("runtimeData"):
             rd = result["runtimeData"]
             soc = rd.get("soc")
             if soc is not None:
                 detail += f" — SoC {soc:.0f}%"
-        return {"hop": "Device Data", "ok": bool(ok), "ms": round(elapsed, 1), "detail": detail}
+            fhp_sns = rd.get("fhpSn", [])
+            if fhp_sns and isinstance(fhp_sns, list) and fhp_sns[0]:
+                apower_serial = fhp_sns[0]
+        hop = {"hop": "Device Data", "ok": bool(ok), "ms": round(elapsed, 1), "detail": detail}
+        hop["_apower_serial"] = apower_serial  # internal, for BMS chaining
+        return hop
     except Exception as e:
-        return {"hop": "Device Data", "ok": False, "ms": None, "detail": str(e)}
+        hop = {"hop": "Device Data", "ok": False, "ms": None, "detail": str(e)}
+        hop["_apower_serial"] = None
+        return hop
+
+
+async def _test_bms(client, apower_serial: str) -> dict:
+    """Test BMS battery data — dual sendMqtt (cmdType 211 type 2 + type 3).
+
+    This emulates the mobile app pattern where two requests are sent
+    and sometimes one response is lost.
+    """
+    try:
+        t0 = time.monotonic()
+        bms = await client.get_bms_info(apower_serial)
+        elapsed = (time.monotonic() - t0) * 1000
+        # Extract key BMS fields as sanity check
+        detail = f"{elapsed:.0f}ms"
+        if isinstance(bms, dict):
+            voltage = bms.get("totalVol")
+            temp = bms.get("cellAvgTemp")
+            if voltage is not None:
+                detail += f" — {voltage}V"
+            if temp is not None:
+                detail += f" {temp}°C"
+        return {"hop": "BMS", "ok": True, "ms": round(elapsed, 1), "detail": detail}
+    except Exception as e:
+        return {"hop": "BMS", "ok": False, "ms": None, "detail": str(e)}
 
 
 def _test_fem(fem_url: str) -> dict:
@@ -873,9 +908,15 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
     dns = _test_dns()
     api = await _test_api(client)
     mqtt = await _test_agate_rtt(client)
-    tou = await _test_device_data(client)
+    device = await _test_device_data(client)
 
-    hops = [dns, api, mqtt, tou]
+    hops = [dns, api, mqtt, device]
+
+    # BMS test — chains off device data to get aPower serial
+    apower_serial = device.get("_apower_serial")
+    if apower_serial:
+        bms = await _test_bms(client, apower_serial)
+        hops.append(bms)
 
     # Run tier 2 if FEM available
     fem = None
@@ -942,8 +983,8 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
         print()
         # Table header
         fem_cols = "  FEM   " if fem_url else ""
-        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'aGate':>8}{'Data':>8}{fem_cols}  STATUS")
-        print(f"  {'─'*9} {'─'*5} {'─'*7} {'─'*7} {'─'*7} {'─' * (6 if fem_url else 0)} {'─'*12}")
+        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'aGate':>8}{'Data':>8}{'BMS':>8}{fem_cols}  STATUS")
+        print(f"  {'─'*9} {'─'*5} {'─'*7} {'─'*7} {'─'*7} {'─'*7} {'─' * (6 if fem_url else 0)} {'─'*12}")
 
     try:
         while duration == 0 or elapsed < duration:
@@ -951,15 +992,26 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
             dns = _test_dns()
             api = await _test_api(client)
             mqtt = await _test_agate_rtt(client)
-            tou = await _test_device_data(client)
+            device = await _test_device_data(client)
+
+            # BMS chains off device data
+            bms = None
+            apower_serial = device.get("_apower_serial")
+            if apower_serial:
+                bms = await _test_bms(client, apower_serial)
+
+            core = [dns, api, mqtt, device]
+            if bms:
+                core.append(bms)
 
             sample = {
                 "time": now.strftime("%H:%M:%S"),
                 "dns_ms": dns.get("ms"),
                 "api_ms": api.get("ms"),
                 "mqtt_ms": mqtt.get("ms"),
-                "tou_ms": tou.get("ms"),
-                "ok": all(h["ok"] for h in [dns, api, mqtt, tou]),
+                "data_ms": device.get("ms"),
+                "bms_ms": bms.get("ms") if bms else None,
+                "ok": all(h["ok"] for h in core),
             }
 
             fem_status = ""
@@ -974,9 +1026,10 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
                 dns_str = f"{dns['ms']:.0f}ms" if dns["ok"] else "✗"
                 api_str = f"{api['ms']:.0f}ms" if api["ok"] else "✗"
                 mqtt_str = f"{mqtt['ms']:.0f}ms" if mqtt["ok"] else "✗"
-                tou_str = f"{tou['ms']:.0f}ms" if tou["ok"] else "✗"
+                data_str = f"{device['ms']:.0f}ms" if device["ok"] else "✗"
+                bms_str = f"{bms['ms']:.0f}ms" if bms and bms["ok"] else ("✗" if bms else "—")
                 status = c("green", "✓ All OK") if sample["ok"] else c("red", "⚠ FAIL")
-                print(f"  {sample['time']:<10}{dns_str:>6}{api_str:>8}{mqtt_str:>8}{tou_str:>8}{fem_status}  {status}")
+                print(f"  {sample['time']:<10}{dns_str:>6}{api_str:>8}{mqtt_str:>8}{data_str:>8}{bms_str:>8}{fem_status}  {status}")
 
             if duration > 0 and elapsed + interval >= duration:
                 break
