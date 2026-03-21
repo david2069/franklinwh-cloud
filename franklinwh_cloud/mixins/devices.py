@@ -115,6 +115,13 @@ class DevicesMixin:
     async def get_bms_info(self, apower_serial_no):
         """Get the Battery Management Info of a specified aPower battery.
 
+        Reverse-engineered from the FranklinWH mobile app. The app sends
+        two sendMqtt requests (cmdType 211 with type 2 and type 3). The
+        purpose of each type is unknown — both appear to return BMS data.
+        In the mobile app, the second response is sometimes not received
+        (known issue). We return whichever response we get first (type 2
+        preferred).
+
         Parameters
         ----------
         apower_serial_no : str
