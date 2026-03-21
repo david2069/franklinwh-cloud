@@ -43,6 +43,33 @@ MOCK_NETWORK_INFO_RAW = json.dumps({
     }
 })
 
+# Variant: result is int (success code), commSetPara at top level — seen in live aGate responses
+MOCK_NETWORK_INFO_INT_RESULT_RAW = json.dumps({
+    "result": 0,
+    "commSetPara": {
+        "currentNetType": 1,
+        "wifiMAC": "AA:BB:CC:DD:EE:01",
+        "wifiDHCP": 1,
+        "wifiStaticIP": "192.168.1.50",
+        "wifiDNS": "1.1.1.1",
+        "wifiGateWay": "192.168.1.1",
+        "eth0MAC": "",
+        "eth0DHCP": 0,
+        "eth0StaticIP": "",
+        "eth0DNS": "",
+        "eth0GateWay": "",
+        "eth1MAC": "",
+        "eth1DHCP": 0,
+        "eth1StaticIP": "",
+        "eth1DNS": "",
+        "eth1GateWay": "",
+        "operatorMAC": "",
+        "operatorDNS": "",
+        "operatorRSSI": 0,
+        "awsStatus": 1,
+    }
+})
+
 MOCK_WIFI_CONFIG_RAW = json.dumps({
     "wifi_SSID": "do_not_trespass",
     "wifi_Pw": "secret123",
@@ -155,6 +182,18 @@ class TestGetNetworkInfo:
 
         with pytest.raises(DeviceTimeoutException, match="cmdType 317"):
             await client.get_network_info()
+
+    @pytest.mark.asyncio
+    async def test_int_result_with_top_level_commSetPara(self):
+        """Should handle live response where result is 0 (int) and commSetPara is at top level."""
+        client = _make_mock_client(MOCK_NETWORK_INFO_INT_RESULT_RAW)
+        _bind_method(client, "get_network_info")
+        result = await client.get_network_info()
+
+        assert result["wifi"]["mac"] == "AA:BB:CC:DD:EE:01"
+        assert result["wifi"]["ip"] == "192.168.1.50"
+        assert result["currentNetType"] == 1
+        assert result["awsStatus"] == 1
 
 
 # ── get_wifi_config tests ────────────────────────────────────────────
