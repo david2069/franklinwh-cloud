@@ -782,12 +782,15 @@ async def _test_bms(client, apower_serial: str) -> dict:
         # Extract key BMS fields as sanity check
         detail = f"{elapsed:.0f}ms"
         if isinstance(bms, dict):
-            voltage = bms.get("totalVol")
-            temp = bms.get("cellAvgTemp")
+            voltage = bms.get("batTotalVolt")
+            temp = bms.get("devTemp")
+            soc = bms.get("batSoc")
             if voltage is not None:
                 detail += f" — {voltage}V"
             if temp is not None:
                 detail += f" {temp}°C"
+            if soc is not None:
+                detail += f" SoC {soc}%"
         return {"hop": "BMS", "ok": True, "ms": round(elapsed, 1), "detail": detail}
     except Exception as e:
         return {"hop": "BMS", "ok": False, "ms": None, "detail": str(e)}
