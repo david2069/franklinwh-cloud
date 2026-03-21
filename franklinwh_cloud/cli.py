@@ -191,6 +191,22 @@ def build_parser() -> argparse.ArgumentParser:
     subs.add_parser("bms", aliases=["battery"],
                     help="Battery Management System — cell telemetry, pack health, bus topology")
 
+    # support
+    sub_support = subs.add_parser("support", aliases=["snapshot"],
+                                  help="System snapshot for troubleshooting — export, redact, compare")
+    sub_support.add_argument("--save", "-s", action="store_true",
+                             help="Save snapshot to timestamped JSON file")
+    sub_support.add_argument("--redact", "-r", nargs="?", const="partial", choices=["partial", "full"],
+                             help="Redact PII (partial=mask, full=remove). Default: partial")
+    sub_support.add_argument("--label", "-l", metavar="TAG",
+                             help="Label the snapshot (e.g. 'pre-setup', 'post-outage')")
+    sub_support.add_argument("--analyze", "-a", action="store_true",
+                             help="Run connectivity and WiFi health analysis")
+    sub_support.add_argument("--compare", dest="compare_file", metavar="FILE",
+                             help="Compare current state against a previous snapshot file")
+    sub_support.add_argument("--scope", choices=["all", "network", "software", "power"],
+                             default="all", help="Scope for --compare (default: all)")
+
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
     sub_fetch.add_argument("http_method", choices=["GET", "POST", "get", "post"],
@@ -339,6 +355,16 @@ async def async_main():
             case "bms" | "battery":
                 from franklinwh_cloud.cli_commands import bms
                 await bms.run(client, json_output=args.json)
+
+            case "support" | "snapshot":
+                from franklinwh_cloud.cli_commands import support
+                await support.run(client, json_output=args.json,
+                                  save=args.save,
+                                  redact=getattr(args, 'redact', None),
+                                  label=getattr(args, 'label', None),
+                                  analyze=getattr(args, 'analyze', False),
+                                  compare_file=getattr(args, 'compare_file', None),
+                                  scope=getattr(args, 'scope', 'all'))
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch

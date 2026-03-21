@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - AP-12 Change Management Policy and enhanced Release Policy with traceability rules
 - `LOGIN_TYPE_USER` (0) and `LOGIN_TYPE_INSTALLER` (1) constants for `appUserOrInstallerLogin` endpoint `FEAT-AUTH-INSTALLER`
 - `login_type` parameter on `TokenFetcher`, `login()`, and `_login()` — supports both homeowner and installer accounts `FEAT-AUTH-INSTALLER`
+- `franklinwh-cli support` — point-in-time system snapshot for troubleshooting with save, redact, analyze, compare, and scoped diff `FEAT-SUPPORT-SNAPSHOT`
+- `franklinwh-cli support --analyze` — connectivity and WiFi health analysis engine detecting DHCP failures, 4G fallback, disabled interfaces `FEAT-SUPPORT-ANALYZE`
+- `franklinwh-cli support --compare FILE --scope` — diff previous snapshot (scopes: all, network, software, power) `FEAT-SUPPORT-COMPARE`
+- `get_apower_info` added to `franklinwh-cli raw` method list `FEAT-RAW-APOWER`
 
 ### Fixed
 - **Login type was wrong** — hardcoded `type: 1` (installer) instead of `type: 0` (user); now defaults to `LOGIN_TYPE_USER` (0) `DEF-AUTH-LOGIN-TYPE`
