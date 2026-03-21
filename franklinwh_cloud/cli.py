@@ -220,6 +220,10 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Save nettest results to JSON file")
     sub_support.add_argument("--fem-url", metavar="URL",
                              help="FEM URL for Tier 2 tests (default: auto-discover)")
+    sub_support.add_argument("--bms", action="store_true",
+                             help="Include BMS battery test (extra sendMqtt load — opt-in)")
+    sub_support.add_argument("--schedule", metavar="ACTION",
+                             help="Schedule periodic nettest: hourly, daily, N (minutes), list, remove")
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
@@ -374,12 +378,18 @@ async def async_main():
 
             case "support" | "snapshot":
                 from franklinwh_cloud.cli_commands import support
-                if getattr(args, 'nettest', False):
+                schedule_action = getattr(args, 'schedule', None)
+                if schedule_action:
+                    support.manage_schedule(schedule_action,
+                                           bms=getattr(args, 'bms', False),
+                                           fem_url=getattr(args, 'fem_url', None))
+                elif getattr(args, 'nettest', False):
                     await support.run_nettest(client, json_output=args.json,
                                              interval=getattr(args, 'interval', 0),
                                              duration=getattr(args, 'duration', 0),
                                              record_file=getattr(args, 'record', None),
-                                             fem_url=getattr(args, 'fem_url', None))
+                                             fem_url=getattr(args, 'fem_url', None),
+                                             include_bms=getattr(args, 'bms', False))
                 else:
                     await support.run(client, json_output=args.json,
                                       save=args.save,
