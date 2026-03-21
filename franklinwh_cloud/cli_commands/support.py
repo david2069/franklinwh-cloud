@@ -1678,6 +1678,10 @@ def _schedule_create(interval_s: int, bms: bool, fem_url: str | None, is_mac: bo
     print_kv("Log dir", _LOG_DIR)
     if bms:
         print_kv("BMS", "included (opt-in)")
+    if is_mac:
+        print(f"\n  {c('dim', 'Note: User-level schedule — only runs while you are logged in.')}")
+    else:
+        print(f"\n  {c('dim', 'Note: User-level crontab — only runs under your user account.')}")
     print()
 
 
