@@ -306,24 +306,43 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
     wifi_cfg = snapshot.get("wifi_config", {})
 
     # AWS cloud status
+    # Cross-check: if other snapshot sections have real data, the cloud API
+    # is clearly working.  The sendMqtt cmdType-339 status self-report from
+    # the aGate can return all-zeros even when connectivity is fine.
+    api_reachable = bool(
+        snapshot.get("versions", {}).get("ibgVersion")
+        or snapshot.get("power", {}).get("solar_kw") is not None
+    )
+
     if "error" not in conn:
         aws = conn.get("awsStatus", 0)
-        if aws:
-            findings.append({"severity": "ok", "check": "AWS Cloud", "detail": "Connected"})
-        else:
-            findings.append({"severity": "critical", "check": "AWS Cloud", "detail": "Disconnected"})
-
         router = conn.get("routerStatus", 0)
-        if router:
-            findings.append({"severity": "ok", "check": "Router", "detail": "Reachable"})
-        else:
-            findings.append({"severity": "critical", "check": "Router", "detail": "Unreachable"})
-
         net_status = conn.get("netStatus", 0)
-        if net_status:
-            findings.append({"severity": "ok", "check": "Internet", "detail": "Available"})
+
+        all_zero = not aws and not router and not net_status
+
+        if all_zero and api_reachable:
+            # sendMqtt status is stale/unreliable — cloud API clearly works
+            findings.append({"severity": "warning", "check": "Connection Status",
+                             "detail": "aGate reports all-zero (sendMqtt cmdType 339 may be stale) — cloud API is reachable"})
         else:
-            findings.append({"severity": "critical", "check": "Internet", "detail": "No internet"})
+            if aws:
+                findings.append({"severity": "ok", "check": "AWS Cloud", "detail": "Connected"})
+            else:
+                sev = "warning" if api_reachable else "critical"
+                findings.append({"severity": sev, "check": "AWS Cloud", "detail": "Disconnected (per aGate self-report)"})
+
+            if router:
+                findings.append({"severity": "ok", "check": "Router", "detail": "Reachable"})
+            else:
+                sev = "warning" if api_reachable else "critical"
+                findings.append({"severity": sev, "check": "Router", "detail": "Unreachable (per aGate self-report)"})
+
+            if net_status:
+                findings.append({"severity": "ok", "check": "Internet", "detail": "Available"})
+            else:
+                sev = "warning" if api_reachable else "critical"
+                findings.append({"severity": sev, "check": "Internet", "detail": "No internet (per aGate self-report)"})
     else:
         findings.append({"severity": "warning", "check": "Connectivity", "detail": f"Could not check: {conn['error']}"})
 

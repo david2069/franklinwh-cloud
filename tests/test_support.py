@@ -202,7 +202,8 @@ class TestAnalyzeConnectivity:
         assert len(fallback) == 1
         assert fallback[0]["severity"] == "warning"
 
-    def test_aws_disconnected(self):
+    def test_aws_disconnected_no_api(self):
+        """AWS disconnected with no other data should be critical."""
         snapshot = {
             "connectivity": {"routerStatus": 1, "netStatus": 1, "awsStatus": 0},
             "network": {},
@@ -213,7 +214,20 @@ class TestAnalyzeConnectivity:
         aws = [f for f in findings if f["check"] == "AWS Cloud"]
         assert aws[0]["severity"] == "critical"
 
-    def test_interface_disabled_warning(self):
+    def test_all_zero_but_api_reachable(self):
+        """All-zero connection status with working API should be single warning, not 3 criticals."""
+        snapshot = {
+            "connectivity": {"routerStatus": 0, "netStatus": 0, "awsStatus": 0},
+            "versions": {"ibgVersion": "V12R02B85D00"},
+            "network": {},
+            "wifi_config": {},
+            "switches": {},
+        }
+        findings = analyze_connectivity(snapshot)
+        criticals = [f for f in findings if f["severity"] == "critical"]
+        warnings = [f for f in findings if f["severity"] == "warning" and "stale" in f.get("detail", "")]
+        assert len(criticals) == 0
+        assert len(warnings) == 1
         snapshot = {
             "connectivity": {},
             "network": {},
