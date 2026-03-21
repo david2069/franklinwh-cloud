@@ -119,29 +119,89 @@ class DevicesMixin:
         two sendMqtt requests (cmdType 211 with type 2 and type 3). The
         purpose of each type is unknown — both appear to return BMS data.
         In the mobile app, the second response is sometimes not received
-        (known issue). We return whichever response we get first (type 2
-        preferred).
+        (known issue).
+
+        Both requests are sent concurrently. If both respond, we log the
+        delta between them (key differences) and return the richer payload.
+        If only one responds, we return that one.
 
         Parameters
         ----------
         apower_serial_no : str
             Serial number of the aPower battery.
         """
-        payload = {"fhpSn": f"{apower_serial_no}", "type": 2}
-        wire_payload = self._build_payload(211, payload)
-        data2 = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
+        payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
+        wire2 = self._build_payload(211, payload2)
+        wire3 = self._build_payload(211, payload3)
 
-        payload = {"fhpSn": f"{apower_serial_no}", "type": 3}
-        logger.info(f"get_bms_info: cmdType: 211 Type 3 on aGate {self.gateway} - aPower battery {apower_serial_no}")
-        wire_payload = self._build_payload(211, payload)
-        data3 = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
-        logger.info(f"get_bms_info: send request type 3 {data3}")
+        logger.info(f"get_bms_info: sending type 2 + type 3 concurrently for aPower {apower_serial_no}")
 
-        if data2:
+        # Send both concurrently — don't wait for type 2 before starting type 3
+        results = await asyncio.gather(
+            self._mqtt_send(wire2),
+            self._mqtt_send(wire3),
+            return_exceptions=True,
+        )
+
+        # Extract dataArea from each (may be None or an exception)
+        parsed = [None, None]
+        for i, (label, res) in enumerate(zip(["type2", "type3"], results)):
+            if isinstance(res, Exception):
+                logger.warning(f"get_bms_info: {label} failed: {res}")
+            else:
+                try:
+                    raw = res["result"]["dataArea"]
+                    if raw:
+                        parsed[i] = json.loads(raw)
+                        logger.debug(f"get_bms_info: {label} raw payload: {raw}")
+                except (KeyError, json.JSONDecodeError) as e:
+                    logger.warning(f"get_bms_info: {label} parse error: {e}")
+
+        data2, data3 = parsed
+
+        # Log response status
+        got2 = data2 is not None
+        got3 = data3 is not None
+        logger.info(f"get_bms_info: type2={'received' if got2 else 'LOST'}, "
+                     f"type3={'received' if got3 else 'LOST'}")
+
+        # If both responded, log the delta
+        if got2 and got3:
+            self._log_bms_delta(data2, data3)
+
+        # Return the richer response (more keys = more data)
+        if got2 and got3:
+            result = data2 if len(data2) >= len(data3) else data3
+        elif got2:
             result = data2
-        else:
+        elif got3:
             result = data3
-        return json.loads(result)
+        else:
+            raise DeviceTimeoutException("BMS: both type 2 and type 3 responses lost")
+
+        return result
+
+    @staticmethod
+    def _log_bms_delta(data2: dict, data3: dict):
+        """Log differences between type 2 and type 3 BMS responses."""
+        all_keys = set(data2.keys()) | set(data3.keys())
+        only_in_2 = set(data2.keys()) - set(data3.keys())
+        only_in_3 = set(data3.keys()) - set(data2.keys())
+        shared = set(data2.keys()) & set(data3.keys())
+
+        diffs = {}
+        for k in shared:
+            if data2[k] != data3[k]:
+                diffs[k] = {"type2": data2[k], "type3": data3[k]}
+
+        if only_in_2 or only_in_3 or diffs:
+            logger.info(f"get_bms_info delta: "
+                        f"only_in_type2={only_in_2 or '{}'}, "
+                        f"only_in_type3={only_in_3 or '{}'}, "
+                        f"value_diffs={diffs or '{}'}")
+        else:
+            logger.info("get_bms_info delta: type2 and type3 responses are identical")
 
     async def led_light_settings(self, mode, dataArea):
         """Get or set the LED strip settings for a specified aPower battery.
