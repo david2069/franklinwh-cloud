@@ -126,7 +126,14 @@ class Stats:
 
 
 def empty_stats() -> Stats:
-    """Return a Stats object with all values set to zero."""
+    """Return a Stats object with all values set to zero.
+
+    Returns
+    -------
+    Stats
+        A Stats object with zeroed Current and Totals values,
+        suitable as a fallback when API calls fail.
+    """
     return Stats(
         Current(
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0,   # solar, generator, battery, grid, home, soc
