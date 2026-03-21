@@ -16,6 +16,8 @@ Usage:
 
 import hashlib
 import json
+import logging
+import re
 import socket
 from datetime import datetime, timezone
 
@@ -24,8 +26,128 @@ from franklinwh_cloud.cli_output import (
     print_warning, print_success, print_error, c,
 )
 
+logger = logging.getLogger("franklinwh_cloud")
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
+
+# FranklinWH mobile app identifiers
+APPLE_TRACK_ID = 1562630432
+GOOGLE_PACKAGE = "com.Franklinwh.FamilyEnergy"
+
+
+# ── App Store version lookup ─────────────────────────────────────────
+
+def _fetch_apple_app_version(timeout: float = 5.0) -> dict | None:
+    """Fetch current FranklinWH iOS app version from Apple iTunes API.
+
+    Uses the public iTunes Search API — no authentication needed.
+    Returns {version, releaseDate, releaseNotes} or None on failure.
+    """
+    import urllib.request
+    try:
+        url = f"https://itunes.apple.com/lookup?id={APPLE_TRACK_ID}&country=us"
+        # iTunes lookup sometimes returns empty for direct ID; use search
+        url = f"https://itunes.apple.com/search?term=franklinwh&entity=software&limit=5&country=us"
+        req = urllib.request.Request(url, headers={"User-Agent": "franklinwh-cloud-client"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        for result in data.get("results", []):
+            if result.get("trackId") == APPLE_TRACK_ID:
+                return {
+                    "version": result.get("version"),
+                    "releaseDate": result.get("currentVersionReleaseDate"),
+                    "releaseNotes": result.get("releaseNotes"),
+                    "bundleId": result.get("bundleId"),
+                }
+    except Exception as e:
+        logger.debug(f"Apple App Store lookup failed: {e}")
+    return None
+
+
+def _fetch_google_play_version(timeout: float = 5.0) -> str | None:
+    """Scrape current FranklinWH Android app version from Google Play.
+
+    Google Play doesn't have a public API, so we scrape the page.
+    Returns version string or None on failure.
+    """
+    import urllib.request
+    try:
+        url = f"https://play.google.com/store/apps/details?id={GOOGLE_PACKAGE}&hl=en"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        # Google Play embeds version in JSON-LD or AF_initDataCallback
+        # Look for pattern like [["2.11.0"]] near version indicators
+        match = re.search(r'\[\[\["(\d+\.\d+\.?\d*)"\]\]', html)
+        if match:
+            return match.group(1)
+        # Alternative: search for version pattern near "Current Version"
+        match = re.search(r'"(\d+\.\d+\.\d+)"', html)
+        if match:
+            return match.group(1)
+    except Exception as e:
+        logger.debug(f"Google Play version lookup failed: {e}")
+    return None
+
+
+def fetch_app_store_versions(timeout: float = 5.0) -> dict:
+    """Fetch mobile app versions from both stores.
+
+    Returns dict with ios/android version info.
+    Non-blocking on failure — returns partial results.
+    """
+    result = {}
+    apple = _fetch_apple_app_version(timeout)
+    if apple:
+        result["ios"] = apple.get("version")
+        result["ios_release_date"] = apple.get("releaseDate")
+        result["ios_release_notes"] = apple.get("releaseNotes")
+    google = _fetch_google_play_version(timeout)
+    if google:
+        result["android"] = google
+    return result
+
+
+# ── API schema fingerprint ───────────────────────────────────────────
+
+def _collect_keys(obj, prefix="") -> list[str]:
+    """Recursively collect all keys from a nested dict/list structure."""
+    keys = []
+    if isinstance(obj, dict):
+        for k, v in sorted(obj.items()):
+            full_key = f"{prefix}.{k}" if prefix else k
+            keys.append(full_key)
+            keys.extend(_collect_keys(v, full_key))
+    elif isinstance(obj, list) and obj:
+        # Sample first element for structure
+        keys.extend(_collect_keys(obj[0], f"{prefix}[]"))
+    return keys
+
+
+def compute_schema_fingerprint(snapshot: dict) -> dict:
+    """Compute a fingerprint of all API response keys.
+
+    Returns {fingerprint: sha256_hex, key_count: int, keys: sorted_key_list}
+    The fingerprint changes when FranklinWH adds, removes, or renames
+    any field in their API responses — useful for detecting upstream changes.
+    """
+    # Collect keys from all data sections (skip metadata)
+    all_keys = []
+    for section in ("identity", "versions", "network", "connectivity",
+                    "wifi_config", "switches", "batteries", "power", "relays"):
+        data = snapshot.get(section, {})
+        if isinstance(data, dict) and "error" not in data:
+            section_keys = _collect_keys(data, section)
+            all_keys.extend(section_keys)
+
+    all_keys.sort()
+    key_str = "\n".join(all_keys)
+    fingerprint = hashlib.sha256(key_str.encode("utf-8")).hexdigest()[:16]
+    return {
+        "fingerprint": fingerprint,
+        "key_count": len(all_keys),
+        "keys": all_keys,
+    }
 
 
 # ── Redaction engine ─────────────────────────────────────────────────
@@ -272,6 +394,21 @@ async def collect_snapshot(client) -> dict:
         et = client.edge_tracker.snapshot()
         snapshot["api_health"]["edge_pop"] = et.get("current_pop")
         snapshot["api_health"]["cache_hit_rate"] = et.get("cache_hit_rate")
+
+    # ── Mobile app versions (Apple App Store + Google Play) ──────
+    try:
+        app_versions = fetch_app_store_versions(timeout=5.0)
+        if app_versions:
+            snapshot["versions"]["mobileApp"] = app_versions
+    except Exception:
+        pass
+
+    # ── API schema fingerprint ───────────────────────────────────
+    schema = compute_schema_fingerprint(snapshot)
+    snapshot["schema_fingerprint"] = {
+        "fingerprint": schema["fingerprint"],
+        "key_count": schema["key_count"],
+    }
 
     return snapshot
 
@@ -634,6 +771,13 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 val = versions.get(key)
                 if val:
                     print_kv(key, val)
+            # Mobile app versions
+            mobile = versions.get("mobileApp", {})
+            if mobile:
+                ios_ver = mobile.get("ios", "?")
+                android_ver = mobile.get("android", "?")
+                print_kv("Mobile App (iOS)", ios_ver)
+                print_kv("Mobile App (Android)", android_ver)
 
         # Network summary
         net = data.get("network", {})
@@ -676,6 +820,13 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv(f["check"], c("red", f'🔴 {f["detail"]}'))
             for f in warnings_list:
                 print_kv(f["check"], c("yellow", f'🟡 {f["detail"]}'))
+
+        # Schema fingerprint
+        schema = data.get("schema_fingerprint", {})
+        if schema:
+            print_section("🔑", "API Schema")
+            print_kv("Fingerprint", schema.get("fingerprint", "?"))
+            print_kv("Total keys", str(schema.get("key_count", 0)))
 
         print()
         print_kv("Tip", c("dim", "Use --save to export, --redact for sharing, --compare to diff"))
