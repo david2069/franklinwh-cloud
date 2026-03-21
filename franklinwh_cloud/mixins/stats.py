@@ -32,9 +32,16 @@ class StatsMixin:
         return json.loads(data)
 
     async def get_stats(self) -> Stats:
-        """Get current statistics for the FHP.
+        """Get current statistics for the FranklinWH gateway.
 
-        Includes instantaneous power measurements and daily totals.
+        This includes instantaneous measurements for current power
+        (solar, battery, grid, home load) as well as totals for today
+        (in local time). Returns empty_stats() if the API call fails.
+
+        Returns
+        -------
+        Stats
+            Stats object with current power readings and daily totals.
         """
         res = await self.get_device_composite_info()
         data_v2 = res.get("result")
