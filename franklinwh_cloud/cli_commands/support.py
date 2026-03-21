@@ -1468,11 +1468,16 @@ _LOG_DIR = os.path.expanduser("~/.franklinwh/nettest-logs")
 
 
 def _resolve_interval_seconds(action: str) -> int | None:
-    """Parse schedule action to interval seconds."""
-    if action == "hourly":
-        return 3600
-    elif action == "daily":
-        return 86400
+    """Parse schedule action to interval seconds. Returns special values for named schedules."""
+    _NAMED = {
+        "hourly": 3600,
+        "daily": 86400,
+        "weekly": 604800,
+        "monthly": 2592000,
+        "once": -1,  # sentinel for one-time run
+    }
+    if action in _NAMED:
+        return _NAMED[action]
     elif action.isdigit():
         mins = int(action)
         return max(1, mins) * 60 if mins > 0 else None
@@ -1498,6 +1503,39 @@ def _generate_plist(interval_s: int, bms: bool, fem_url: str | None) -> str:
     if fem_url:
         cmd += f" --fem-url {fem_url}"
 
+    # Build schedule block
+    if interval_s == -1:  # once
+        schedule_xml = "    <key>RunAtLoad</key>\n    <true/>"
+    elif interval_s == 604800:  # weekly (Sunday midnight)
+        schedule_xml = """    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>0</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>"""
+    elif interval_s == 2592000:  # monthly (1st of month midnight)
+        schedule_xml = """    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>0</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>"""
+    else:  # periodic
+        schedule_xml = f"""    <key>StartInterval</key>
+    <integer>{interval_s}</integer>
+    <key>RunAtLoad</key>
+    <true/>"""
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1511,14 +1549,11 @@ def _generate_plist(interval_s: int, bms: bool, fem_url: str | None) -> str:
         <string>-c</string>
         <string>{cmd}</string>
     </array>
-    <key>StartInterval</key>
-    <integer>{interval_s}</integer>
+{schedule_xml}
     <key>StandardOutPath</key>
     <string>{os.path.join(_LOG_DIR, 'stdout.log')}</string>
     <key>StandardErrorPath</key>
     <string>{os.path.join(_LOG_DIR, 'stderr.log')}</string>
-    <key>RunAtLoad</key>
-    <true/>
 </dict>
 </plist>
 """
@@ -1535,9 +1570,13 @@ def _generate_cron_entry(interval_s: int, bms: bool, fem_url: str | None) -> str
         cmd += f" --fem-url {fem_url}"
 
     if interval_s == 86400:
-        cron = "0 0 * * *"
+        cron = "0 0 * * *"       # daily at midnight
+    elif interval_s == 604800:
+        cron = "0 0 * * 0"       # weekly: Sunday midnight
+    elif interval_s == 2592000:
+        cron = "0 0 1 * *"       # monthly: 1st at midnight
     elif interval_s == 3600:
-        cron = "0 * * * *"
+        cron = "0 * * * *"       # hourly
     else:
         mins = max(1, interval_s // 60)
         cron = f"*/{mins} * * * *"
@@ -1553,11 +1592,13 @@ def manage_schedule(action: str, bms: bool = False, fem_url: str | None = None):
         _schedule_list(is_mac)
     elif action == "remove":
         _schedule_remove(is_mac)
+    elif action == "once":
+        _schedule_once(bms, fem_url, is_mac)
     else:
         interval_s = _resolve_interval_seconds(action)
         if interval_s is None:
             print_error(f"Unknown schedule action: '{action}'")
-            print("  Usage: --schedule hourly | daily | N (minutes) | list | remove")
+            print("  Usage: --schedule hourly | daily | weekly | monthly | once | N (minutes) | list | remove")
             return
         if interval_s < 60:
             interval_s = 60
@@ -1570,7 +1611,8 @@ def _schedule_create(interval_s: int, bms: bool, fem_url: str | None, is_mac: bo
     os.makedirs(_LOG_DIR, exist_ok=True)
 
     mins = interval_s // 60
-    human = "hourly" if interval_s == 3600 else ("daily" if interval_s == 86400 else f"every {mins}m")
+    _LABELS = {3600: "hourly", 86400: "daily", 604800: "weekly (Sunday midnight)", 2592000: "monthly (1st)"}
+    human = _LABELS.get(interval_s, f"every {mins}m")
 
     if is_mac:
         plist = _generate_plist(interval_s, bms, fem_url)
@@ -1604,6 +1646,27 @@ def _schedule_create(interval_s: int, bms: bool, fem_url: str | None, is_mac: bo
     print_kv("Log dir", _LOG_DIR)
     if bms:
         print_kv("BMS", "included (opt-in)")
+    print()
+
+
+def _schedule_once(bms: bool, fem_url: str | None, is_mac: bool):
+    """Run a one-time nettest now (via background process), save to log dir."""
+    import subprocess
+    os.makedirs(_LOG_DIR, exist_ok=True)
+
+    cli_path = _find_cli_path()
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    log_file = os.path.join(_LOG_DIR, f"nettest-{timestamp}.json")
+    cmd = f"{cli_path} support --nettest --record '{log_file}' --json"
+    if bms:
+        cmd += " --bms"
+    if fem_url:
+        cmd += f" --fem-url {fem_url}"
+
+    # Run in background
+    subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print_success("One-time nettest launched in background")
+    print_kv("Output", log_file)
     print()
 
 
