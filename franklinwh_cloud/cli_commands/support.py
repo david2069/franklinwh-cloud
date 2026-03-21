@@ -799,32 +799,30 @@ async def _collect_nettest_config(client) -> dict:
     """Gather current network configuration for the test header."""
     config = {}
     try:
-        net = await client.get_network_info()
-        r = net.get("result", {}).get("dataArea", {})
-        if isinstance(r, str):
-            r = json.loads(r)
-        config["connType"] = r.get("currentNetType", 0)
-        config["connTypeName"] = NET_TYPES.get(config["connType"], f"Type {config['connType']}")
+        # get_network_info returns flat dict: {currentNetType, wifi, eth0, eth1, operator}
+        r = await client.get_network_info()
+        if isinstance(r, dict) and "error" not in r:
+            config["connType"] = r.get("currentNetType", 0)
+            config["connTypeName"] = NET_TYPES.get(config["connType"], f"Type {config['connType']}")
 
-        wifi = r.get("wifi", {})
-        if wifi.get("ip") and wifi["ip"] != "0.0.0.0":
-            config["primary"] = f"WiFi (DHCP)  IP: {wifi['ip']}"
-        eth0 = r.get("eth0", {})
-        if eth0.get("ip") and eth0["ip"] != "0.0.0.0":
-            config["primary"] = f"Ethernet (IP: {eth0['ip']})"
+            wifi = r.get("wifi", {})
+            if wifi.get("ip") and wifi["ip"] != "0.0.0.0":
+                config["primary"] = f"WiFi (DHCP)  IP: {wifi['ip']}"
+            eth0 = r.get("eth0", {})
+            if eth0.get("ip") and eth0["ip"] != "0.0.0.0":
+                config["primary"] = f"Ethernet (IP: {eth0['ip']})"
 
-        op = r.get("operator", {})
-        if op.get("mac"):
-            config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')} dBm"
+            op = r.get("operator", {})
+            if op.get("mac"):
+                config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')} dBm"
     except Exception:
         pass
 
     try:
-        sw = await client.get_network_switches()
-        sw_r = sw.get("result", {}).get("dataArea", {})
-        if isinstance(sw_r, str):
-            sw_r = json.loads(sw_r)
-        config["sim_active"] = sw_r.get("4GNetSwitch", 0) == 1
+        # get_network_switches returns flat dict: {ethernet0NetSwitch, wifiNetSwitch, ...}
+        sw_r = await client.get_network_switches()
+        if isinstance(sw_r, dict):
+            config["sim_active"] = sw_r.get("4GNetSwitch", 0) == 1
     except Exception:
         pass
 
