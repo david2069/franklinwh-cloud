@@ -17,8 +17,10 @@ Usage:
 import hashlib
 import json
 import logging
+import os
 import re
 import socket
+import sys
 from datetime import datetime, timezone
 
 from franklinwh_cloud.cli_output import (
@@ -865,8 +867,18 @@ async def _collect_nettest_config(client) -> dict:
 async def run_nettest(client, *, json_output: bool = False,
                       interval: int = 0, duration: int = 0,
                       record_file: str | None = None,
-                      fem_url: str | None = None):
+                      fem_url: str | None = None,
+                      include_bms: bool = False):
     """Run network connectivity test."""
+
+    # Guardrails — good API citizenship
+    MIN_INTERVAL = 5    # seconds
+    MAX_SAMPLES = 500   # per run
+
+    if interval > 0 and interval < MIN_INTERVAL:
+        from franklinwh_cloud.cli_output import print_warning
+        print_warning(f"Minimum interval is {MIN_INTERVAL}s (requested {interval}s) — adjusting")
+        interval = MIN_INTERVAL
 
     # FEM auto-discovery
     fem_urls_to_try = []
@@ -892,15 +904,19 @@ async def run_nettest(client, *, json_output: bool = False,
     if interval > 0:
         await _run_nettest_interval(client, net_config, discovered_fem,
                                     interval=interval, duration=duration,
-                                    record_file=record_file, json_output=json_output)
+                                    max_samples=MAX_SAMPLES,
+                                    record_file=record_file, json_output=json_output,
+                                    include_bms=include_bms)
     else:
         await _run_nettest_single(client, net_config, discovered_fem,
-                                  record_file=record_file, json_output=json_output)
+                                  record_file=record_file, json_output=json_output,
+                                  include_bms=include_bms)
 
 
 async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
                               record_file: str | None = None,
-                              json_output: bool = False):
+                              json_output: bool = False,
+                              include_bms: bool = False):
     """Single network test run."""
     import asyncio
 
@@ -912,11 +928,12 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
 
     hops = [dns, api, mqtt, device]
 
-    # BMS test — chains off device data to get aPower serial
-    apower_serial = device.get("_apower_serial")
-    if apower_serial:
-        bms = await _test_bms(client, apower_serial)
-        hops.append(bms)
+    # BMS test — opt-in only (extra sendMqtt load)
+    if include_bms:
+        apower_serial = device.get("_apower_serial")
+        if apower_serial:
+            bms = await _test_bms(client, apower_serial)
+            hops.append(bms)
 
     # Run tier 2 if FEM available
     fem = None
@@ -968,8 +985,10 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
 
 async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
                                 interval: int, duration: int,
+                                max_samples: int = 500,
                                 record_file: str | None = None,
-                                json_output: bool = False):
+                                json_output: bool = False,
+                                include_bms: bool = False):
     """Run network test at intervals."""
     import asyncio
 
@@ -980,25 +999,29 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
     if not json_output:
         print_header(f"FranklinWH Network Monitor — {interval}s intervals")
         _display_nettest_config(net_config)
+        if max_samples < 9999:
+            print(f"  {c('dim', f'Max {max_samples} samples per run')}")
         print()
-        # Table header
+        # Table header — BMS column only when enabled
         fem_cols = "  FEM   " if fem_url else ""
-        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'aGate':>8}{'Data':>8}{'BMS':>8}{fem_cols}  STATUS")
-        print(f"  {'─'*9} {'─'*5} {'─'*7} {'─'*7} {'─'*7} {'─'*7} {'─' * (6 if fem_url else 0)} {'─'*12}")
+        bms_col = f"{'BMS':>8}" if include_bms else ""
+        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'aGate':>8}{'Data':>8}{bms_col}{fem_cols}  STATUS")
+        print(f"  {'─'*9} {'─'*5} {'─'*7} {'─'*7} {'─'*7} {'─'*7 if include_bms else ''} {'─' * (6 if fem_url else 0)} {'─'*12}")
 
     try:
-        while duration == 0 or elapsed < duration:
+        while (duration == 0 or elapsed < duration) and len(samples) < max_samples:
             now = datetime.now()
             dns = _test_dns()
             api = await _test_api(client)
             mqtt = await _test_agate_rtt(client)
             device = await _test_device_data(client)
 
-            # BMS chains off device data
+            # BMS — opt-in only
             bms = None
-            apower_serial = device.get("_apower_serial")
-            if apower_serial:
-                bms = await _test_bms(client, apower_serial)
+            if include_bms:
+                apower_serial = device.get("_apower_serial")
+                if apower_serial:
+                    bms = await _test_bms(client, apower_serial)
 
             core = [dns, api, mqtt, device]
             if bms:
@@ -1027,11 +1050,18 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
                 api_str = f"{api['ms']:.0f}ms" if api["ok"] else "✗"
                 mqtt_str = f"{mqtt['ms']:.0f}ms" if mqtt["ok"] else "✗"
                 data_str = f"{device['ms']:.0f}ms" if device["ok"] else "✗"
-                bms_str = f"{bms['ms']:.0f}ms" if bms and bms["ok"] else ("✗" if bms else "—")
+                bms_str = ""
+                if include_bms:
+                    bms_str = f"{bms['ms']:.0f}ms" if bms and bms["ok"] else ("✗" if bms else "—")
+                    bms_str = f"{bms_str:>8}"
                 status = c("green", "✓ All OK") if sample["ok"] else c("red", "⚠ FAIL")
-                print(f"  {sample['time']:<10}{dns_str:>6}{api_str:>8}{mqtt_str:>8}{data_str:>8}{bms_str:>8}{fem_status}  {status}")
+                print(f"  {sample['time']:<10}{dns_str:>6}{api_str:>8}{mqtt_str:>8}{data_str:>8}{bms_str}{fem_status}  {status}")
 
             if duration > 0 and elapsed + interval >= duration:
+                break
+            if len(samples) >= max_samples:
+                if not json_output:
+                    print(f"\n  {c('yellow', f'Max {max_samples} samples reached — stopping')}")
                 break
             await asyncio.sleep(interval)
             elapsed += interval
@@ -1427,3 +1457,216 @@ async def run(client, *, json_output: bool = False, save: bool = False,
         print()
         print_kv("Tip", c("dim", "Use --save to export, --redact for sharing, --compare to diff"))
         print()
+
+
+# ── Scheduler ────────────────────────────────────────────────────────
+
+_SCHED_LABEL = "com.franklinwh.nettest"
+_PLIST_DIR = os.path.expanduser("~/Library/LaunchAgents")
+_PLIST_PATH = os.path.join(_PLIST_DIR, f"{_SCHED_LABEL}.plist")
+_LOG_DIR = os.path.expanduser("~/.franklinwh/nettest-logs")
+
+
+def _resolve_interval_seconds(action: str) -> int | None:
+    """Parse schedule action to interval seconds."""
+    if action == "hourly":
+        return 3600
+    elif action == "daily":
+        return 86400
+    elif action.isdigit():
+        mins = int(action)
+        return max(1, mins) * 60 if mins > 0 else None
+    return None
+
+
+def _find_cli_path() -> str:
+    """Find the franklinwh-cli executable path."""
+    import shutil
+    path = shutil.which("franklinwh-cli")
+    if path:
+        return path
+    return f"{sys.executable} -m franklinwh_cloud.cli"
+
+
+def _generate_plist(interval_s: int, bms: bool, fem_url: str | None) -> str:
+    """Generate macOS launchd plist XML."""
+    cli_path = _find_cli_path()
+    log_file = os.path.join(_LOG_DIR, "nettest-$(date +%Y-%m-%dT%H-%M-%S).json")
+    cmd = f"{cli_path} support --nettest --record '{log_file}' --json"
+    if bms:
+        cmd += " --bms"
+    if fem_url:
+        cmd += f" --fem-url {fem_url}"
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{_SCHED_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>{cmd}</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>{interval_s}</integer>
+    <key>StandardOutPath</key>
+    <string>{os.path.join(_LOG_DIR, 'stdout.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>{os.path.join(_LOG_DIR, 'stderr.log')}</string>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+"""
+
+
+def _generate_cron_entry(interval_s: int, bms: bool, fem_url: str | None) -> str:
+    """Generate a crontab line for Linux."""
+    cli_path = _find_cli_path()
+    log_file = os.path.join(_LOG_DIR, "nettest-$(date +\\%Y-\\%m-\\%dT\\%H-\\%M-\\%S).json")
+    cmd = f"{cli_path} support --nettest --record '{log_file}' --json"
+    if bms:
+        cmd += " --bms"
+    if fem_url:
+        cmd += f" --fem-url {fem_url}"
+
+    if interval_s == 86400:
+        cron = "0 0 * * *"
+    elif interval_s == 3600:
+        cron = "0 * * * *"
+    else:
+        mins = max(1, interval_s // 60)
+        cron = f"*/{mins} * * * *"
+    return f"{cron} {cmd}  # {_SCHED_LABEL}"
+
+
+def manage_schedule(action: str, bms: bool = False, fem_url: str | None = None):
+    """Manage nettest schedule: create / list / remove."""
+    import subprocess
+    is_mac = sys.platform == "darwin"
+
+    if action == "list":
+        _schedule_list(is_mac)
+    elif action == "remove":
+        _schedule_remove(is_mac)
+    else:
+        interval_s = _resolve_interval_seconds(action)
+        if interval_s is None:
+            print_error(f"Unknown schedule action: '{action}'")
+            print("  Usage: --schedule hourly | daily | N (minutes) | list | remove")
+            return
+        if interval_s < 60:
+            interval_s = 60
+        _schedule_create(interval_s, bms, fem_url, is_mac)
+
+
+def _schedule_create(interval_s: int, bms: bool, fem_url: str | None, is_mac: bool):
+    """Create a scheduled nettest job."""
+    import subprocess
+    os.makedirs(_LOG_DIR, exist_ok=True)
+
+    mins = interval_s // 60
+    human = "hourly" if interval_s == 3600 else ("daily" if interval_s == 86400 else f"every {mins}m")
+
+    if is_mac:
+        plist = _generate_plist(interval_s, bms, fem_url)
+        os.makedirs(_PLIST_DIR, exist_ok=True)
+        if os.path.exists(_PLIST_PATH):
+            subprocess.run(["launchctl", "unload", _PLIST_PATH], capture_output=True)
+        with open(_PLIST_PATH, "w") as f:
+            f.write(plist)
+        result = subprocess.run(["launchctl", "load", _PLIST_PATH],
+                                capture_output=True, text=True)
+        if result.returncode != 0:
+            print_error(f"launchctl load failed: {result.stderr.strip()}")
+            return
+        print_success(f"Scheduled nettest {human}")
+        print_kv("Scheduler", "macOS launchd")
+        print_kv("Plist", _PLIST_PATH)
+    else:
+        entry = _generate_cron_entry(interval_s, bms, fem_url)
+        existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        lines = existing.stdout.strip().split("\n") if existing.stdout.strip() else []
+        lines = [l for l in lines if _SCHED_LABEL not in l]
+        lines.append(entry)
+        result = subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n",
+                                capture_output=True, text=True)
+        if result.returncode != 0:
+            print_error(f"crontab failed: {result.stderr.strip()}")
+            return
+        print_success(f"Scheduled nettest {human}")
+        print_kv("Scheduler", "Linux cron")
+
+    print_kv("Log dir", _LOG_DIR)
+    if bms:
+        print_kv("BMS", "included (opt-in)")
+    print()
+
+
+def _schedule_list(is_mac: bool):
+    """List active nettest schedule and recent logs."""
+    import subprocess
+    print_section("📅", "Nettest Schedule")
+
+    if is_mac:
+        if os.path.exists(_PLIST_PATH):
+            result = subprocess.run(["launchctl", "list", _SCHED_LABEL],
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                print_kv("Status", c("green", "Active (launchd)"))
+            else:
+                print_kv("Status", c("yellow", "Plist exists but not loaded"))
+            print_kv("Plist", _PLIST_PATH)
+        else:
+            print_kv("Status", c("dim", "No schedule configured"))
+    else:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        if result.returncode == 0 and _SCHED_LABEL in result.stdout:
+            for line in result.stdout.split("\n"):
+                if _SCHED_LABEL in line:
+                    print_kv("Status", c("green", "Active (cron)"))
+                    print_kv("Entry", line.split("#")[0].strip())
+                    break
+        else:
+            print_kv("Status", c("dim", "No schedule configured"))
+
+    # Recent log files
+    if os.path.isdir(_LOG_DIR):
+        logs = sorted(f for f in os.listdir(_LOG_DIR)
+                      if f.startswith("nettest-") and f.endswith(".json"))
+        if logs:
+            print_kv("Log dir", _LOG_DIR)
+            print_kv("Total logs", str(len(logs)))
+            for log_file in logs[-5:]:
+                size = os.path.getsize(os.path.join(_LOG_DIR, log_file))
+                print(f"    {log_file}  ({size:,} bytes)")
+    print()
+
+
+def _schedule_remove(is_mac: bool):
+    """Remove nettest schedule."""
+    import subprocess
+    if is_mac:
+        if os.path.exists(_PLIST_PATH):
+            subprocess.run(["launchctl", "unload", _PLIST_PATH], capture_output=True)
+            os.remove(_PLIST_PATH)
+            print_success("Nettest schedule removed (launchd)")
+        else:
+            print("No schedule configured")
+    else:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        if result.returncode == 0 and _SCHED_LABEL in result.stdout:
+            lines = [l for l in result.stdout.strip().split("\n")
+                     if _SCHED_LABEL not in l]
+            content = "\n".join(lines) + "\n" if lines else ""
+            subprocess.run(["crontab", "-"], input=content,
+                           capture_output=True, text=True)
+            print_success("Nettest schedule removed (cron)")
+        else:
+            print("No schedule configured")
+    print()
+
