@@ -790,6 +790,12 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 if idata.get("mac"):
                     dhcp = "DHCP" if idata.get("dhcp") else "Static"
                     print_kv(label_name, f'{idata["mac"]}  {dhcp}  IP: {idata.get("ip", "—")}')
+            # Cellular/4G
+            op = net.get("operator", {})
+            if op.get("mac"):
+                rssi = op.get("rssi", "?")
+                rssi_label = f"RSSI: {rssi} dBm" if rssi != "?" else ""
+                print_kv("Cellular", f'{op["mac"]}  {rssi_label}')
 
         # Connectivity
         conn = data.get("connectivity", {})
