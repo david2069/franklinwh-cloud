@@ -1506,8 +1506,8 @@ def _generate_wrapper(bms: bool = False, fem_url: str | None = None) -> str:
     cli_dir = os.path.dirname(os.path.abspath(cli_path))
     venv_activate = os.path.join(cli_dir, "activate")
 
-    log_file = os.path.join(_LOG_DIR, "nettest-$(date +%Y-%m-%dT%H-%M-%S).json")
-    cmd = f"franklinwh-cli support --nettest --record '{log_file}'"
+    log_file = os.path.join(_LOG_DIR, 'nettest-$(date +%Y-%m-%dT%H-%M-%S).json')
+    cmd = f'franklinwh-cli support --nettest --record "{log_file}"'
     if bms:
         cmd += " --bms"
     if fem_url:
