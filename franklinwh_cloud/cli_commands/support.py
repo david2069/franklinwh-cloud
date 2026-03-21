@@ -889,8 +889,17 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
     all_ok = all(h["ok"] for h in core_hops)
     failures = [h for h in core_hops if not h["ok"]]
 
+    import franklinwh_cloud
+    local_tz = datetime.now().astimezone().tzname()
+
     result = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "_meta": {
+            "command": "franklinwh-cli support --nettest",
+            "library_version": getattr(franklinwh_cloud, "__version__", "?"),
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "timestamp_local": datetime.now().astimezone().isoformat(),
+            "timezone": local_tz,
+        },
         "network_config": net_config,
         "fem_detected": fem_url,
         "hops": hops,
@@ -992,7 +1001,14 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
         print()
 
     if record_file:
+        import franklinwh_cloud
+        local_tz = datetime.now().astimezone().tzname()
         output = {
+            "_meta": {
+                "command": f"franklinwh-cli support --nettest --interval {interval} --duration {duration}",
+                "library_version": getattr(franklinwh_cloud, "__version__", "?"),
+                "timezone": local_tz,
+            },
             "start": start_time.isoformat(),
             "interval_s": interval,
             "duration_s": duration,
