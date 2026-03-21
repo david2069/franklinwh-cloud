@@ -480,7 +480,7 @@ def sign_snapshot(data: dict) -> str:
 # ── Connectivity analysis ────────────────────────────────────────────
 
 NET_TYPES = {
-    0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi+Ethernet",
+    0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi",
     4: "4G/LTE", 5: "WiFi+4G", 6: "Ethernet+4G",
     13: "WiFi+Ethernet+4G",
 }
@@ -736,26 +736,19 @@ async def _test_agate_rtt(client) -> dict:
         return {"hop": "aGate RTT", "ok": False, "ms": None, "detail": str(e)}
 
 
-async def _test_tou(client) -> dict:
-    """Test TOU dispatch detail — proves full functional path."""
+async def _test_device_data(client) -> dict:
+    """Test device data retrieval — proves full API data path."""
     try:
         t0 = time.monotonic()
-        res = await client.get_tou_dispatch_detail()
+        res = await client.get_device_composite_info()
         elapsed = (time.monotonic() - t0) * 1000
-        tou = res.get("result", {})
-        online = tou.get("onlineFlag")
-        send = tou.get("sendStatus")
-        alert = tou.get("alertMessage")
-        parts = [f"{elapsed:.0f}ms"]
-        if online is not None:
-            parts.append(f"online={'Yes' if online else 'No'}")
-        if send:
-            parts.append(f"sendPending")
-        if alert:
-            parts.append(f"alert={alert}")
-        return {"hop": "TOU Schedule", "ok": True, "ms": round(elapsed, 1), "detail": " — ".join(parts)}
+        # Count devices returned as a sanity check
+        devices = res.get("result", [])
+        count = len(devices) if isinstance(devices, list) else 0
+        detail = f"{elapsed:.0f}ms — {count} device(s)"
+        return {"hop": "Device Data", "ok": True, "ms": round(elapsed, 1), "detail": detail}
     except Exception as e:
-        return {"hop": "TOU Schedule", "ok": False, "ms": None, "detail": str(e)}
+        return {"hop": "Device Data", "ok": False, "ms": None, "detail": str(e)}
 
 
 def _test_fem(fem_url: str) -> dict:
@@ -875,7 +868,7 @@ async def _run_nettest_single(client, net_config: dict, fem_url: str | None,
     dns = _test_dns()
     api = await _test_api(client)
     mqtt = await _test_agate_rtt(client)
-    tou = await _test_tou(client)
+    tou = await _test_device_data(client)
 
     hops = [dns, api, mqtt, tou]
 
@@ -934,7 +927,7 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
         print()
         # Table header
         fem_cols = "  FEM   " if fem_url else ""
-        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'MQTT':>8}{'TOU':>8}{fem_cols}  STATUS")
+        print(f"  {'TIME':<10}{'DNS':>6}{'API':>8}{'aGate':>8}{'Data':>8}{fem_cols}  STATUS")
         print(f"  {'─'*9} {'─'*5} {'─'*7} {'─'*7} {'─'*7} {'─' * (6 if fem_url else 0)} {'─'*12}")
 
     try:
@@ -943,7 +936,7 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
             dns = _test_dns()
             api = await _test_api(client)
             mqtt = await _test_agate_rtt(client)
-            tou = await _test_tou(client)
+            tou = await _test_device_data(client)
 
             sample = {
                 "time": now.strftime("%H:%M:%S"),
@@ -984,7 +977,11 @@ async def _run_nettest_interval(client, net_config: dict, fem_url: str | None,
         total = len(samples)
         fails = sum(1 for s in samples if not s["ok"])
         avg_api = sum(s.get("api_ms", 0) or 0 for s in samples) / max(total, 1)
+        # Each sample makes 4 requests (DNS, API, aGate, Config)
+        total_requests = total * 4
+        total_responses = sum(4 if s["ok"] else sum(1 for k in ["dns_ms", "api_ms", "mqtt_ms", "tou_ms"] if s.get(k)) for s in samples)
         print_kv("Samples", f"{total} ({fails} failures)")
+        print_kv("Requests", f"{total_requests} sent, {total_responses} OK")
         print_kv("Avg API latency", f"{avg_api:.0f}ms")
         print()
 
@@ -1028,6 +1025,22 @@ def _display_nettest_config(net_config: dict):
         print_kv("Backup", f"{backup}  {sim}")
     conn_name = net_config.get("connTypeName", "?")
     print_kv("connType", f"{net_config.get('connType', '?')} ({conn_name})")
+    # Source IP (this machine)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        src_ip = s.getsockname()[0]
+        s.close()
+        print_kv("Source IP", src_ip)
+    except Exception:
+        pass
+    # Destination IP (API server)
+    try:
+        results = socket.getaddrinfo("energy.franklinwh.com", 443, socket.AF_INET)
+        if results:
+            print_kv("Dest IP", f"{results[0][4][0]} (energy.franklinwh.com)")
+    except Exception:
+        pass
 
 
 def _display_nettest_hops(hops: list, fem: dict | None = None):
