@@ -28,6 +28,7 @@ AVAILABLE_METHODS = {
     # Devices mixin
     "get_device_composite_info": {"args": 0, "desc": "Full device composite data"},
     "get_agate_info": {"args": 0, "desc": "aGate hardware info"},
+    "get_apower_info": {"args": 0, "desc": "aPower battery hardware info"},
     "get_device_info": {"args": 0, "desc": "Device detail info"},
     "get_smart_circuits_info": {"args": 0, "desc": "Smart circuit configuration"},
     "get_bms_info": {"args": 1, "desc": "BMS info for aPower (arg: serial_no)"},
