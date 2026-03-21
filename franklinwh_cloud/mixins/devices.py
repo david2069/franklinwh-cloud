@@ -373,8 +373,15 @@ class DevicesMixin:
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         parsed = _parse_mqtt_json(raw, 317)
 
-        # Extract the commSetPara from the nested result
-        comm = parsed.get("result", {}).get("commSetPara", parsed)
+        # Extract the commSetPara from the nested result — with type safety
+        # The MQTT response structure can vary; guard against non-dict values
+        result = parsed.get("result") if isinstance(parsed, dict) else parsed
+        if isinstance(result, dict):
+            comm = result.get("commSetPara", parsed)
+            if not isinstance(comm, dict):
+                comm = parsed  # fallback to top-level
+        else:
+            comm = parsed if isinstance(parsed, dict) else {}
 
         return {
             "currentNetType": comm.get("currentNetType"),
