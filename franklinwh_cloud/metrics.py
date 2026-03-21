@@ -284,6 +284,7 @@ class EdgeTracker:
         self.transitions: list[dict] = []              # [{from, to, at}]
         self._distribution_ids: set[str] = set()       # unique CF distributions
         self._last_cf_id: str | None = None
+        self._last_response_headers: dict | None = None  # last full response headers
 
     def record_response(self, headers: dict | object) -> None:
         """Extract and record CloudFront info from response headers.
@@ -295,6 +296,8 @@ class EdgeTracker:
         """
         # Support both dict and httpx.Headers (which has .get())
         get = headers.get if hasattr(headers, 'get') else lambda k, d=None: headers.get(k, d)
+        # Store full headers for --headers display
+        self._last_response_headers = dict(headers) if hasattr(headers, 'items') else {}
 
         pop = get("x-amz-cf-pop")
         cache_status = get("x-cache", "")

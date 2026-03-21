@@ -163,6 +163,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="API method name (use 'help' to list all)")
     sub_raw.add_argument("values", nargs="*",
                          help="Arguments to pass to the method")
+    sub_raw.add_argument("--headers", "-H", action="store_true",
+                         help="Show HTTP response headers")
+    sub_raw.add_argument("--timings", "-T", action="store_true",
+                         help="Show request timing and CloudFront edge info")
 
     # metrics
     subs.add_parser("metrics", help="Show API call metrics from current session")
@@ -340,7 +344,9 @@ async def async_main():
             case "raw":
                 from franklinwh_cloud.cli_commands import raw
                 await raw.run(client, args.method, args.values,
-                              json_output=args.json)
+                              json_output=args.json,
+                              show_headers=getattr(args, 'headers', False),
+                              show_timings=getattr(args, 'timings', False))
 
             case "metrics":
                 from franklinwh_cloud.cli_commands import metrics
