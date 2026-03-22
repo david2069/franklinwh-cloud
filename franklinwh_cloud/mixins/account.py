@@ -199,18 +199,36 @@ class AccountMixin:
         data = await self._get(url, params=params)
         return data.get("result", [])
 
-    async def get_benefit_info(self):
-        """Get benefit earnings information.
+    async def get_benefit_info(self, data_type: int = 1, day_time: str = None):
+        """Get benefit/savings information.
+
+        Returns carbon reduction, EV mileage conversion, tree conversion,
+        battery/solar feed-in and load earnings.
+
+        Parameters
+        ----------
+        data_type : int
+            1 = daily, 2 = monthly, 3 = yearly
+        day_time : str, optional
+            Date string (YYYY-MM-DD). Defaults to today.
 
         Returns
         -------
         dict
-            Benefit earnings data for the account
+            {fuelConversion, evMileageConversion, treeConversion,
+             carbonReduction, batFeedEarnList, solarFeedEarnList, ...}
         """
-        url = self.url_base + "hes-gateway/bill/selectBenefitInfo"
-        params = {"gatewayId": self.gateway}
+        if day_time is None:
+            from datetime import date
+            day_time = date.today().isoformat()
+        url = self.url_base + "hes-gateway/terminal/bill/electric/selectBenefitInfo"
+        params = {
+            "gatewayId": self.gateway,
+            "type": str(data_type),
+            "dayTime": day_time,
+        }
         data = await self._get(url, params=params)
-        return data.get("result", [])
+        return data.get("result", {})
 
     async def get_gateway_alarm(self):
         """Get active gateway alarms.
@@ -311,4 +329,62 @@ class AccountMixin:
                 url = self.url_base + f"hes-gateway/terminal/smartAssistant?gatewayId={self.gateway}&requestType={requestType}&query={query}"
                 data = await self._post(url, payload=payload)
 
+        return data
+
+    async def get_electric_data(self, data_type: int = 1, day_time: str = None):
+        """Get electricity usage data (kWh arrays).
+
+        Returns time-series arrays for solar, grid, battery, and load power.
+
+        Parameters
+        ----------
+        data_type : int
+            1 = daily, 2 = monthly, 3 = yearly
+        day_time : str, optional
+            Date string (YYYY-MM-DD). Defaults to today.
+
+        Returns
+        -------
+        dict
+            {deviceTimeArray, kwhSuArray, kwhGenArray, kwhUtiInArray,
+             kwhUtiOutArray, kwhFhpChgArray, kwhFhpDiArray, kwhLoadArray, ...}
+        """
+        if day_time is None:
+            from datetime import date
+            day_time = date.today().isoformat()
+        url = self.url_base + "api-energy/electric/getFhpElectricData"
+        params = {
+            "gatewayId": self.gateway,
+            "type": str(data_type),
+            "dayTime": day_time,
+        }
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_charge_history(self, page_num: int = 1, page_size: int = 15):
+        """Get battery charge/discharge session history.
+
+        Returns a paginated list of charge events with SoC, energy,
+        and time details.
+
+        Parameters
+        ----------
+        page_num : int
+            Page number (default: 1)
+        page_size : int
+            Results per page (default: 15)
+
+        Returns
+        -------
+        dict
+            {result: [{id, chargeType, energy, startSoc, endSoc,
+             chargeDate, startTime, endTime, ...}], total: int}
+        """
+        url = self.url_base + "hes-gateway/terminal/iotChargePowers"
+        params = {
+            "gatewayId": self.gateway,
+            "pageNum": str(page_num),
+            "pageSize": str(page_size),
+        }
+        data = await self._get(url, params=params)
         return data
