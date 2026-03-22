@@ -55,6 +55,20 @@ AVAILABLE_METHODS = {
     "get_gateway_tou_list": {"args": 0, "desc": "TOU schedule list"},
     "get_charge_power_details": {"args": 0, "desc": "Charge power details"},
     "get_tou_dispatch_detail": {"args": 0, "desc": "TOU dispatch detail"},
+    "get_utility_companies": {"args": 2, "desc": "Search utility companies (args: countryId provinceId)"},
+    "get_tariff_list": {"args": 1, "desc": "List tariffs for a utility (arg: companyId)"},
+    "get_tariff_detail": {"args": 1, "desc": "Full tariff template detail (arg: tariffId)"},
+    "get_tou_detail_by_id": {"args": 1, "desc": "TOU config by ID (arg: touId)"},
+    "get_bonus_info": {"args": 0, "desc": "TOU bonus/incentive info"},
+    "get_vpp_tip": {"args": 0, "desc": "VPP tips for TOU updates"},
+    # Billing / Savings
+    "get_electric_data": {"args": 2, "desc": "Electricity kWh arrays (args: type[1-3] YYYY-MM-DD)"},
+    "get_charge_history": {"args": 0, "desc": "Battery charge/discharge session history"},
+    # Device / Site
+    "get_site_detail": {"args": 0, "desc": "Site name, address, location"},
+    "get_device_detail": {"args": 0, "desc": "Device/gateway address detail"},
+    "get_device_overall_info": {"args": 0, "desc": "aPower count and total power"},
+    "get_personal_info": {"args": 0, "desc": "User profile info"},
 }
 
 

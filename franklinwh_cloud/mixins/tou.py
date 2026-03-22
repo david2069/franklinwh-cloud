@@ -984,3 +984,263 @@ class TouMixin:
             raise ValidationError(msg)
 
         return res
+
+    # ────────────────────────────────────────────────────────────────
+    # Tariff management endpoints (discovered from HTTPToolKit HAR)
+    # ────────────────────────────────────────────────────────────────
+
+    async def get_utility_companies(self, country_id: int = 3,
+                                     province_id: int = 87,
+                                     page_num: int = 1,
+                                     page_size: int = 20,
+                                     latitude: float | None = None,
+                                     longitude: float | None = None):
+        """Search utility companies by region.
+
+        Parameters
+        ----------
+        country_id : int
+            Country (e.g. 3 = Australia, 1 = USA)
+        province_id : int
+            Province/state ID (e.g. 87 = NSW)
+        page_num, page_size : int
+            Pagination
+        latitude, longitude : float, optional
+            GPS coordinates for proximity matching
+
+        Returns
+        -------
+        dict
+            {dataList: [{id, companyName, ...}], postCodeHave: bool}
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getTouCompanyListPageV2"
+        params = {
+            "countryId": str(country_id),
+            "pageNum": str(page_num),
+            "pageSize": str(page_size),
+            "provinceId": str(province_id),
+            "gatewayId": self.gateway,
+        }
+        if latitude is not None:
+            params["latitude"] = str(latitude)
+        if longitude is not None:
+            params["longitude"] = str(longitude)
+        data = await self._post(url, "", params=params)
+        return data
+
+    async def get_tariff_list(self, company_id: int,
+                               page_num: int = 1, page_size: int = 10,
+                               latitude: float | None = None,
+                               longitude: float | None = None,
+                               search_key: str = ""):
+        """List tariff plans for a specific utility company.
+
+        Parameters
+        ----------
+        company_id : int
+            Utility company ID (from get_utility_companies)
+        search_key : str
+            Optional search filter for tariff names
+
+        Returns
+        -------
+        dict
+            {dataList: [{id, name, electricityType, ...}], postCodeHave: bool}
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getTariffListByCompanyId"
+        params = {
+            "eletricCompanyId": str(company_id),
+            "gatewayId": self.gateway,
+            "pageNum": str(page_num),
+            "pageSize": str(page_size),
+            "searchKey": search_key,
+            "ptoDate": "",
+        }
+        if latitude is not None:
+            params["latitude"] = str(latitude)
+        if longitude is not None:
+            params["longitude"] = str(longitude)
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_tariff_detail(self, tariff_id: int):
+        """Get the full tariff template detail by ID.
+
+        Returns the complete tariff structure including seasons,
+        day types, rates, dispatch blocks, and advanced settings.
+
+        Parameters
+        ----------
+        tariff_id : int
+            Tariff template ID (from get_tariff_list)
+
+        Returns
+        -------
+        dict
+            {template, extraDTO, strategyList, advancedSettings,
+             bbDefaultVo, detailDefaultVo, alertMessage, sendStatus,
+             batteryRatedCapacity, tariffSettingFlag, ...}
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getTariffDetailByIdV2"
+        params = {"tariffId": str(tariff_id)}
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_tou_detail_by_id(self, tou_id: int, from_type: int = 0):
+        """Get a specific TOU configuration by its ID.
+
+        Similar to get_tariff_detail but for applied/saved TOU configs.
+
+        Parameters
+        ----------
+        tou_id : int
+            TOU configuration ID
+        from_type : int
+            Source type (0 = default)
+
+        Returns
+        -------
+        dict
+            Same shape as get_tariff_detail
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getIotTouDetailById"
+        params = {
+            "gatewayId": self.gateway,
+            "id": str(tou_id),
+            "fromType": str(from_type),
+        }
+        data = await self._post(url, "", params=params)
+        return data
+
+    async def get_custom_dispatch_list(self, strategy_list: list):
+        """Get available dispatch options for a custom schedule.
+
+        Given time blocks with wave types, returns valid dispatch
+        codes and strategy configurations.
+
+        Parameters
+        ----------
+        strategy_list : list
+            Time blocks, e.g.:
+            [{"startHourTime": "0:00", "endHourTime": "24:00", "waveType": 1}]
+
+        Returns
+        -------
+        dict
+            {dispatchList: [...], strategyList: [...]}
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getCustomEnergyDispatchList"
+        payload = {
+            "gatewayId": self.gateway,
+            "strategyList": strategy_list,
+        }
+        data = await self._post(url, payload)
+        return data
+
+    async def get_bonus_info(self):
+        """Get TOU bonus/incentive information for this gateway.
+
+        Returns
+        -------
+        dict
+            {bonusEnable, touEleCompanyFullName, extraDTO, bbDefaultVo,
+             batteryRatedCapacity, alertMessage, sendStatus,
+             switchBonusFlag, pcsVo, apowerCount}
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getBonusInfo"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_vpp_tip(self):
+        """Get VPP (Virtual Power Plant) tips for TOU schedule updates.
+
+        Returns
+        -------
+        dict
+            VPP participation tips and recommendations
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getVppTipForUpdateTou"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_recommend_dispatch_list(self, strategy_list: list):
+        """Get AI-recommended dispatch options for a schedule.
+
+        Parameters
+        ----------
+        strategy_list : list
+            Season/day type structure with rates and blocks
+
+        Returns
+        -------
+        dict
+            {strategyList: [...]} with recommended dispatch codes
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/getRecommendEnergyDispatchList"
+        payload = {
+            "gatewayId": self.gateway,
+            "strategyList": strategy_list,
+        }
+        data = await self._post(url, payload)
+        return data
+
+    async def calculate_expected_earnings(self, template: dict):
+        """Calculate expected savings/earnings for a tariff template.
+
+        Parameters
+        ----------
+        template : dict
+            Full template payload (same shape as saveTouDispatch body)
+
+        Returns
+        -------
+        dict
+            {historyRealSavings, estimatedSavings, estimatedSavings30,
+             estimatedSavings365, ...}
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/calculate/expected/earnings"
+        data = await self._post(url, template)
+        return data
+
+    async def apply_tariff_template(self, template_id: int, name: str,
+                                     work_mode: int = 1,
+                                     electricity_type: int = 8,
+                                     strategy_detail_custom: list | None = None):
+        """Apply a pre-built utility tariff template with optional overrides.
+
+        This is a WRITE operation — it will change the active TOU schedule.
+
+        Parameters
+        ----------
+        template_id : int
+            Tariff template ID (from get_tariff_detail)
+        name : str
+            Schedule name (e.g. "Grid Charge")
+        work_mode : int
+            Work mode (1 = TOU)
+        electricity_type : int
+            Electricity type (8 = grid charge pattern)
+        strategy_detail_custom : list, optional
+            Custom overrides per strategy, e.g.:
+            [{"startHourTime": "00:00", "endHourTime": "05:00", "gridMax": 1000.0}]
+
+        Returns
+        -------
+        dict
+            {id: touId} on success
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/saveTouDispatchUseTemplate"
+        payload = {
+            "gatewayId": self.gateway,
+            "templateId": template_id,
+            "name": name,
+            "workMode": work_mode,
+            "electricityType": electricity_type,
+        }
+        if strategy_detail_custom is not None:
+            payload["strategyList"] = strategy_detail_custom
+        data = await self._post(url, payload)
+        return data
+
