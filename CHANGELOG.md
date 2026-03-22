@@ -28,6 +28,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `franklinwh-cli support --analyze` — connectivity and WiFi health analysis engine detecting DHCP failures, 4G fallback, disabled interfaces `FEAT-SUPPORT-ANALYZE`
 - `franklinwh-cli support --compare FILE --scope` — diff previous snapshot (scopes: all, network, software, power) `FEAT-SUPPORT-COMPARE`
 - `get_apower_info` added to `franklinwh-cli raw` method list `FEAT-RAW-APOWER`
+- **20 new API endpoints from HAR capture** — tariff management, billing/savings, device/site `FEAT-HAR-ENDPOINTS`
+  - TOU: `get_utility_companies`, `get_tariff_list`, `get_tariff_detail`, `get_tou_detail_by_id`, `get_custom_dispatch_list`, `get_bonus_info`, `get_vpp_tip`, `get_recommend_dispatch_list`, `calculate_expected_earnings`, `apply_tariff_template`
+  - Billing: `get_electric_data`, `get_charge_history`, fixed `get_benefit_info` URL and params
+  - Device: `get_site_detail`, `get_device_detail`, `get_device_overall_info`, `get_personal_info`
+- `franklinwh-cli raw` — stdin JSON pipe for methods needing structured payloads `FEAT-RAW-STDIN`
+- **MkDocs Material docs site** — auto-deployed to GitHub Pages on push `FEAT-DOCS-SITE`
+- `docs/SCHEDULING.md` — platform-specific scheduling HOWTO (launchd, cron, systemd, Docker)
+- `docs/LOGGING.md` — logging strategy (verbosity flags, tracing, rotation, level guidelines)
+- `docs/TOU_SCHEDULE_GUIDE.md` — TOU entrance flags prerequisite section
 
 ### Fixed
 - **Login type was wrong** — hardcoded `type: 1` (installer) instead of `type: 0` (user); now defaults to `LOGIN_TYPE_USER` (0) `DEF-AUTH-LOGIN-TYPE`
@@ -51,10 +60,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - HA-specific `configuration.yaml` comment and stale inline comments
 - Commented-out code lines and dead docstring example block
 - 28 consecutive blank lines in `client.py`
+- Built-in scheduler (`--schedule`) — removed ~390 lines; see `docs/SCHEDULING.md` for platform-native alternatives
 
 ### Changed
 - 12 debug-noise `logger.info()` calls → `logger.debug()` in `client.py`, `stats.py`, `storm.py`
 - HA-specific import comments → generic descriptions in `client.py`, `__init__.py`
+- `--log-file` now uses `RotatingFileHandler` (5MB max, 3 backups) instead of unbounded `FileHandler`
+- 7 internal log calls downgraded from `INFO` → `DEBUG` in `power.py` and `account.py`
 
 ---
 
