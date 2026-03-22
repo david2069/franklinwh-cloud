@@ -611,3 +611,69 @@ class DevicesMixin:
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 341)
 
+    async def get_site_detail(self, site_id: str = None):
+        """Get site details (name, address, location).
+
+        Parameters
+        ----------
+        site_id : str, optional
+            Site ID. If None, uses first site from account info.
+
+        Returns
+        -------
+        dict
+            {siteName, address1, address2, country, province, city,
+             postCode, alphaCode, completeAddress}
+        """
+        if site_id is None:
+            # Auto-discover from account info
+            info = self.fetcher.info
+            site_id = str(info.get("siteId", ""))
+        url = self.url_base + "hes-gateway/terminal/site/get/SiteDetail"
+        params = {
+            "siteId": str(site_id),
+            "userId": str(self.fetcher.info.get("userId", "")),
+        }
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_device_detail(self):
+        """Get device/gateway detail (name, address, location).
+
+        Returns
+        -------
+        dict
+            {gatewayName, address1, address2, country, province, city,
+             postCode, alphaCode, completeAddress}
+        """
+        url = self.url_base + "hes-gateway/terminal/site/get/DeviceDetail"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_device_overall_info(self):
+        """Get device overview (aPower count, total power capacity).
+
+        Returns
+        -------
+        dict
+            {apowerCount: int, totalPower: float}
+        """
+        url = self.url_base + "hes-gateway/terminal/selectDeviceOverallInfo"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data
+
+    async def get_personal_info(self):
+        """Get user profile information.
+
+        Returns
+        -------
+        dict
+            {userName, contactNumber, userAddress, region, lat, lon,
+             firstName, lastName, zipCode, country, province, city, ...}
+        """
+        url = self.url_base + "hes-gateway/terminal/getPersonalInfo"
+        data = await self._get(url, params=None)
+        return data
+
