@@ -1714,6 +1714,7 @@ def _schedule_list(is_mac: bool):
     import subprocess
     print_section("📅", "Nettest Schedule")
 
+    frequency = None
     if is_mac:
         if os.path.exists(_PLIST_PATH):
             result = subprocess.run(["launchctl", "list", _SCHED_LABEL],
@@ -1723,6 +1724,8 @@ def _schedule_list(is_mac: bool):
             else:
                 print_kv("Status", c("yellow", "Plist exists but not loaded"))
             print_kv("Plist", _PLIST_PATH)
+            # Extract frequency from plist
+            frequency = _read_plist_frequency()
         else:
             print_kv("Status", c("dim", "No schedule configured"))
     else:
@@ -1731,10 +1734,19 @@ def _schedule_list(is_mac: bool):
             for line in result.stdout.split("\n"):
                 if _SCHED_LABEL in line:
                     print_kv("Status", c("green", "Active (cron)"))
-                    print_kv("Entry", line.split("#")[0].strip())
+                    cron_expr = line.split("#")[0].strip()
+                    print_kv("Entry", cron_expr)
+                    frequency = _parse_cron_frequency(cron_expr)
                     break
         else:
             print_kv("Status", c("dim", "No schedule configured"))
+
+    if frequency:
+        print_kv("Frequency", frequency)
+
+    # Wrapper
+    if os.path.exists(_WRAPPER_PATH):
+        print_kv("Wrapper", _WRAPPER_PATH)
 
     # Recent log files
     if os.path.isdir(_LOG_DIR):
@@ -1746,11 +1758,59 @@ def _schedule_list(is_mac: bool):
             for log_file in logs[-5:]:
                 size = os.path.getsize(os.path.join(_LOG_DIR, log_file))
                 print(f"    {log_file}  ({size:,} bytes)")
+            if len(logs) > 100:
+                print(f"\n  {c('yellow', f'⚠ {len(logs)} log files — consider pruning old logs:')}")
+                print(f"    {c('dim', f'find {_LOG_DIR} -name \"nettest-*.json\" -mtime +30 -delete')}")
     print()
 
 
+def _read_plist_frequency() -> str | None:
+    """Extract schedule frequency from the installed plist."""
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(_PLIST_PATH)
+        keys = [e.text for e in tree.iter()]
+        if "StartInterval" in keys:
+            # Find the integer after StartInterval
+            elements = list(tree.iter())
+            for i, e in enumerate(elements):
+                if e.text == "StartInterval" and i + 1 < len(elements):
+                    secs = int(elements[i + 1].text)
+                    _LABELS = {3600: "Hourly", 86400: "Daily"}
+                    return _LABELS.get(secs, f"Every {secs // 60}m")
+        if "StartCalendarInterval" in keys:
+            elements = list(tree.iter())
+            for i, e in enumerate(elements):
+                if e.text == "Weekday":
+                    return "Weekly (Sunday midnight)"
+                if e.text == "Day":
+                    return "Monthly (1st midnight)"
+    except Exception:
+        pass
+    return None
+
+
+def _parse_cron_frequency(cron_expr: str) -> str | None:
+    """Parse a cron expression into a human-readable frequency."""
+    parts = cron_expr.strip().split()
+    if len(parts) < 5:
+        return None
+    _KNOWN = {
+        "0 * * * *": "Hourly",
+        "0 0 * * *": "Daily (midnight)",
+        "0 0 * * 0": "Weekly (Sunday midnight)",
+        "0 0 1 * *": "Monthly (1st midnight)",
+    }
+    cron_time = " ".join(parts[:5])
+    if cron_time in _KNOWN:
+        return _KNOWN[cron_time]
+    if parts[0].startswith("*/"):
+        return f"Every {parts[0][2:]}m"
+    return cron_time
+
+
 def _schedule_remove(is_mac: bool):
-    """Remove nettest schedule."""
+    """Remove nettest schedule and clean up wrapper."""
     import subprocess
     if is_mac:
         if os.path.exists(_PLIST_PATH):
@@ -1770,5 +1830,9 @@ def _schedule_remove(is_mac: bool):
             print_success("Nettest schedule removed (cron)")
         else:
             print("No schedule configured")
+
+    # Clean up wrapper script
+    if os.path.exists(_WRAPPER_PATH):
+        os.remove(_WRAPPER_PATH)
     print()
 
