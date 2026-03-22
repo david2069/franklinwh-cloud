@@ -156,7 +156,10 @@ def configure_logging(verbosity: int = 0, trace_modules: list[str] | None = None
         handlers.append(stderr_handler)
 
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        from logging.handlers import RotatingFileHandler
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=5_000_000, backupCount=3
+        )
         file_handler.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
         handlers.append(file_handler)
 
