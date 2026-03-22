@@ -117,15 +117,15 @@ class AccountMixin:
         username = kwargs.get("email", None)
 
         if userId is not None:
-            logger.info("FAILED: Not sure to process kwargs: userId = {userId} or username = {username}")
+            logger.warning(f"get_site_device_info: unexpected kwargs: userId={userId}, email={username}")
         else:
             res = self.fetcher.info
             userId = res["userId"]
             res = self.fetcher.info
-            logger.info(f"res = {res}")
+            logger.debug(f"get_site_device_info: session info = {res}")
             username = res["email"]
 
-        logger.info("Using current login session")
+        logger.debug("get_site_device_info: Using current login session")
         url = self.url_base + "hes-gateway/terminal/site/list/siteAndDeviceInfo"
         params = {"pageNum": 1, "pageSize": 999, "userAccount": username, "userId": userId}
         data = await self._get(url, params=params, supressGateway=True)

@@ -62,7 +62,7 @@ class PowerMixin:
         globalGridChargeMax : float
             -1 = Unlimited, 0 = Disabled, >= 0.1 = kW limit
         """
-        logger.info(f"set_power_control_settings: globalGridChargeMax    = {globalGridChargeMax}")
+        logger.debug(f"set_power_control_settings: globalGridChargeMax    = {globalGridChargeMax}")
         match globalGridChargeMax:
             case -1:
                 option = "Unlimited grid charging set"
@@ -77,9 +77,9 @@ class PowerMixin:
                     else:
                         option = "Grid charging permitted"
 
-        logger.info(f"set_power_control_settings: globalGridDischargeMax = {option}")
+        logger.debug(f"set_power_control_settings: globalGridDischargeMax = {option}")
 
-        logger.info(f"set_power_control_settings: globalGridChargeMax    = {globalGridDischargeMax}")
+        logger.debug(f"set_power_control_settings: globalGridChargeMax    = {globalGridDischargeMax}")
         match globalGridDischargeMax:
             case -1:
                 option = "Unlimited grid discharging set"
@@ -94,7 +94,7 @@ class PowerMixin:
                     else:
                         option = "Exporting is limited to {globalGridDischargeMax}"
 
-        logger.info(f"set_power_control_settings: globalGridChargeMax = {option}")
+        logger.debug(f"set_power_control_settings: globalGridChargeMax = {option}")
 
         url = self.url_base + f"hes-gateway/terminal/tou/setPowerControl?gatewayId={self.gateway}"
         payload = {
@@ -102,7 +102,7 @@ class PowerMixin:
             "globalGridDischargeMax": globalGridDischargeMax,
             "globalGridChargeMax": globalGridChargeMax,
         }
-        logger.info(f"setPowerControlSetting: Sending request to set PCS Power Control settings URL: {url} with payload: {payload}")
+        logger.debug(f"setPowerControlSetting: Sending request to set PCS Power Control settings URL: {url} with payload: {payload}")
         data = await self._post(url, payload)
         return data
 
