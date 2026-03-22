@@ -40,3 +40,4 @@ tests/results/test_history.log
 test_library.py
 *.textClipping
 *.har
+site/
