@@ -96,12 +96,26 @@ async def run(client, method: str, values: list[str] | None = None,
         print_available()
         return
 
-    # Build args
+    # Build args — check for JSON payload on stdin
+    import sys
+    import json as _json
     args = values or []
+    stdin_payload = None
+
+    if not sys.stdin.isatty():
+        # Data piped via stdin — parse as JSON
+        stdin_text = sys.stdin.read().strip()
+        if stdin_text:
+            try:
+                stdin_payload = _json.loads(stdin_text)
+            except _json.JSONDecodeError as e:
+                print_error(f"Invalid JSON on stdin: {e}")
+                return
+
     info = AVAILABLE_METHODS.get(method, {})
     expected = info.get("args", 0) if info else 0
 
-    if expected and len(args) < expected:
+    if not stdin_payload and expected and len(args) < expected:
         print_warning(f"{method} expects {expected} argument(s), got {len(args)}")
         if info:
             print(f"  Description: {info['desc']}")
@@ -112,7 +126,10 @@ async def run(client, method: str, values: list[str] | None = None,
     func = getattr(client, method)
     t0 = time.monotonic()
     try:
-        if args:
+        if stdin_payload is not None:
+            # Stdin JSON becomes the first argument, positional args follow
+            result = await func(stdin_payload, *args)
+        elif args:
             result = await func(*args)
         else:
             result = await func()
