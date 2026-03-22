@@ -222,8 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
                              help="FEM URL for Tier 2 tests (default: auto-discover)")
     sub_support.add_argument("--bms", action="store_true",
                              help="Include BMS battery test (extra sendMqtt load — opt-in)")
-    sub_support.add_argument("--schedule", metavar="ACTION",
-                             help="Schedule periodic nettest: hourly, daily, N (minutes), list, remove")
+
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
@@ -378,12 +377,7 @@ async def async_main():
 
             case "support" | "snapshot":
                 from franklinwh_cloud.cli_commands import support
-                schedule_action = getattr(args, 'schedule', None)
-                if schedule_action:
-                    support.manage_schedule(schedule_action,
-                                           bms=getattr(args, 'bms', False),
-                                           fem_url=getattr(args, 'fem_url', None))
-                elif getattr(args, 'nettest', False):
+                if getattr(args, 'nettest', False):
                     await support.run_nettest(client, json_output=args.json,
                                              interval=getattr(args, 'interval', 0),
                                              duration=getattr(args, 'duration', 0),
