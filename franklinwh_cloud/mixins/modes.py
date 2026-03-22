@@ -85,7 +85,7 @@ class ModesMixin:
         Self-Consumption. Emergency Backup requires additional params
         to control duration and what happens after backup ends.
         """
-        logger.info(f"set_mode: Requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
+        logger.debug(f"set_mode: Requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
         validate_mode = str(requestedOperatingMode).lower().replace(' ', '_').replace('-', '_')
         tou_mode = None
 
@@ -94,7 +94,7 @@ class ModesMixin:
         #   tou_battery_export | Force battery to export to grid (if configured)
         #   tou_custom         | Pre-defined custom TOU schedules built-in to set_tou_schedule()
         #   tou_json           | User-defined TOU schedule provided as JSON payload
-        logger.info(f"set_mode: Validating requested Operating Mode: {validate_mode}")
+        logger.debug(f"set_mode: Validating requested Operating Mode: {validate_mode}")
         match validate_mode:
             case "tou_battery_import" | "tou_battery_export" | "tou_custom" | "tou_json":
                 requestedOperatingMode = TIME_OF_USE
@@ -136,37 +136,37 @@ class ModesMixin:
                 case _:
                     raise InvalidOperatingModeOption(f"Invalid reserve SOC value requested: {requestedSOC}")
 
-        logger.info(f"set_mode: Validated requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
-        logger.info(f"set_mode: calling get_device_composite_info to get TOU details and map target mode: {requestedOperatingMode}")
-        logger.info(f"set_mode: lookup MODE_MAP for {requestedOperatingMode} {MODE_MAP[requestedOperatingMode]}")
+        logger.debug(f"set_mode: Validated requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
+        logger.debug(f"set_mode: calling get_device_composite_info to get TOU details and map target mode: {requestedOperatingMode}")
+        logger.debug(f"set_mode: lookup MODE_MAP for {requestedOperatingMode} {MODE_MAP[requestedOperatingMode]}")
 
         res = await self.get_device_composite_info()
         if res['code'] != 200:
             assert res['code'] == 200, f"set_mode: Error: getDeviceCompositeInfo: {res['code']}: {res['message']} "
-        logger.info("set_mode: getDeviceCompositeInfo successful response")
+        logger.debug("set_mode: getDeviceCompositeInfo successful response")
 
         valid = str(res["result"]["valid"])
         currentWorkMode = str(res["result"]["currentWorkMode"])
-        logger.info(f"set_mode: currentWorkMode={currentWorkMode}")
+        logger.debug(f"set_mode: currentWorkMode={currentWorkMode}")
         electricityType = 1
         deviceStatus = str(res["result"]["deviceStatus"])
-        logger.info(f"set_mode: deviceStatus={deviceStatus}, valid={valid}")
+        logger.debug(f"set_mode: deviceStatus={deviceStatus}, valid={valid}")
 
         if int(deviceStatus) != 1:
-            logger.info(f"set_mode: Warning: aGate {self.gateway} deviceStatus is not Normal (1) - current deviceStatus={deviceStatus}")
+            logger.warning(f"set_mode: aGate {self.gateway} deviceStatus is not Normal (1) - current deviceStatus={deviceStatus}")
 
         runMode = str(res["result"]["runtimeData"]["mode"])
 
         tou_res = await self.get_gateway_tou_list()
-        logger.info("set_mode: getGatewayTouListV2 successful response")
+        logger.debug("set_mode: getGatewayTouListV2 successful response")
         currendId = tou_res["result"]["currendId"]
         modeDetails = tou_res["result"]["list"]
-        logger.info(f"set_mode: search for requestedOperatingMode = {requestedOperatingMode} == getGatewayTouListV2() result/list/workMode")
+        logger.debug(f"set_mode: search for requestedOperatingMode = {requestedOperatingMode} == getGatewayTouListV2() result/list/workMode")
         touList = list(filter(lambda x: x["workMode"] == int(requestedOperatingMode), modeDetails))
-        logger.info(f"set_mode: Found target mode {requestedOperatingMode} in workMode in touList = {touList}")
+        logger.debug(f"set_mode: Found target mode {requestedOperatingMode} in workMode in touList = {touList}")
         if touList:
             touId = touList[0]["id"]
-            logger.info(f"set_mode: touId={touId}, workMode={touList[0]['workMode']}    - this needs to send to updateTouModeVoc as currendId parameter")
+            logger.debug(f"set_mode: touId={touId}, workMode={touList[0]['workMode']}")
             workMode = touList[0]["workMode"]
             oldIndex = touList[0]["oldIndex"]
             name = touList[0]["name"]
@@ -175,7 +175,7 @@ class ModesMixin:
             electricityType = touList[0]["electricityType"]
             maxSoc = touList[0]["maxSoc"]
             minSoc = touList[0]["minSoc"]
-            logger.info(f"set_mode: Retrieved operating mode details for currendId={currendId}: workMode={workMode}, oldIndex={oldIndex}, name={name}, soc={current_soc}, editSocFlag={editSocFlag}, electricityType={electricityType}, maxSoc={maxSoc}, minSoc={minSoc}")
+            logger.debug(f"set_mode: Retrieved operating mode details for currendId={currendId}: workMode={workMode}, oldIndex={oldIndex}, name={name}, soc={current_soc}, editSocFlag={editSocFlag}, electricityType={electricityType}, maxSoc={maxSoc}, minSoc={minSoc}")
         else:
             mesg = f"set_mode: Error: requestedOperatingMode={requestedOperatingMode} was NOT found in result list"
             raise InvalidOperatingModeOption(mesg)
@@ -185,18 +185,18 @@ class ModesMixin:
         tariffSettingFlag = tou_res["result"]["tariffSettingFlag"]
         touSendStatus = tou_res["result"]["touSendStatus"]
         if tariffSettingFlag:
-            logger.info(f"set_mode: Warning: aGate {self.gateway} has tariffSettingFlag enabled - current tariffSettingFlag={tariffSettingFlag}")
+            logger.warning(f"set_mode: aGate {self.gateway} has tariffSettingFlag enabled - current tariffSettingFlag={tariffSettingFlag}")
         if touSendStatus:
-            logger.info(f"set_mode: Warning: aGate {self.gateway} has touSendStatus enabled - current touSendStatus={touSendStatus}")
+            logger.warning(f"set_mode: aGate {self.gateway} has touSendStatus enabled - current touSendStatus={touSendStatus}")
         stopMode = tou_res["result"]["stopMode"]
         if stopMode:
-            logger.info(f"set_mode: Warning: aGate {self.gateway} is in Stop Mode - current stopMode={stopMode}")
+            logger.warning(f"set_mode: aGate {self.gateway} is in Stop Mode - current stopMode={stopMode}")
 
         url = self.url_base + "hes-gateway/terminal/tou/updateTouModeV2"
         url = url + f"?gatewayId={self.gateway}"
         url = url + f"&currendId={touId}"
 
-        logger.info(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {self.gateway}")
+        logger.debug(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {self.gateway}")
         if requestedOperatingMode != EMERGENCY_BACKUP:
             if requestedSOC is None:
                 soc = int(current_soc)
@@ -230,7 +230,7 @@ class ModesMixin:
 
         mode_name = MODE_MAP.get(requestedOperatingMode, f"Unknown Mode {requestedOperatingMode}")
         logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
-        logger.info(f"set_mode: POST URL = {url}")
+        logger.debug(f"set_mode: POST URL = {url}")
 
         res = await self._post(url, payload=None, suppress_gateway=True, suppress_params=True)
         if res['code'] == 200:
@@ -294,7 +294,7 @@ class ModesMixin:
             "offGridReason", runtime.get("offgridreason", 0)
         )
 
-        logger.info(
+        logger.debug(
             f"get_mode: aGate {self.gateway} currentWorkMode={current_work_mode} "
             f"({OPERATING_MODES.get(current_work_mode)}), targetMode={target_mode}, "
             f"run_status={run_status} ({run_desc}), deviceStatus={device_status}"
@@ -329,7 +329,7 @@ class ModesMixin:
         max_soc = mode_entry["maxSoc"]
         min_soc = mode_entry["minSoc"]
 
-        logger.info(
+        logger.debug(
             f"get_mode: matched mode: workMode={work_mode}, oldIndex={old_index}, "
             f"soc={current_soc}, editSocFlag={edit_soc_flag}, "
             f"maxSoc={max_soc}, minSoc={min_soc}"
@@ -394,7 +394,7 @@ class ModesMixin:
         }
         results.update(mode_specific)
 
-        logger.info("get_mode: successfully returned results")
+        logger.debug("get_mode: successfully returned results")
         return results
 
     async def update_soc(self, requestedSOC=0, workMode=0, electricityType=1):
