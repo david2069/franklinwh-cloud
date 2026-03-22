@@ -1532,8 +1532,14 @@ fi
 # Ensure log directory exists
 mkdir -p "{_LOG_DIR}"
 
-# Run nettest
-{cmd}
+# Auto-prune JSON logs older than 30 days
+find "{_LOG_DIR}" -name "nettest-*.json" -mtime +30 -delete 2>/dev/null || true
+
+# Auto-prune stderr logs older than 30 days
+find "{_LOG_DIR}" -name "stderr-*.log" -mtime +30 -delete 2>/dev/null || true
+
+# Run nettest (stderr goes to dated log — one per day)
+{cmd} 2>> "{_LOG_DIR}/stderr-$(date +%Y-%m-%d).log"
 """
 
 
