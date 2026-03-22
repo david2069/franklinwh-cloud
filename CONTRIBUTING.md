@@ -76,6 +76,7 @@ This library prioritises being a **good API citizen**. All contributions must:
 
 - [ ] All unit tests pass (`pytest tests/ -m "not live"`)
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (if user-facing change)
+- [ ] Docs site updated — any new API methods or user-facing features must be reflected in `docs/` (auto-deploys on push)
 - [ ] GitHub Issue referenced in commit message (if applicable)
 - [ ] No new API calls without rate limiter integration
 - [ ] Client identity headers not modified to spoof official app
