@@ -14,6 +14,31 @@
 
 ---
 
+## Prerequisites — Check TOU Availability
+
+> [!WARNING]
+> **Not all sites have TOU configured.** Before calling TOU endpoints, check `get_entrance_info()` to avoid errors on sites without a tariff setup.
+
+```bash
+franklinwh-cli raw get_entrance_info
+```
+
+| Flag | Meaning | `0` / `False` = |
+|------|---------|-----------------|
+| `tariffSettingFlag` | TOU tariff is configured | No tariff — TOU schedule endpoints may return empty/error |
+| `pcsEntrance` | PCS power control available | Power control settings not accessible |
+| `bbEntrance` | Battery Bonus enrolled | No Battery Bonus programme |
+| `sgipEntrance` | SGIP (California Self-Generation Incentive Program) | Not enrolled in SGIP |
+| `ja12Entrance` | JA12 (California Energy Code, Joint Appendix 12 — battery storage compliance) | Not in JA12 programme |
+
+```python
+info = await client.get_entrance_info()
+if not info.get("tariffSettingFlag"):
+    print("No TOU tariff configured — schedule endpoints unavailable")
+```
+
+---
+
 ## Dispatch Code Reference
 
 | Code | dispatchId | Enum Name | Battery Behaviour |
