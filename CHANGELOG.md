@@ -50,8 +50,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/SCHEDULING.md` — platform-specific scheduling HOWTO (launchd, cron, systemd, Docker)
 - `docs/LOGGING.md` — logging strategy (verbosity flags, tracing, rotation, level guidelines)
 - `docs/TOU_SCHEDULE_GUIDE.md` — TOU entrance flags prerequisite section
+- **System Readiness panel** in `discover` — at-a-glance ✅/⚠ status for aGate, aPower, PCS, TOU, Grid, Solar `FEAT-CLI-DISCOVER-VERBOSE`
+- **3-state off-grid detection** — simulated (`get_grid_status` offgridSet), permanent (`offGirdFlag`), detected outage (`offgridreason`) `FEAT-CLI-DISCOVER-VERBOSE`
+- **Extended relays** in Tier 2 — Grid 2, Black Start, Solar PV 2, aPBox (from `get_stats` powerInfo) `FEAT-CLI-DISCOVER-VERBOSE`
+- **TOU dispatch status** in Tier 2 — `tou_status` and `tou_dispatch_count` for backend health monitoring `FEAT-CLI-DISCOVER-VERBOSE`
+- **Region-filtered flags** — MAC-1/MSA, NEM, SGIP, BB, JA12 only shown for US systems `FEAT-CLI-DISCOVER-VERBOSE`
+- **Accessory model/SKU** from catalog lookup in accessories section `FEAT-CLI-DISCOVER-VERBOSE`
+- **TOU Setup Workflows** — two mermaid diagrams in `docs/TOU_SCHEDULE_GUIDE.md`: template-based (7-step app wizard) and direct dispatch (5-step CLI) `FEAT-TOU-WORKFLOWS`
+- **10 TOU tariff management endpoints** added to `API_REFERENCE.md` with HTTP methods and WRITE warnings `FEAT-TOU-WORKFLOWS`
+- **Architecture diagrams** — two distinct transport paths: Cloud API (sendMqtt format) and Modbus TCP (`franklinwh_modbus`, SunSpec/Raw, LAN port 502) `FEAT-DOCS`
+- **Thank You page** — `docs/thank-you.md` acknowledging Richo's `franklinwh-python` and `homeassistant-franklinwh` with contributor links `FEAT-DOCS`
+- **Device Discovery** section in mkdocs nav — implementation plan, catalog design, field registry `FEAT-DOCS`
+- **API method count** updated to 70 (from 59) across all documentation `FEAT-DOCS`
 
 ### Fixed
+- **AU Smart Circuits reported 3 circuits** — now uses catalog hardware truth (AU model 302 = 2 circuits) `DEF-DISCOVER-AU-SC`
+- **Relay labels inconsistent** — standardised to Grid Relay 1, Generator Relay, Solar PV Relay 1 `DEF-DISCOVER-RELAYS`
+- **AU single-phase aGates showed split-phase L2** — suppressed L2 voltage/current for AU/NZ, labelled L1 as just "Voltage"/"Current" `DEF-DISCOVER-AU-PHASE`
+- **MAC-1 detection too late** — now detected in Tier 1 from `get_device_info` `msaInstallStartDetectTime` field `DEF-DISCOVER-MAC1`
 - **Login type was wrong** — hardcoded `type: 1` (installer) instead of `type: 0` (user); now defaults to `LOGIN_TYPE_USER` (0) `DEF-AUTH-LOGIN-TYPE`
 - **`url_base` inconsistency** — 34 methods used hardcoded `DEFAULT_URL_BASE` instead of configurable `self.url_base`; now all methods respect the `url_base` parameter passed to `Client()` `DEF-CLIENT-URL-BASE`
 - `franklinwh-cli mode` — resilient to `get_mode()` API failures; falls back to `get_all_mode_soc()` for SoC summary `DEF-MODE-CRASH`
