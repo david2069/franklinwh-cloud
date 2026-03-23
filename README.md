@@ -277,7 +277,7 @@ pytest -v
 cat tests/results/test_history.log
 ```
 
-**Current coverage**: 253 tests across all 8 domains
+**Current coverage**: 286 tests across all 8 domains
 
 ## 📚 API Reference
 
