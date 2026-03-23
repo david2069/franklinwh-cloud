@@ -458,6 +458,28 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_warranty_info failed: {e}")
 
+        # 12. Extended relays from get_stats (powerInfo)
+        try:
+            stats = await self.get_stats()
+            if hasattr(stats, 'grid_relay2'):
+                snap.electrical.relays["grid_2"] = bool(stats.grid_relay2)
+                snap.electrical.relays["black_start"] = bool(stats.black_start_relay)
+                snap.electrical.relays["solar_pv_2"] = bool(stats.pv_relay2)
+                snap.electrical.relays["apbox"] = bool(stats.bfpv_apbox_relay)
+        except Exception as e:
+            logger.warning(f"discover: get_stats (extended relays) failed: {e}")
+
+        # 13. TOU dispatch status — flags backend issues
+        try:
+            tou = await self.get_gateway_tou_list()
+            result = tou.get("result", {}) if isinstance(tou, dict) else {}
+            if result:
+                snap.electrical.tou_status = result.get("status", 0)
+                dispatch = result.get("dispatchList", [])
+                snap.electrical.tou_dispatch_count = len(dispatch)
+        except Exception as e:
+            logger.warning(f"discover: get_gateway_tou_list (Tier 2) failed: {e}")
+
     # ── Tier 3 ────────────────────────────────────────────────────
 
     async def _discover_tier3(self, snap, catalog):

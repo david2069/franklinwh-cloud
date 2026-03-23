@@ -226,6 +226,8 @@ class ElectricalInfo:
     run_status_name: str = ""
     device_status: int = 0
     soc: float = 0.0
+    tou_status: int = 0              # TOU backend status (0 = ok)
+    tou_dispatch_count: int = 0      # Number of active dispatches
 
 
 @dataclass

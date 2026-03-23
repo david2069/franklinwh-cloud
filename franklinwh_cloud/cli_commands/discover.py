@@ -361,6 +361,10 @@ def _render_electrical(snap):
             "grid_1": "Grid Relay 1",
             "generator": "Generator Relay",
             "solar_pv_1": "Solar PV Relay 1",
+            "grid_2": "Grid Relay 2",
+            "black_start": "Black Start Relay",
+            "solar_pv_2": "Solar PV Relay 2",
+            "apbox": "aPBox Relay",
         }
         for key, state in e.relays.items():
             label = relay_labels.get(key, key)
@@ -391,30 +395,79 @@ def _render_firmware(snap):
 
 
 def _render_whats_missing(snap):
-    """Render what's missing / unconfigured diagnostics."""
-    issues = []
+    """Render system readiness and diagnostics."""
+    e = snap.electrical
     f = snap.flags
+    from franklinwh_cloud.const import AGATE_STATE
 
-    if not f.solar:
-        issues.append(("⚠", "No solar panels detected"))
-    if not f.tariff_configured:
-        issues.append(("⚠", "TOU not configured — set up tariff in app"))
+    # ── System Readiness ──────────────────────────────────────────
+    readiness = []
+
+    # aGate status
+    agate_ok = e.device_status == 1
+    agate_label = AGATE_STATE.get(e.device_status, f"Unknown ({e.device_status})")
+    readiness.append(("aGate", agate_ok, agate_label))
+
+    # aPower status
+    bat_ok = snap.batteries.count > 0 and e.soc > 0
+    bat_label = f"{snap.batteries.count} unit(s), SoC {e.soc}%"
+    if e.run_status in (0, 5):
+        bat_label += f" — {e.run_status_name}"
+    readiness.append(("aPower", bat_ok, bat_label))
+
+    # PCS (power control)
+    pcs_label = "Enabled" if f.pcs_enabled else "Not configured"
+    readiness.append(("PCS Control", f.pcs_enabled, pcs_label))
+
+    # TOU schedule
+    tou_ok = f.tariff_configured
+    if e.tou_dispatch_count > 0:
+        tou_label = f"Active ({e.tou_dispatch_count} dispatch windows)"
+    elif tou_ok:
+        tou_label = "Configured (no active dispatches)"
+    else:
+        tou_label = "Not configured — set up tariff in app"
+    if e.tou_status and e.tou_status != 0:
+        tou_ok = False
+        tou_label += f" ⚠ backend status: {e.tou_status}"
+    readiness.append(("TOU Schedule", tou_ok, tou_label))
+
+    # Grid
+    grid_label = "Connected" if snap.grid.connected else "Off-Grid"
+    if f.off_grid_simulated:
+        grid_label = "Simulated off-grid (contactor open)"
+    elif f.off_grid_permanent:
+        grid_label = "Permanent off-grid (no utility)"
+    readiness.append(("Grid", snap.grid.connected, grid_label))
+
+    # Solar
+    solar_label = f.solar_detail if f.solar_detail else ("Detected" if f.solar else "Not detected")
+    readiness.append(("Solar", f.solar, solar_label))
+
+    print_section("🏥", "System Readiness")
+    for name, ok, detail in readiness:
+        icon = c("green", "✅") if ok else c("yellow", "⚠")
+        print_kv(f"  {icon} {name}", detail)
+
+    # ── Informational notes ───────────────────────────────────────
+    notes = []
     if f.off_grid:
-        issues.append(("⚠", f"System is OFF-GRID (reason: {f.off_grid_reason})"))
+        notes.append(("⚠", f"System is OFF-GRID (reason: {f.off_grid_reason})"))
     if f.need_ct_test:
-        issues.append(("⚠", "CT calibration test required"))
+        notes.append(("⚠", "CT calibration test required"))
     if f.charging_power_limited:
-        issues.append(("⚠", "Charging power currently limited"))
+        notes.append(("⚠", "Charging power currently limited"))
     if not snap.accessories.has_smart_circuits:
-        issues.append(("ⓘ", "No Smart Circuits installed"))
+        notes.append(("ⓘ", "No Smart Circuits installed"))
     if not snap.accessories.has_generator and not f.generator_enabled:
-        issues.append(("ⓘ", "No Generator Module installed"))
+        notes.append(("ⓘ", "No Generator Module installed"))
     if not f.vpp_enrolled:
-        issues.append(("ⓘ", "Not enrolled in VPP programme"))
+        notes.append(("ⓘ", "Not enrolled in VPP programme"))
     if snap.warranty.expiry == "":
-        issues.append(("ⓘ", "Warranty info unavailable"))
+        notes.append(("ⓘ", "Warranty info unavailable"))
 
-    if issues:
-        print_section("📌", "Diagnostics")
-        for icon, msg in issues:
+    if notes:
+        print_section("📌", "Notes")
+        for icon, msg in notes:
             print_kv(icon, msg)
+
