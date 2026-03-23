@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Enhanced `franklinwh-cli discover` with 3 verbosity tiers** `FEAT-CLI-DISCOVER-VERBOSE`
+  - `discover` (Tier 1): site identity, aGate model/firmware, battery summary, 20 feature flags (✅/❌), operating state, diagnostics (~6 API calls)
+  - `discover -v` (Tier 2): + per-aPower firmware (FPGA/DCDC/INV/BMS/bootloader/thermal), SC config (version/count/names/V2L), warranty (expiry/throughput/installer), grid profile, programmes, relays (~12 calls)
+  - `discover -vv` (Tier 3): + full aGate firmware (IBG/SL/AWS/App/Meter), NEM type, PTO date, site detail (~20 calls)
+  - `discover --json`: full JSON output for scripting and diffing (always Tier 3)
+- **Two-layer architecture**: `client.discover(tier=N) → DeviceSnapshot` — Python API + CLI renderer `FEAT-CLI-DISCOVER-VERBOSE`
+- **`DeviceSnapshot` dataclass** with 10 categories: site, agate, batteries, flags, accessories, grid, warranty, electrical, programmes `FEAT-CLI-DISCOVER-VERBOSE`
+- **`const/device_catalog.json`** — Hybrid A+B JSON hardware catalog with model registry, compatibility matrix, V2L rules, programme definitions `FEAT-CLI-DISCOVER-VERBOSE`
+- **V2L eligibility logic**: V1 SC + Gen = eligible; V2 SC = built-in; AU = no V2L `FEAT-CLI-DISCOVER-VERBOSE`
+- **55 new API fields surfaced** from 13 static APIs (see `docs/API_FIELD_REGISTRY.md`) `FEAT-CLI-DISCOVER-VERBOSE`
+- `docs/DISCOVER_IMPLEMENTATION_PLAN.md` — implementation plan
+- `docs/DEVICE_CATALOG_DESIGN.md` — Hybrid A+B design decision
+- `docs/API_FIELD_REGISTRY.md` — complete field registry (120 fields, 13 APIs)
 - `franklinwh-cli mode` — now shows reserve SoC for active mode and SoC summary for all modes
 - `franklinwh-cli status` — reserve SoC displayed in Operating Mode section
 - `get_all_mode_soc()` — new API method returning reserve SoC, min/max, and active flag for all modes

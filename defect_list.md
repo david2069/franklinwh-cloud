@@ -16,6 +16,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
+| FEAT-CLI-DISCOVER-VERBOSE | CLI Commands | Enhanced `discover` with 3 verbosity tiers (-v/-vv), feature flags table, Hybrid A+B JSON catalog, ~55 new API fields surfaced. See `docs/DEVICE_CATALOG_DESIGN.md` and `docs/API_FIELD_REGISTRY.md` | 2026-03-23 |
 | DEF-CLIENT-TIMEOUT | Client / API Core | `_post()` has `timeout=30` but no graceful recovery on timeout | 2026-03-20 |
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-AUTH-CLI-OPTION | CLI Commands | `--installer` flag on CLI to pass `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-21 |
