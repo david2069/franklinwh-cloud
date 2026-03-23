@@ -42,7 +42,7 @@ A Python client library for interacting with FranklinWH energy storage systems v
 ### From wheel (recommended for downstream projects like FEM)
 
 ```bash
-pip install dist/franklinwh_cloud_client-0.2.0-py3-none-any.whl
+pip install dist/franklinwh_cloud_client-0.3.0-py3-none-any.whl
 ```
 
 ### From source (editable, for development)
@@ -68,7 +68,7 @@ pip install -e ".[test]"
 pip install git+https://github.com/david2069/franklinwh-cloud.git@main
 
 # Pinned release (recommended for production / Docker)
-pip install git+https://github.com/david2069/franklinwh-cloud.git@v0.2.0
+pip install git+https://github.com/david2069/franklinwh-cloud.git@v0.3.0
 ```
 
 ## ⚙️ Configuration
