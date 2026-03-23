@@ -187,17 +187,24 @@ def _render_flags(snap):
          "Installed" if (f.generator_enabled or snap.accessories.has_generator) else "Not installed"),
         ("Remote Solar (aPBox)", f.remote_solar, "Connected" if f.remote_solar else "Not connected"),
         ("aHub", f.ahub_detected, "Detected" if f.ahub_detected else "Not detected"),
-        ("MAC-1 (MSA)", f.mac1_detected, "Detected" if f.mac1_detected else "Not detected"),
     ])
 
-    # Programme flags
-    flags.extend([
-        ("NEM Type", bool(f.nem_type), f.nem_type or "—"),
-        ("SGIP (CA)", f.sgip, "Enrolled" if f.sgip else "Not enrolled"),
-        ("BB (Hawaii)", f.bb, "Enrolled" if f.bb else "Not enrolled"),
-        ("JA12 (CA)", f.ja12, "Enrolled" if f.ja12 else "Not applicable"),
-        ("VPP Programme", f.vpp_enrolled, "Enrolled" if f.vpp_enrolled else "Not enrolled"),
-    ])
+    # US-only accessory flags
+    is_us = snap.site.country_id == 2
+    if is_us:
+        flags.append(("MAC-1 (MSA)", f.mac1_detected,
+                       "Detected" if f.mac1_detected else "Not detected"))
+
+    # Programme flags (region-filtered)
+    if is_us:
+        flags.extend([
+            ("NEM Type", bool(f.nem_type), f.nem_type or "—"),
+            ("SGIP (CA)", f.sgip, "Enrolled" if f.sgip else "Not enrolled"),
+            ("BB (Hawaii)", f.bb, "Enrolled" if f.bb else "Not enrolled"),
+            ("JA12 (CA)", f.ja12, "Enrolled" if f.ja12 else "Not applicable"),
+        ])
+    flags.append(("VPP Programme", f.vpp_enrolled,
+                   "Enrolled" if f.vpp_enrolled else "Not enrolled"))
 
     for name, enabled, detail in flags:
         icon = c("green", "✅") if enabled else c("dim", "❌")
@@ -304,23 +311,36 @@ def _render_programmes(snap):
 def _render_electrical(snap):
     """Render electrical measurements (Tier 2+)."""
     e = snap.electrical
-    has_data = e.v_l1 is not None or e.relays
-    if not has_data:
+    has_voltage = e.v_l1 is not None
+    if not has_voltage and not e.relays:
         return
-    print_section("🔌", "Electrical")
-    if e.v_l1 is not None:
-        print_kv("L1 Voltage", f"{e.v_l1} V")
-    if e.i_l1 is not None:
-        print_kv("L1 Current", f"{e.i_l1} A")
-    if e.v_l2 is not None and float(e.v_l2) > 0:
-        print_kv("L2 Voltage", f"{e.v_l2} V")
-    if e.i_l2 is not None and float(e.i_l2) > 0:
-        print_kv("L2 Current", f"{e.i_l2} A")
-    if e.frequency is not None:
-        print_kv("Frequency", f"{e.frequency} Hz")
+    # AU/NZ aGates are single-phase but API assumes split-phase
+    is_single_phase = not snap.flags.three_phase
+    is_au = snap.site.country_id == 3
+    if has_voltage:
+        print_section("🔌", "Electrical")
+        if e.v_l1 is not None:
+            label = "Voltage" if (is_au and is_single_phase) else "L1 Voltage"
+            print_kv(label, f"{e.v_l1} V")
+        if e.i_l1 is not None:
+            label = "Current" if (is_au and is_single_phase) else "L1 Current"
+            print_kv(label, f"{e.i_l1} A")
+        # Only show L2 for split-phase (US) systems, not AU single-phase
+        if not (is_au and is_single_phase):
+            if e.v_l2 is not None and float(e.v_l2) > 0:
+                print_kv("L2 Voltage", f"{e.v_l2} V")
+            if e.i_l2 is not None and float(e.i_l2) > 0:
+                print_kv("L2 Current", f"{e.i_l2} A")
+        if e.frequency is not None:
+            print_kv("Frequency", f"{e.frequency} Hz")
+    # Always show relays
     if e.relays:
         print_section("🔧", "Relays")
-        relay_labels = {"grid": "Grid Relay", "generator": "Generator Relay", "solar_pv": "Solar PV Relay"}
+        relay_labels = {
+            "grid_1": "Grid Relay 1",
+            "generator": "Generator Relay",
+            "solar_pv_1": "Solar PV Relay 1",
+        }
         for key, state in e.relays.items():
             label = relay_labels.get(key, key)
             icon = c("green", "ON") if state else c("dim", "OFF")
