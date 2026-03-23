@@ -39,6 +39,98 @@ if not info.get("tariffSettingFlag"):
 
 ---
 
+## TOU Setup Workflows
+
+There are **two distinct paths** to configure a TOU schedule. The template-based path mirrors the FranklinWH mobile app's multi-step wizard. The direct dispatch path is what `franklinwh-cli tou --set` uses.
+
+### Workflow A: Template-Based (App Wizard)
+
+This is the full tariff setup used by the app when changing electric company, rate plan, or creating a new schedule from a utility template. **Each step depends on the previous step's output.**
+
+```mermaid
+flowchart TD
+    A["1. get_entrance_info()
+    Check tariffSettingFlag, pcsEntrance"] --> B
+
+    B["2. get_utility_companies(country_id, province_id)
+    Returns: dataList → [{id, companyName}]"] --> C
+
+    C["3. get_tariff_list(company_id)
+    Returns: dataList → [{id, name, electricityType}]"] --> D
+
+    D["4. get_tariff_detail(tariff_id)
+    Returns: template, strategyList, advancedSettings"] --> E
+
+    E{"User reviews rates/waves"}
+    E -->|Accept| F
+    E -->|Customise| G
+
+    G["5a. get_custom_dispatch_list(strategy_list)
+    Returns: valid dispatch codes for custom blocks"] --> F
+
+    F["5b. get_recommend_dispatch_list(strategy_list)
+    Returns: AI-recommended dispatch codes"] --> H
+
+    H["6. calculate_expected_earnings(template)
+    Returns: estimatedSavings30, estimatedSavings365"] --> I
+
+    I["7. apply_tariff_template(template_id, name)
+    WRITE: saveTouDispatchUseTemplate
+    Returns: {id: touId}"]
+
+    style A fill:#2d5016,color:#fff
+    style I fill:#7a1a1a,color:#fff
+    style E fill:#5a4a00,color:#fff
+```
+
+> [!IMPORTANT]
+> `apply_tariff_template` is a **write** operation. It replaces the active TOU schedule with the selected template. It is NOT suitable as a standalone CLI command — it requires the prior steps to provide valid `template_id` and `strategy_list` inputs.
+
+### Workflow B: Direct Dispatch (CLI)
+
+Used by `franklinwh-cli tou --set`. Skips utility/tariff selection — directly writes dispatch windows to the existing schedule.
+
+```mermaid
+flowchart TD
+    A["1. get_entrance_info()
+    Check tariffSettingFlag"] --> B
+
+    B["2. get_gateway_tou_list()
+    Get current schedule, dispatchId, seasons"] --> C
+
+    C["3. Build payload
+    construct_tou_payload(windows, mode, rates)"] --> D
+
+    D["4. set_tou_schedule(payload)
+    WRITE: setGatewayIotTouV2
+    Returns: {id: touId}"] --> E
+
+    E["5. Verify dispatch
+    get_gateway_tou_list() — confirm new schedule active"]
+
+    style A fill:#2d5016,color:#fff
+    style D fill:#7a1a1a,color:#fff
+```
+
+### API Endpoint Reference
+
+| Step | Method | HTTP | Endpoint | R/W |
+|------|--------|------|----------|-----|
+| Prerequisites | `get_entrance_info` | GET | `terminal/getEntranceInfo` | Read |
+| Utility search | `get_utility_companies` | POST | `terminal/tou/getTouCompanyListPageV2` | Read |
+| Tariff plans | `get_tariff_list` | GET | `terminal/tou/getTariffListByCompanyId` | Read |
+| Tariff detail | `get_tariff_detail` | GET | `terminal/tou/getTariffDetailByIdV2` | Read |
+| Saved TOU detail | `get_tou_detail_by_id` | POST | `terminal/tou/getIotTouDetailById` | Read |
+| Custom dispatches | `get_custom_dispatch_list` | POST | `terminal/tou/getCustomEnergyDispatchList` | Read |
+| AI dispatch | `get_recommend_dispatch_list` | POST | `terminal/tou/getRecommendEnergyDispatchList` | Read |
+| Savings estimate | `calculate_expected_earnings` | POST | `terminal/tou/calculate/expected/earnings` | Read |
+| Apply template | `apply_tariff_template` | POST | `terminal/tou/saveTouDispatchUseTemplate` | **Write** |
+| Direct dispatch | `set_tou_schedule` | POST | `terminal/tou/setGatewayIotTouV2` | **Write** |
+| Bonus info | `get_bonus_info` | GET | `terminal/tou/getBonusInfo` | Read |
+| VPP tips | `get_vpp_tip` | GET | `terminal/tou/getVppTipForUpdateTou` | Read |
+
+---
+
 ## Dispatch Code Reference
 
 | Code | dispatchId | Enum Name | Battery Behaviour |
