@@ -204,6 +204,10 @@ class DiscoverMixin:
                 snap.flags.generator_enabled = bool(result.get("genEn", 0))
                 snap.flags.v2l_enabled = bool(result.get("v2lModeEnable"))
                 snap.flags.mppt_enabled = bool(result.get("mpptEnFlag", False))
+                # MAC-1 / MSA early detection from device info
+                if result.get("msaInstallStartDetectTime"):
+                    snap.flags.mac1_detected = True
+                    snap.accessories.has_mac1 = True
                 if result.get("offGirdFlag"):
                     snap.grid.connected = False
 
@@ -274,12 +278,12 @@ class DiscoverMixin:
                 snap.electrical.i_l1 = runtime.get("gridA1", runtime.get("i_l1"))
                 snap.electrical.i_l2 = runtime.get("gridA2", runtime.get("i_l2"))
                 snap.electrical.frequency = runtime.get("gridFreq", runtime.get("frequency"))
-                # Relays
+                # Relays — main_sw: [Grid 1, Generator, Solar PV 1]
                 main_sw = runtime.get("main_sw", [])
-                relay_names = ["grid", "generator", "solar_pv"]
-                for i, sw in enumerate(main_sw):
-                    name = relay_names[i] if i < len(relay_names) else f"relay_{i}"
-                    snap.electrical.relays[name] = bool(sw)
+                relay_names = ["grid_1", "generator", "solar_pv_1"]
+                for i in range(len(relay_names)):
+                    val = main_sw[i] if i < len(main_sw) else 0
+                    snap.electrical.relays[relay_names[i]] = bool(val)
                 # aPBox digital I/O
                 di = runtime.get("di")
                 do_st = runtime.get("doStatus")
@@ -369,12 +373,18 @@ class DiscoverMixin:
                     for key in ["Sw1Name", "Sw2Name", "Sw3Name"]:
                         name = sc_info.get(key, "") or ""
                         names.append(name.strip() if name else "")
-                    # Determine circuit count from available fields
-                    count = 2
-                    if sc_info.get("Sw3Name") or sc_info.get("Sw3Mode") is not None:
-                        count = 3
                     # Determine SC version from aGate generation
                     sc_version = 2 if snap.agate.generation == 2 else 1
+                    # Determine circuit count from catalog (hardware truth)
+                    # AU SC (302) = 2 circuits, US V1 SC (202) = 2, US V2 SC (204) = 3
+                    count = 2  # default
+                    for acc_id, acc_info in catalog.get("accessories", {}).items():
+                        if (acc_info.get("type") == "smart_circuits"
+                                and acc_info.get("country_id") == snap.site.country_id):
+                            count = acc_info.get("circuit_count", 2)
+                            break
+                    # Trim names to actual circuit count
+                    names = names[:count]
                     snap.accessories.smart_circuits = SmartCircuitConfig(
                         count=count,
                         version=sc_version,
