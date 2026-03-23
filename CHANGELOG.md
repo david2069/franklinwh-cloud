@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-03-23
+
 ### Added
 - **Enhanced `franklinwh-cli discover` with 3 verbosity tiers** `FEAT-CLI-DISCOVER-VERBOSE`
   - `discover` (Tier 1): site identity, aGate model/firmware, battery summary, 20 feature flags (✅/❌), operating state, diagnostics (~6 API calls)
