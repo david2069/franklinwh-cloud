@@ -78,3 +78,4 @@ graph LR
 | [API Reference](API_REFERENCE.md) | All 70+ methods with parameters |
 | [TOU Guide](TOU_SCHEDULE_GUIDE.md) | Schedule management with workflow diagrams |
 | [CLI Raw Methods](cli-raw.md) | All raw API methods available from CLI |
+| [Thank You](thank-you.md) | Acknowledgements — Richo and franklinwh-python |
