@@ -162,12 +162,25 @@ def _render_flags(snap):
         ("Solar", f.solar, f.solar_detail or ("Installed" if f.solar else "Not detected")),
         ("TOU/Tariff", f.tariff_configured, "Configured" if f.tariff_configured else "Not configured"),
         ("PCS Power Control", f.pcs_enabled, "Enabled" if f.pcs_enabled else "Disabled"),
-        ("Off-Grid", f.off_grid, f"Active (reason: {f.off_grid_reason})" if f.off_grid else "Grid-connected"),
+    ]
+
+    # Off-grid — differentiate 3 sources
+    if f.off_grid_simulated:
+        og_detail = "Simulated (grid contactor opened)"
+    elif f.off_grid_permanent:
+        og_detail = "Permanent (no utility service)"
+    elif f.off_grid:
+        og_detail = f"Grid outage detected (reason: {f.off_grid_reason})"
+    else:
+        og_detail = "Grid-connected"
+    flags.append(("Off-Grid", f.off_grid, og_detail))
+
+    flags.extend([
         ("MPPT (DC-coupled)", f.mppt_enabled, "Enabled" if f.mppt_enabled else "Not available"),
         ("Three Phase", f.three_phase, "Three-phase" if f.three_phase else "Single-phase"),
         ("CT Split — Grid", f.ct_split_grid, "Installed" if f.ct_split_grid else "Not installed"),
         ("CT Split — PV", f.ct_split_pv, "Installed" if f.ct_split_pv else "Not installed"),
-    ]
+    ])
 
     # Accessory flags
     sc = snap.accessories.smart_circuits
