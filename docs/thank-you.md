@@ -10,8 +10,8 @@ We thank him and his contributors for their foundation library that this one was
 
 | Project | Description |
 |---------|-------------|
-| [franklinwh-python](https://github.com/richo/franklinwh-python) | The original Python library for FranklinWH cloud API access — authentication, power flow data, and core data models |
-| [homeassistant-franklinwh](https://github.com/richo/homeassistant-franklinwh) | Home Assistant HACS integration that brought FranklinWH systems into the HA ecosystem |
+| [franklinwh-python](https://github.com/richo/franklinwh-python) | The original Python library for FranklinWH cloud API access — authentication, power flow data, and core data models ([contributors](https://github.com/richo/franklinwh-python/graphs/contributors)) |
+| [homeassistant-franklinwh](https://github.com/richo/homeassistant-franklinwh) | Home Assistant HACS integration that brought FranklinWH systems into the HA ecosystem ([contributors](https://github.com/richo/homeassistant-franklinwh/graphs/contributors)) |
 
 ## What They Made Possible
 
