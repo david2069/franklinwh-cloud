@@ -119,8 +119,8 @@ def build_parser() -> argparse.ArgumentParser:
     # discover
     sub_discover = subs.add_parser("discover", aliases=["disc"],
                                     help="Gateway, device, warranty, and accessory enumeration")
-    sub_discover.add_argument("--no-warranty", action="store_true", help="Skip warranty info")
-    sub_discover.add_argument("--no-accessories", action="store_true", help="Skip accessories")
+    sub_discover.add_argument("-v", "--verbose", action="count", default=0,
+                              help="Verbosity: -v (medium), -vv (pedantic)")
 
     # mode
     sub_mode = subs.add_parser("mode", help="Get or set operating mode")
@@ -319,9 +319,8 @@ async def async_main():
 
             case "discover" | "disc":
                 from franklinwh_cloud.cli_commands import discover
-                await discover.run(client, json_output=args.json,
-                                   show_warranty=not args.no_warranty,
-                                   show_accessories=not args.no_accessories)
+                tier = min(args.verbose + 1, 3)  # 0→1, 1→2, 2+→3
+                await discover.run(client, json_output=args.json, tier=tier)
 
             case "mode":
                 from franklinwh_cloud.cli_commands import mode

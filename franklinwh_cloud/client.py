@@ -47,6 +47,7 @@ from franklinwh_cloud.mixins.storm import StormMixin
 from franklinwh_cloud.mixins.power import PowerMixin
 from franklinwh_cloud.mixins.devices import DevicesMixin
 from franklinwh_cloud.mixins.account import AccountMixin
+from franklinwh_cloud.mixins.discover import DiscoverMixin
 
 logger = logging.getLogger(__name__)
 class AccessoryType(Enum):
@@ -316,7 +317,7 @@ async def retry(func, filter, refresh_func):
     return await func()
 
 
-class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin):
+class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin):
 
     """Client for interacting with FranklinWH gateway API."""
 
