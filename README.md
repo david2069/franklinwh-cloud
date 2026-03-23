@@ -199,14 +199,19 @@ graph TB
     CF --> FW["FranklinWH Cloud"]
     FW -->|"FranklinWH Official Client<br/>(sendMqtt format)"| aGate[aGate]
 
-    Modbus["Modbus TCP<br/>(SunSpec/Raw)"] -.->|"Local network<br/>port 502"| aGate
+    MB["franklinwh_modbus"] -->|"Modbus TCP<br/>(SunSpec/Raw)"| Net["Network<br/>(LAN / WiFi / Remote)"]
+    Net -->|port 502| aGate
+
     aGate --> aPower[aPower Batteries]
+    aGate --> PV[Solar PV]
+    aGate --> SmC[Smart Circuits]
 
     style CLI fill:#22c55e,color:#fff
     style Client fill:#3b82f6,color:#fff
     style ET fill:#eab308,color:#000
     style FW fill:#7c3aed,color:#fff
-    style Modbus fill:#d97706,color:#fff
+    style MB fill:#d97706,color:#fff
+    style Net fill:#6b7280,color:#fff
     style aGate fill:#059669,color:#fff
 ```
 
