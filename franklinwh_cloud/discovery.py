@@ -146,7 +146,9 @@ class FeatureFlags:
     tariff_configured: bool = False
     pcs_enabled: bool = False
     off_grid: bool = False
-    off_grid_reason: int = 0
+    off_grid_simulated: bool = False  # get_grid_status offgridSet=1 (user opened contactor)
+    off_grid_permanent: bool = False  # get_device_info offGirdFlag (no utility service)
+    off_grid_reason: int = 0          # runtimeData offgridreason (detected outage)
     mppt_enabled: bool = False
     three_phase: bool = False
     ct_split_grid: bool = False

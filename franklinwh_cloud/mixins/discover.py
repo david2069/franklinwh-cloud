@@ -201,6 +201,7 @@ class DiscoverMixin:
                 snap.agate.device_time = result.get("deviceTime", snap.agate.device_time)
                 snap.agate.device_date = result.get("date", "")
                 snap.flags.off_grid = bool(result.get("offGirdFlag", 0))
+                snap.flags.off_grid_permanent = bool(result.get("offGirdFlag", 0))
                 snap.flags.generator_enabled = bool(result.get("genEn", 0))
                 snap.flags.v2l_enabled = bool(result.get("v2lModeEnable"))
                 snap.flags.mppt_enabled = bool(result.get("mpptEnFlag", False))
@@ -295,6 +296,18 @@ class DiscoverMixin:
                     snap.accessories.has_apbox = True
         except Exception as e:
             logger.warning(f"discover: get_device_composite_info failed: {e}")
+
+        # 6. Grid status → simulated off-grid (user-opened contactor)
+        try:
+            gs = await self.get_grid_status()
+            result = gs.get("result", {}) if isinstance(gs, dict) else {}
+            if result:
+                if result.get("offgridSet"):
+                    snap.flags.off_grid = True
+                    snap.flags.off_grid_simulated = True
+                    snap.grid.connected = False
+        except Exception as e:
+            logger.warning(f"discover: get_grid_status failed: {e}")
 
     # ── Tier 2 ────────────────────────────────────────────────────
 
