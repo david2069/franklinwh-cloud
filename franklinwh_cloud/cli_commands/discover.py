@@ -243,8 +243,16 @@ def _render_accessories(snap):
     if not acc.items and not acc.has_smart_circuits:
         return
     print_section("🔌", f"Accessories ({len(acc.items)} registered)")
+    from franklinwh_cloud.mixins.discover import get_catalog
+    catalog = get_catalog()
     for item in acc.items:
-        print_kv(item.name, f"Type: {item.type_name}  SN: {item.serial}")
+        # Look up model/SKU from catalog by type
+        model_info = ""
+        for acc_id, acc_data in catalog.get("accessories", {}).items():
+            if acc_data.get("type") == item.type_name and acc_data.get("country_id") == snap.site.country_id:
+                model_info = f"  Model: {acc_data.get('name', '')}  SKU: {acc_data.get('sku', '')}"
+                break
+        print_kv(item.name, f"SN: {item.serial}{model_info}")
 
     sc = acc.smart_circuits
     if sc:
