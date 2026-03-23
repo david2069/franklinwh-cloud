@@ -54,14 +54,19 @@ graph LR
     CF --> FW["FranklinWH Cloud"]
     FW -->|"FranklinWH Official Client<br/>(sendMqtt format)"| E[aGate]
 
-    M["Modbus TCP<br/>(SunSpec/Raw)"] -.->|"Local network<br/>port 502"| E
+    A2[Your Code] --> MB["franklinwh_modbus"]
+    MB -->|"Modbus TCP<br/>(SunSpec/Raw)"| Net["Network<br/>(LAN / WiFi / Remote)"]
+    Net -->|port 502| E
 
     E --> F[aPower Batteries]
+    E --> PV[Solar PV]
+    E --> SC2[Smart Circuits]
 
     style B fill:#3b82f6,color:#fff
     style E fill:#059669,color:#fff
     style FW fill:#7c3aed,color:#fff
-    style M fill:#d97706,color:#fff
+    style MB fill:#d97706,color:#fff
+    style Net fill:#6b7280,color:#fff
 ```
 
 > **Two distinct transport paths to the aGate:**
