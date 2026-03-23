@@ -17,6 +17,7 @@ AVAILABLE_METHODS = {
     # Modes mixin
     "get_mode": {"args": 0, "desc": "Current operating mode"},
     "get_mode_info": {"args": 0, "desc": "Mode configuration details"},
+    "get_all_mode_soc": {"args": 0, "desc": "Reserve SoC for all modes (TOU/Self/Emergency)"},
     # Storm mixin
     "get_weather": {"args": 0, "desc": "Current weather conditions"},
     "get_storm_settings": {"args": 0, "desc": "Storm hedge settings"},
