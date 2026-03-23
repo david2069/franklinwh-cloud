@@ -45,6 +45,7 @@ franklinwh-cli raw get_stats --headers
 |--------|------|-------------|
 | `get_mode` | — | Current operating mode |
 | `get_mode_info` | — | Mode configuration details |
+| `get_all_mode_soc` | — | Reserve SoC for all modes (TOU/Self/Emergency) |
 
 ### Weather & Storm
 
