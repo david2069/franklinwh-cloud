@@ -22,6 +22,50 @@ asyncio.run(main())
 
 ---
 
+## Device Discovery — `discover.py`
+
+Structured device survey returning a `DeviceSnapshot` — usable as a Python API or via CLI.
+
+| Method | Arguments | Returns | Description |
+|--------|-----------|---------|-------------|
+| `discover(tier=1)` | `tier: int` 1–3 | `DeviceSnapshot` | Full device discovery snapshot |
+
+### Tiers
+
+| Tier | CLI Flag | API Calls | Includes |
+|------|----------|-----------|----------|
+| 1 | (default) | ~7 | Site, aGate, batteries, feature flags, operating state, grid status, diagnostics |
+| 2 | `-v` | ~14 | + per-aPower firmware, accessories, smart circuits config, warranty, grid profile, programmes, relays, TOU status |
+| 3 | `-vv` | ~20 | + full aGate firmware (IBG/SL/AWS/App/Meter), NEM type, PTO date, site detail |
+
+### `DeviceSnapshot` structure
+
+| Category | Dataclass | Key fields |
+|----------|-----------|------------|
+| Site | `SiteInfo` | `address`, `timezone`, `country_id`, `pto_date` |
+| aGate | `AgateInfo` | `serial`, `model`, `sku`, `firmware`, `generation`, `sim_status` |
+| Batteries | `BatteryInfo` | `count`, `total_capacity_kwh`, `units[].soc`, `units[].fpga_ver` |
+| Flags | `FeatureFlags` | `solar`, `off_grid`, `v2l_eligible`, `ct_split_grid`, `mac1_detected` |
+| Accessories | `AccessoriesInfo` | `has_smart_circuits`, `smart_circuits.count`, `smart_circuits.v2l_port` |
+| Grid | `GridInfo` | `connected`, `global_discharge_max_kw`, `feed_max_kw` |
+| Warranty | `WarrantyInfo` | `expiry`, `remaining_kwh`, `installer_company` |
+| Electrical | `ElectricalInfo` | `soc`, `operating_mode_name`, `relays`, `tou_status` |
+| Programmes | `ProgrammeInfo` | `enrolled`, `program_name`, `vpp_soc` |
+
+```python
+snap = await client.discover(tier=2)
+print(snap.agate.model)              # "aGate X-01-AU"
+print(snap.batteries.total_capacity_kwh)  # 13.6
+print(snap.flags.v2l_eligible)        # False
+print(snap.warranty.remaining_kwh)    # 37164
+
+# JSON export
+import json
+print(json.dumps(snap.to_dict(), indent=2))
+```
+
+---
+
 ## Power Flow & Runtime — `stats.py`
 
 | Method | Arguments | Returns | Description |
@@ -146,6 +190,26 @@ asyncio.run(main())
 
 > See [TOU_SCHEDULE_GUIDE.md](TOU_SCHEDULE_GUIDE.md) for dispatch codes, schema, and examples.
 
+### Tariff Management Endpoints
+
+These endpoints support the template-based tariff setup workflow used by the FranklinWH app. See [TOU_SCHEDULE_GUIDE.md § TOU Setup Workflows](TOU_SCHEDULE_GUIDE.md#tou-setup-workflows) for the full workflow diagram.
+
+| Method | HTTP | Arguments | Returns | Description |
+|--------|------|-----------|---------|-------------|
+| `get_utility_companies(country_id, province_id)` | POST | `country_id: int`, `province_id: int`, `page_num: int`, `page_size: int` | `dict` | Search utility companies by region |
+| `get_tariff_list(company_id)` | GET | `company_id: int`, `search_key: str` | `dict` | List tariff plans for a utility company |
+| `get_tariff_detail(tariff_id)` | GET | `tariff_id: int` | `dict` | Full tariff template (seasons, rates, dispatch blocks) |
+| `get_tou_detail_by_id(tou_id)` | POST | `tou_id: int`, `from_type: int` | `dict` | Get applied/saved TOU configuration by ID |
+| `get_custom_dispatch_list(strategy_list)` | POST | `strategy_list: list` | `dict` | Valid dispatch codes for custom time blocks |
+| `get_recommend_dispatch_list(strategy_list)` | POST | `strategy_list: list` | `dict` | AI-recommended dispatch codes |
+| `calculate_expected_earnings(template)` | POST | `template: dict` | `dict` | Projected savings for a tariff template |
+| `apply_tariff_template(template_id, name)` | POST | `template_id: int`, `name: str`, `work_mode: int`, `electricity_type: int` | `dict` | **WRITE** — Apply utility tariff template |
+| `get_bonus_info()` | GET | — | `dict` | TOU bonus/incentive information |
+| `get_vpp_tip()` | GET | — | `dict` | VPP participation tips |
+
+> [!WARNING]
+> `apply_tariff_template` is an **in-flight workflow API** — it requires prior steps (`get_utility_companies` → `get_tariff_list` → `get_tariff_detail`) to obtain a valid `template_id`. It is NOT suitable as a standalone CLI command.
+
 ---
 
 ## Power Control & PCS — `power.py`
@@ -264,11 +328,12 @@ answer = await client.smart_assistant(requestType="2", query="What is my battery
 
 | Mixin | Methods | Category |
 |-------|---------|----------|
+| `discover.py` | 1 | Device discovery (3-tier survey) |
 | `stats.py` | 4 | Power flow, runtime data |
 | `modes.py` | 4 | Operating mode control |
-| `tou.py` | 7 | TOU schedule management |
+| `tou.py` | 17 | TOU schedule + tariff management |
 | `power.py` | 5 | Grid status, PCS settings |
 | `devices.py` | 16 | Hardware, BMS, smart circuits, LED, generator |
 | `storm.py` | 5 | Weather, Storm Hedge |
 | `account.py` | 18 | Account, notifications, alarms, AI |
-| **Total** | **59** | |
+| **Total** | **70** | |

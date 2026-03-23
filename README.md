@@ -35,7 +35,7 @@ A Python client library for interacting with FranklinWH energy storage systems v
 | **Dual Account Types** | `LOGIN_TYPE_USER` (0) and `LOGIN_TYPE_INSTALLER` (1) constants for homeowner and installer login |
 | **Stale-While-Revalidate** | Per-endpoint TTL cache returns last-known-good data during API outages |
 | **Modbus Mode Constants** | Bidirectional `CLOUD_TO_MODBUS_MODE` / `MODBUS_TO_CLOUD_MODE` mapping for Modbus TCP integration |
-| **60+ API Endpoints** | Comprehensive coverage across TOU scheduling, power control, BMS, storm, smart circuits, compliance |
+| **70+ API Endpoints** | Comprehensive coverage across TOU scheduling, power control, BMS, storm, smart circuits, compliance |
 
 ## 📦 Installation
 
@@ -124,8 +124,11 @@ asyncio.run(main())
 # System overview — power, SOC, batteries, weather, grid, metrics
 franklinwh-cli status
 
-# Device discovery — gateways, aPowers, warranty, accessories
-franklinwh-cli discover
+# Device discovery — 3 verbosity tiers
+franklinwh-cli discover          # High-level: site, aGate, flags, state
+franklinwh-cli discover -v       # Verbose: + firmware, warranty, relays, accessories
+franklinwh-cli discover -vv      # Pedantic: + full firmware, NEM, PTO date
+franklinwh-cli discover --json   # Full JSON export
 
 # Operating mode
 franklinwh-cli mode
@@ -182,6 +185,7 @@ graph TB
         API --> ET["EdgeTracker<br/>CloudFront PoP"]
         API --> SC["StaleDataCache"]
         
+        Client --> Discover["mixins/discover.py"]
         Client --> Stats["mixins/stats.py"]
         Client --> Modes["mixins/modes.py"]
         Client --> TOU["mixins/tou.py"]
@@ -206,9 +210,11 @@ franklinwh_cloud/
 ├── api.py               # HTTP transport, auth, session management
 ├── exceptions.py        # Custom exception hierarchy
 ├── metrics.py           # ClientMetrics — API call instrumentation
+├── discovery.py         # DeviceSnapshot dataclass
 ├── const/               # Operating modes, TOU, device constants
-│   ├── modes.py, tou.py, devices.py, test_fixtures.py
-├── mixins/              # Domain-specific API method groups (7 modules)
+│   ├── modes.py, tou.py, devices.py, device_catalog.json
+├── mixins/              # Domain-specific API method groups (8 modules)
+│   ├── discover.py      # client.discover() — 3-tier device survey
 │   ├── stats.py         # get_stats, get_runtime_data, get_power_by_day
 │   ├── modes.py         # get_mode, set_mode, get_mode_info
 │   ├── tou.py           # TOU schedule CRUD + dispatch details
@@ -220,7 +226,7 @@ franklinwh_cloud/
 ├── cli_output.py        # Terminal rendering + colour utilities
 └── cli_commands/        # CLI subcommand modules
     ├── status.py        # Power flow, SOC, mode, weather, grid
-    ├── discover.py      # Device discovery + connectivity
+    ├── discover.py      # Device discovery — 3 tiers, system readiness
     ├── monitor.py       # Real-time dashboard (full/compact/JSON)
     ├── metrics.py       # API probe + CloudFront edge data
     ├── bms.py           # Battery Management System inspection
@@ -259,7 +265,7 @@ pytest -v
 cat tests/results/test_history.log
 ```
 
-**Current coverage**: 192 tests across all 7 domains
+**Current coverage**: 253 tests across all 8 domains
 
 ## 📚 API Reference
 
@@ -267,9 +273,11 @@ cat tests/results/test_history.log
 
 | Domain | Key Methods |
 |--------|-------------|
+| **Discovery** | `discover(tier=1)` → `DeviceSnapshot` — site, aGate, batteries, flags, accessories, warranty |
 | **Stats** | `get_stats()`, `get_runtime_data()`, `get_power_by_day(date)`, `get_power_details(type, date)` |
 | **Modes** | `get_mode()`, `set_mode(mode, soc)`, `get_mode_info()` |
 | **TOU** | `get_tou_info(type)`, `set_tou(schedule)`, `get_gateway_tou_list()`, `get_tou_dispatch_detail()` |
+| **Tariff** | `get_utility_companies()`, `get_tariff_list()`, `get_tariff_detail()`, `apply_tariff_template()` |
 | **Storm** | `get_weather()`, `get_storm_settings()`, `get_storm_list()` |
 | **Power** | `get_grid_status()`, `get_power_control_settings()`, `get_power_info()` |
 | **Devices** | `get_device_info()`, `get_bms_info(serial)`, `get_device_composite_info()` |
