@@ -10,6 +10,8 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 > 🔒 **API Citizenship**: See [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) for rate limiting strategies, client identity headers, and how to prepare for authentication changes.
 
+> ⚠️ **Disclaimer**: This library is **unofficial** and not endorsed by FranklinWH. It interfaces with a proprietary Cloud API designed exclusively for the official FranklinWH mobile app and authorised installer portal — not for third-party use. It is provided **"AS IS"** for educational and informational purposes only, with **no warranty of fitness for any purpose**. Use at your own risk. See the [full disclaimer](https://david2069.github.io/franklinwh-cloud/#about-this-library) for details.
+
 ## ✨ Features
 
 - **Authentication**: Automatic token management and refresh, homeowner + installer account types
