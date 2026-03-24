@@ -62,6 +62,7 @@ AVAILABLE_METHODS = {
     "get_tou_detail_by_id": {"args": 1, "desc": "TOU config by ID (arg: touId)"},
     "get_bonus_info": {"args": 0, "desc": "TOU bonus/incentive info"},
     "get_vpp_tip": {"args": 0, "desc": "VPP tips for TOU updates"},
+    "calculate_expected_earnings": {"args": 0, "desc": "Projected savings for tariff template (pipe JSON via stdin)"},
     # Billing / Savings
     "get_electric_data": {"args": 2, "desc": "Electricity kWh arrays (args: type[1-3] YYYY-MM-DD)"},
     "get_charge_history": {"args": 0, "desc": "Battery charge/discharge session history"},
