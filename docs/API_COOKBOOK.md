@@ -362,55 +362,322 @@ asyncio.run(main())
 
 ## Full Example: Force Charge via Custom TOU
 
-Set a grid charge window, verify it applied, then restore self-consumption.
+A production-ready script that demonstrates the complete lifecycle: save state → configure PCS → set schedule → monitor → restore.
+
+### Phase 1: PCS Preamble — Check Limits & Battery Capacity
+
+Before dispatching, ensure the PCS (Power Control System) allows grid charging/discharging
+at the desired power levels, and check battery capacity to calculate target SoC.
 
 ```python
 import asyncio
 from franklinwh_cloud import FranklinWHCloud
-from franklinwh_cloud.const import dispatchCodeType, WaveType
+from franklinwh_cloud.const import (
+    TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP,
+    dispatchCodeType, WaveType,
+)
+from franklinwh_cloud.models import GridStatus
+
+# ── Configuration ──
+CHARGE_START = "11:30"
+CHARGE_END   = "15:00"
+TARGET_SOC   = 95.0       # Stop monitoring when SoC reaches this %
+POLL_INTERVAL = 60        # Seconds between monitoring polls
+DISPATCH      = dispatchCodeType.GRID_CHARGE   # 8 = charge from solar+grid
+WAVE_TYPE     = WaveType.OFF_PEAK              # 0 = off-peak pricing tier
+
 
 async def main():
     client = FranklinWHCloud.from_config("franklinwh.ini")
     await client.login()
     await client.select_gateway()
 
-    # ── Step 1: Set grid charge 11:30–15:00 ──
-    print("Setting grid charge window 11:30–15:00...")
-    result = await client.set_tou_schedule(
-        touMode="CUSTOM",
-        touSchedule=[{
-            "startTime": "11:30",
-            "endTime": "15:00",
-            "dispatchId": dispatchCodeType.GRID_CHARGE.value,  # 8 = aPower charges from solar+grid
-            "tWaveTypeId": WaveType.OFF_PEAK.value,            # 0 = Off-peak pricing tier
-        }],
-        default_mode="SELF",       # Outside window = self-consumption (dispatchId=6)
-    )
+    # ── 1a. Save original state (for restore later) ──
+    original_mode = await client.get_mode()
+    original_mode_id = original_mode.get("workMode", SELF_CONSUMPTION)
+    original_mode_name = original_mode.get("modeName", "?")
+    original_schedule = await client.get_tou_dispatch_detail()
+    print(f"📋 Saved state — Mode: {original_mode_name} (workMode={original_mode_id})")
+
+    # ── 1b. Check battery capacity ──
+    apower = await client.get_apower_info()
+    battery_count = apower.get("result", {}).get("apowerCount", 1)
+    # aPower 2 = 13.6 kWh, aPower S = 5.0 kWh (check your model)
+    est_capacity_kwh = battery_count * 13.6
+    print(f"🔋 Batteries: {battery_count} × aPower = ~{est_capacity_kwh:.1f} kWh")
+
+    stats = await client.get_stats()
+    current_soc = stats.current.soc
+    print(f"🔋 Current SoC: {current_soc:.0f}%  →  Target: {TARGET_SOC:.0f}%")
+
+    if current_soc >= TARGET_SOC:
+        print("✅ Already at target SoC — nothing to do.")
+        return
+
+    # ── 1c. Check and set PCS limits ──
+    pcs = await client.get_power_control_settings()
+    charge_limit = pcs.get("result", {}).get("globalGridChargeMax", -1)
+    discharge_limit = pcs.get("result", {}).get("globalGridDischargeMax", -1)
+    print(f"⚡ PCS limits — Grid charge: {charge_limit} kW, Grid discharge: {discharge_limit} kW")
+    print(f"   (-1 = unlimited, 0 = disabled)")
+
+    if charge_limit == 0:
+        print("⚠️  Grid charging is DISABLED (0 kW). Enabling unlimited...")
+        await client.set_power_control_settings(
+            globalGridChargeMax=-1,        # -1 = unlimited
+            globalGridDischargeMax=discharge_limit,  # keep existing
+        )
+        print("✓ Grid charging enabled")
+
+    # ── 1d. Ensure we are in TOU mode ──
+    if original_mode_id != TIME_OF_USE:
+        print(f"🔄 Switching to TOU mode (was {original_mode_name})...")
+        await client.set_mode(TIME_OF_USE, None, None, None, None)
+        await asyncio.sleep(3)
+        print("✓ Now in TOU mode")
+```
+
+### Phase 2: Submit Schedule with Error Handling
+
+Handle common errors: invalid time format, bad dispatch codes, and API failures.
+
+```python
+    # ── 2. Set charge schedule with error handling ──
+    print(f"\n⏱️  Setting grid charge window {CHARGE_START}–{CHARGE_END}...")
+
+    try:
+        result = await client.set_tou_schedule(
+            touMode="CUSTOM",
+            touSchedule=[{
+                "startTime": CHARGE_START,
+                "endTime": CHARGE_END,
+                "dispatchId": DISPATCH.value,       # dispatchCodeType.GRID_CHARGE = 8
+                "tWaveTypeId": WAVE_TYPE.value,      # WaveType.OFF_PEAK = 0
+            }],
+            default_mode="SELF",   # Outside window = self-consumption (dispatchId=6)
+        )
+    except ValueError as e:
+        # set_tou_schedule validates times, dispatch codes, and JSON structure
+        # Common errors:
+        #   - Invalid time: "25:00" or "11:70" or missing startTime
+        #   - Bad dispatch: dispatchId=99 (not in valid set 1,2,3,6,7,8)
+        #   - Malformed JSON: missing required fields
+        print(f"❌ Validation error: {e}")
+        print("   Check: times must be HH:MM (00:00–24:00), 30-min boundaries")
+        print("   Check: dispatchId must be one of: 1,2,3,6,7,8")
+        return
+    except Exception as e:
+        # API-level errors (network, auth, server-side rejection)
+        print(f"❌ API error: {type(e).__name__}: {e}")
+        return
+
+    # Check API response for success
+    status = result.get("status")
+    if status != 0:
+        msg = result.get("msg", "Unknown error")
+        print(f"❌ Server rejected schedule: status={status}, msg={msg}")
+        return
+
     tou_id = result.get("result", {}).get("id", "?")
     print(f"✓ Schedule submitted — touId={tou_id}")
 
-    # ── Step 2: Verify ──
-    import asyncio as aio
-    await aio.sleep(5)  # Give aGate time to apply
+    # ── 2b. Verify schedule applied ──
+    await asyncio.sleep(5)   # Give aGate time to apply
 
     detail = await client.get_tou_dispatch_detail()
     blocks = detail.get("result", {}).get("detailVoList", [])
-    print(f"\nActive schedule ({len(blocks)} blocks):")
+    print(f"\n📅 Active schedule ({len(blocks)} blocks):")
     for b in blocks:
         name = b.get("dispatchName", "?")
         start = b.get("startTime", "?")
         end = b.get("endTime", "?")
-        print(f"  {start}–{end}  {name}")
+        wave = b.get("waveType", "?")
+        print(f"  {start}–{end}  {name}  (waveType={wave})")
 
-    # ── Step 3: Restore full-day self-consumption ──
-    input("\nPress Enter to restore self-consumption...")
-    await client.set_tou_schedule(touMode="SELF")
-    print("✓ Restored to full-day self-consumption")
+    if not blocks:
+        print("⚠️  No dispatch blocks found — schedule may not have applied!")
+```
+
+### Phase 3: Monitor Power Flow & SoC
+
+Poll the system to confirm the dispatch is executing correctly — checking that
+the operating mode is still TOU, power is flowing in the expected direction,
+and the SoC target has been reached.
+
+```python
+    # ── 3. Monitor loop ──
+    print(f"\n🔍 Monitoring every {POLL_INTERVAL}s until SoC ≥ {TARGET_SOC}%...")
+    print(f"   Press Ctrl+C to stop monitoring early.\n")
+
+    try:
+        while True:
+            stats = await client.get_stats()
+            c = stats.current
+
+            soc = c.soc
+            bat_kw = c.battery_power     # negative = charging, positive = discharging
+            grid_kw = c.grid_power       # positive = importing, negative = exporting
+            solar_kw = c.solar_production
+            mode_desc = c.work_mode_desc
+            grid_status = c.grid_status
+
+            # ── 3a. Mode check — still in TOU? ──
+            if "Time of Use" not in mode_desc:
+                print(f"⚠️  Mode changed to '{mode_desc}' — expected TOU!")
+                print(f"    The system may have switched due to storm hedge or app override.")
+                break
+
+            # ── 3b. Grid check — still connected? ──
+            if grid_status != GridStatus.NORMAL:
+                print(f"⚠️  Grid status: {grid_status.name} — cannot charge from grid while off-grid!")
+                break
+
+            # ── 3c. Power flow direction ──
+            charging = bat_kw < -0.05   # Battery drawing > 50W = charging
+
+            if DISPATCH == dispatchCodeType.GRID_CHARGE:
+                # Grid charge: expect battery charging (bat_kw < 0) AND grid importing (grid_kw > 0)
+                flow_ok = charging
+                direction = "⬇ CHARGING" if charging else "⏸ IDLE/DISCHARGING"
+                grid_dir = f"grid={'importing' if grid_kw > 0 else 'exporting'} {abs(grid_kw):.2f} kW"
+
+            elif DISPATCH == dispatchCodeType.GRID_EXPORT:
+                # Grid export: expect battery discharging (bat_kw > 0) AND grid exporting (grid_kw < 0)
+                discharging = bat_kw > 0.05
+                flow_ok = discharging
+                direction = "⬆ DISCHARGING" if discharging else "⏸ IDLE/CHARGING"
+                grid_dir = f"grid={'exporting' if grid_kw < 0 else 'importing'} {abs(grid_kw):.2f} kW"
+
+            else:
+                # Other dispatches (SELF, SOLAR, HOME, STANDBY)
+                flow_ok = True
+                direction = f"bat={bat_kw:+.2f} kW"
+                grid_dir = f"grid={grid_kw:+.2f} kW"
+
+            status_icon = "✅" if flow_ok else "⚠️"
+            print(
+                f"  {status_icon} SoC: {soc:5.1f}% | "
+                f"Battery: {bat_kw:+6.2f} kW {direction} | "
+                f"Solar: {solar_kw:.2f} kW | {grid_dir}"
+            )
+
+            # ── 3d. SoC target reached? ──
+            if DISPATCH == dispatchCodeType.GRID_CHARGE and soc >= TARGET_SOC:
+                print(f"\n🎯 Target SoC reached: {soc:.0f}% ≥ {TARGET_SOC:.0f}%")
+                break
+
+            if DISPATCH == dispatchCodeType.GRID_EXPORT and soc <= TARGET_SOC:
+                # For export, TARGET_SOC is the minimum SoC before stopping
+                print(f"\n🎯 Minimum SoC reached: {soc:.0f}% ≤ {TARGET_SOC:.0f}%")
+                break
+
+            await asyncio.sleep(POLL_INTERVAL)
+
+    except KeyboardInterrupt:
+        print("\n⏹️  Monitoring stopped by user.")
+```
+
+### Phase 4: Restore Original State
+
+Always restore the original TOU schedule and operating mode — even if monitoring
+was interrupted.
+
+```python
+    # ── 4. Restore original state ──
+    print(f"\n🔄 Restoring original state...")
+
+    # 4a. Restore original TOU schedule
+    try:
+        orig_blocks = original_schedule.get("result", {}).get("detailVoList", [])
+        if orig_blocks:
+            # Re-submit the original schedule blocks
+            restore_schedule = []
+            for b in orig_blocks:
+                restore_schedule.append({
+                    "startTime": b.get("startTime", "0:00"),
+                    "endTime": b.get("endTime", "24:00"),
+                    "dispatchId": b.get("dispatchId", 6),
+                    "tWaveTypeId": b.get("waveType", 0),
+                })
+            await client.set_tou_schedule(
+                touMode="CUSTOM",
+                touSchedule=restore_schedule,
+                default_mode="SELF",
+            )
+            print(f"✓ Restored original TOU schedule ({len(orig_blocks)} blocks)")
+        else:
+            # No blocks = was flat self-consumption
+            await client.set_tou_schedule(touMode="SELF")
+            print("✓ Restored to full-day self-consumption")
+    except Exception as e:
+        print(f"⚠️  Could not restore TOU schedule: {e}")
+        print(f"    You may need to manually restore via the FranklinWH app.")
+
+    # 4b. Restore original operating mode
+    if original_mode_id != TIME_OF_USE:
+        try:
+            await client.set_mode(original_mode_id, None, None, None, None)
+            print(f"✓ Restored operating mode to {original_mode_name} (workMode={original_mode_id})")
+        except Exception as e:
+            print(f"⚠️  Could not restore mode: {e}")
+
+    # 4c. Final state confirmation
+    await asyncio.sleep(3)
+    final_mode = await client.get_mode()
+    final_stats = await client.get_stats()
+    print(f"\n📋 Final state:")
+    print(f"   Mode: {final_mode.get('modeName', '?')}")
+    print(f"   SoC:  {final_stats.current.soc:.0f}%")
+    print(f"   Grid: {final_stats.current.grid_status.name}")
+    print("✅ Done!")
 
 asyncio.run(main())
 ```
 
-> **CAUTION:** This script modifies your live aGate TOU schedule. Test during off-peak hours.
+**Expected output (grid charge scenario):**
+```
+📋 Saved state — Mode: Self Consumption (workMode=2)
+🔋 Batteries: 1 × aPower = ~13.6 kWh
+🔋 Current SoC: 42%  →  Target: 95%
+⚡ PCS limits — Grid charge: -1 kW, Grid discharge: -1 kW
+   (-1 = unlimited, 0 = disabled)
+🔄 Switching to TOU mode (was Self Consumption)...
+✓ Now in TOU mode
+
+⏱️  Setting grid charge window 11:30–15:00...
+✓ Schedule submitted — touId=12345
+
+📅 Active schedule (3 blocks):
+  0:00–11:30   Self-consumption  (waveType=0)
+  11:30–15:00  Grid charge       (waveType=0)
+  15:00–24:00  Self-consumption  (waveType=0)
+
+🔍 Monitoring every 60s until SoC ≥ 95%...
+
+  ✅ SoC:  42.3% | Battery:  -4.80 kW ⬇ CHARGING | Solar: 2.10 kW | grid=importing 2.70 kW
+  ✅ SoC:  48.7% | Battery:  -4.90 kW ⬇ CHARGING | Solar: 3.40 kW | grid=importing 1.50 kW
+  ✅ SoC:  55.1% | Battery:  -5.00 kW ⬇ CHARGING | Solar: 4.20 kW | grid=importing 0.80 kW
+  ...
+  ✅ SoC:  94.8% | Battery:  -1.20 kW ⬇ CHARGING | Solar: 3.80 kW | grid=importing 0.00 kW
+
+🎯 Target SoC reached: 95% ≥ 95%
+
+🔄 Restoring original state...
+✓ Restored original TOU schedule (3 blocks)
+✓ Restored operating mode to Self Consumption (workMode=2)
+
+📋 Final state:
+   Mode: Self Consumption
+   SoC:  95%
+   Grid: NORMAL
+✅ Done!
+```
+
+> [!CAUTION]
+> This script modifies your live aGate TOU schedule and operating mode.
+> Always test during off-peak hours. The script saves and restores state, 
+> but if it crashes mid-execution, restore manually via the FranklinWH app.
+
 > See [TOU_SCHEDULE_GUIDE.md](TOU_SCHEDULE_GUIDE.md) for dispatch codes, known limitations, and the 30-minute boundary rule.
 
 ---
