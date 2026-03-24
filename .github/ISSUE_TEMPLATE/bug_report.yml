@@ -1,0 +1,141 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behaviour
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in the details below.
+        
+        **Before submitting:**
+        - [ ] I have searched [existing issues](https://github.com/david2069/franklinwh-cloud/issues) to confirm this isn't a duplicate
+        - [ ] I have read the [API Reference](https://david2069.github.io/franklinwh-cloud/API_REFERENCE/) and [TOU Schedule Guide](https://david2069.github.io/franklinwh-cloud/TOU_SCHEDULE_GUIDE/) for relevant documentation
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is.
+      placeholder: "When I run `franklinwh-cli discover -v`, the warranty section shows..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the issue.
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+      description: What actually happened. Include error messages, tracebacks, or unexpected output.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which area of the library is affected?
+      options:
+        - CLI — discover
+        - CLI — mode
+        - CLI — tou
+        - CLI — monitor/diag
+        - CLI — raw
+        - Client API — power/stats
+        - Client API — TOU/tariff
+        - Client API — devices
+        - Client API — modes
+        - Client API — network/MQTT
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Library Version
+      description: "Output of `python -c \"import franklinwh_cloud; print(franklinwh_cloud.__version__)\"`"
+      placeholder: "0.3.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: region
+    attributes:
+      label: Region / Country
+      description: FranklinWH region (affects available features and API behaviour).
+      options:
+        - US (country_id=2)
+        - AU (country_id=3)
+        - Other / Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: agate_model
+    attributes:
+      label: aGate Model
+      description: "From `franklinwh-cli discover` or the FranklinWH app (e.g. aGate X-20, aGate 2.0)"
+      placeholder: "aGate X-20"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Python version, OS, and any relevant setup details.
+      value: |
+        - Python: 
+        - OS: 
+        - Install method: (pip / editable / wheel)
+        - Home Assistant: (yes/no, version if applicable)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Debug Output
+      description: |
+        Run with `--debug` or `FRANKLINWH_DEBUG=1` and paste relevant output.
+        
+        **⚠️ IMPORTANT: Redact all credentials, gateway IDs, serial numbers, and personal info before pasting.**
+      render: text
+
+  - type: textarea
+    id: support_log
+    attributes:
+      label: Support Log
+      description: |
+        If applicable, attach a redacted `franklinwh-cli diag --json` output or support log file.
+        
+        **⚠️ IMPORTANT: Redact all credentials, gateway IDs (replace with `GATEWAY_XXX`), serial numbers, and personal info.**
+      render: json
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I can reproduce this issue consistently
+        - label: I have redacted all personal/sensitive data from logs
+          required: true
+        - label: I have included the library version and aGate model
