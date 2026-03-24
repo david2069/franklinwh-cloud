@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://david2069.github.io/franklinwh-cloud/
+    about: Check the docs site for API reference, cookbook, and guides
+  - name: 💬 Discussions
+    url: https://github.com/david2069/franklinwh-cloud/discussions
+    about: Ask questions, share setups, or discuss ideas
+  - name: 🙏 Acknowledgements
+    url: https://david2069.github.io/franklinwh-cloud/thank-you/
+    about: This library builds on Richo's franklinwh-python

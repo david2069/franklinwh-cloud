@@ -1,0 +1,92 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea? We'd love to hear it!
+        
+        **Before submitting:**
+        - [ ] I have searched [existing issues](https://github.com/david2069/franklinwh-cloud/issues) to check this hasn't been requested
+        - [ ] I have checked the [API Reference](https://david2069.github.io/franklinwh-cloud/API_REFERENCE/) to confirm this isn't already supported
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: What problem does this feature solve? Why do you need it?
+      placeholder: "I'd like to automate grid export during peak pricing but currently there's no way to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How do you envision this working? Include API signatures, CLI flags, or example usage if possible.
+      placeholder: |
+        ```python
+        await client.some_new_method(param1, param2)
+        ```
+        
+        Or CLI:
+        ```bash
+        franklinwh-cli new-command --flag value
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any workarounds or alternative approaches you've tried or considered.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which area would this feature affect?
+      options:
+        - CLI — new command
+        - CLI — existing command enhancement
+        - Client API — new method
+        - Client API — existing method enhancement
+        - TOU / Tariff scheduling
+        - Device discovery
+        - Documentation
+        - Home Assistant / FEM integration
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: region
+    attributes:
+      label: Region Relevance
+      description: Is this feature region-specific?
+      options:
+        - All regions
+        - US only
+        - AU only
+        - Not sure
+
+  - type: textarea
+    id: api_evidence
+    attributes:
+      label: API Evidence
+      description: |
+        If you've captured the API call from the FranklinWH app (via HTTPToolkit, Charles, etc.), paste the **redacted** request/response here.
+        
+        **⚠️ Redact all credentials, gateway IDs, and personal info.**
+      render: json
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to help implement this feature
+        - label: I can provide API captures or test data to support development
