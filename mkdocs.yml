@@ -82,6 +82,7 @@ nav:
     - Device Catalog Design: DEVICE_CATALOG_DESIGN.md
     - API Field Registry: API_FIELD_REGISTRY.md
   - Troubleshooting:
+    - Guide: TROUBLESHOOTING.md
     - WiFi DHCP Failure: troubleshooting/2026-03-21_wifi_dhcp_failure.md
   - Thank You: thank-you.md
 
