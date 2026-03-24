@@ -31,20 +31,21 @@ jobs:
         run: twine check dist/*
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4.6.2    # Node.js 24 native
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
   publish-testpypi:
-    name: Publish to TestPyPI
+    name: Publish to TestPyPI (optional)
     needs: build
     runs-on: ubuntu-latest
+    continue-on-error: true      # TestPyPI DNS is unreliable — don't block PyPI
     environment:
       name: testpypi
       url: https://test.pypi.org/p/franklinwh-cloud
     steps:
-      - uses: actions/download-artifact@v4.3.0  # Node.js 24 native
+      - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
@@ -56,13 +57,13 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: publish-testpypi
+    needs: build                 # Only depends on build — not TestPyPI
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/franklinwh-cloud
     steps:
-      - uses: actions/download-artifact@v4.3.0  # Node.js 24 native
+      - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
