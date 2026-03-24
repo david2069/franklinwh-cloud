@@ -3,7 +3,7 @@
 Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
 > **Prerequisites:** See [SANDBOX_SETUP.md](SANDBOX_SETUP.md) for venv and credentials setup.
-> **Full method reference:** See [API_REFERENCE.md](API_REFERENCE.md) for all 59 methods with args.
+> **Full method reference:** See [API_REFERENCE.md](API_REFERENCE.md) for all 70+ methods with args.
 
 ---
 
@@ -68,27 +68,43 @@ home_kwh     = stats.totals.home                 # kwh_load
 ### Operating Mode
 
 ```python
+from franklinwh_cloud.const import (
+    TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP,  # 1, 2, 3
+)
+
 # Get current mode
 mode = await client.get_mode()
 print(f"Mode: {mode['modeName']}, Run: {mode['run_desc']}")
 
+# Get reserve SoC for all modes
+soc_all = await client.get_all_mode_soc()
+# Returns: [{'workMode': 1, 'name': 'Time of Use', 'soc': 7.0, ...}, ...]
+
 # Switch to Self-Consumption, keep current SoC
-await client.set_mode(2, None, None, None, None)
+await client.set_mode(SELF_CONSUMPTION, None, None, None, None)
+#                     workMode=2        soc  forever nextMode duration
 
 # Switch to Emergency Backup — indefinite
-await client.set_mode(3, None, 1, 2, None)
-#                      mode  soc  forever  nextMode  duration
+await client.set_mode(EMERGENCY_BACKUP, None, 1, SELF_CONSUMPTION, None)
+#                     workMode=3        soc  forever=1 nextMode=2   duration
 
-# Switch to Emergency Backup — 2 hours, then Self-Consumption
-await client.set_mode(3, None, 2, 2, 120)
+# Switch to Emergency Backup — 2 hours, then revert to Self-Consumption
+await client.set_mode(EMERGENCY_BACKUP, None, 2, SELF_CONSUMPTION, 120)
+#                     workMode=3        soc  timed=2  nextMode=2    mins
 
-# Update backup reserve SoC to 20%
-await client.update_soc(requestedSOC=20, workMode=2)
+# Update backup reserve SoC to 20% for Self-Consumption mode
+await client.update_soc(requestedSOC=20, workMode=SELF_CONSUMPTION)
+#                                        workMode=2
 ```
 
 ### TOU Scheduling
 
 ```python
+from franklinwh_cloud.const import (
+    dispatchCodeType,  # SELF=6, GRID_CHARGE=8, GRID_EXPORT=7, ...
+    WaveType,          # OFF_PEAK=0, MID_PEAK=1, ON_PEAK=2, SUPER_OFF_PEAK=4
+)
+
 # View current schedule
 schedule = await client.get_tou_dispatch_detail()
 
@@ -100,20 +116,20 @@ await client.set_tou_schedule(
     touMode="CUSTOM",
     touSchedule=[{
         "startTime": "11:30", "endTime": "15:00",
-        "dispatchId": 8, "tWaveTypeId": 3,
+        "dispatchId": dispatchCodeType.GRID_CHARGE.value,   # 8 = aPower charges from solar+grid
+        "tWaveTypeId": WaveType.OFF_PEAK.value,             # 0 = Off-peak pricing tier
     }],
-    default_mode="SELF",
+    default_mode="SELF",       # Outside window = self-consumption
 )
-
-# Dispatch code quick reference:
-#   6 = Self-consumption    8 = Grid charge (aPower charges)
-#   9 = Grid export         10 = Home backup
-#   11 = Standby            22 = Solar only
 ```
+
+> **Dispatch codes** — see [reference table](#dispatch-code-reference) below.
 
 ### Power Control (PCS)
 
 ```python
+from franklinwh_cloud.models import GridStatus
+
 # Get current grid import/export limits
 pcs = await client.get_power_control_settings()
 
@@ -123,12 +139,13 @@ await client.set_power_control_settings(
     globalGridChargeMax=-1,       # import limit kW (-1=unlimited, 0=disabled)
 )
 
-# Go off-grid (simulate outage)
-from franklinwh_cloud.models import GridStatus
+# Go off-grid (simulate outage — opens grid contactor)
 await client.set_grid_status(GridStatus.OFF, soc=5)
+#                            GridStatus.OFF=2  minimum SoC
 
-# Restore grid
+# Restore grid connection
 await client.set_grid_status(GridStatus.NORMAL)
+#                            GridStatus.NORMAL=0
 ```
 
 ### Devices & BMS
@@ -151,6 +168,10 @@ await client.set_smart_switch_state((True, False, None))
 
 # Get relay states + grid voltage/current/frequency
 power_info = await client.get_power_info()
+
+# Device discovery — structured snapshot of entire system
+snapshot = await client.discover(tier=2)  # tier 1=basic, 2=verbose, 3=pedantic
+print(f"aGate: {snapshot.agate.model}, aPowers: {snapshot.batteries.count}")
 ```
 
 ### LED Strip
@@ -163,8 +184,8 @@ led = await client.led_light_settings(mode="1", dataArea={})
 await client.led_light_settings(mode="2", dataArea={
     "lightStat": 2,              # 1=Off, 2=On
     "rgb": "FF6600",             # Hex colour
-    "bright": 80,                # 0-100
-    "timeEn": 1,                 # 1=Schedule on
+    "bright": 80,                # Brightness 0-100
+    "timeEn": 1,                 # 0=No schedule, 1=Schedule enabled
     "lightOpenTime": "06:00",
     "lightCloseTime": "22:00",
 })
@@ -174,10 +195,11 @@ await client.led_light_settings(mode="2", dataArea={
 
 ```python
 # Get example queries
-examples = await client.smart_assistant(requestType="1")
+examples = await client.smart_assistant(requestType="1")  # 1=list examples
 
 # Ask a question
 answer = await client.smart_assistant(requestType="2", query="What is my battery level?")
+#                                     requestType="2"  # 2=ask question
 print(answer)
 ```
 
@@ -190,18 +212,23 @@ from datetime import date
 
 # Today's energy breakdown
 day = await client.get_power_details(type=1, timeperiod="2026-03-18")
+#                                   type=1  # DAY — hourly breakdown
 
 # This week
 week = await client.get_power_details(type=2, timeperiod="2026-03-18")
+#                                     type=2  # WEEK — daily breakdown
 
 # This month
 month = await client.get_power_details(type=3, timeperiod="2026-03-01")
+#                                      type=3  # MONTH — daily breakdown
 
 # This year
 year = await client.get_power_details(type=4, timeperiod="2026-01-01")
+#                                     type=4  # YEAR — monthly breakdown
 
 # Lifetime totals
 lifetime = await client.get_power_details(type=5, timeperiod=str(date.today()))
+#                                         type=5  # LIFETIME — all-time
 ```
 
 ### Weather & Storm Hedge
@@ -211,7 +238,10 @@ weather = await client.get_weather()
 storms = await client.get_storm_settings()
 
 # Enable Storm Hedge, 60 min advance backup
-await client.set_storm_settings(stormEn=1, setAdvanceBackupTime=60)
+await client.set_storm_settings(
+    stormEn=1,                  # 0=Disabled, 1=Enabled
+    setAdvanceBackupTime=60,    # Minutes before storm to switch to backup
+)
 ```
 
 ### Account & Notifications
@@ -337,6 +367,7 @@ Set a grid charge window, verify it applied, then restore self-consumption.
 ```python
 import asyncio
 from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.const import dispatchCodeType, WaveType
 
 async def main():
     client = FranklinWHCloud.from_config("franklinwh.ini")
@@ -350,10 +381,10 @@ async def main():
         touSchedule=[{
             "startTime": "11:30",
             "endTime": "15:00",
-            "dispatchId": 8,       # Grid charge
-            "tWaveTypeId": 3,      # Off-peak
+            "dispatchId": dispatchCodeType.GRID_CHARGE.value,  # 8 = aPower charges from solar+grid
+            "tWaveTypeId": WaveType.OFF_PEAK.value,            # 0 = Off-peak pricing tier
         }],
-        default_mode="SELF",       # Outside window = self-consumption
+        default_mode="SELF",       # Outside window = self-consumption (dispatchId=6)
     )
     tou_id = result.get("result", {}).get("id", "?")
     print(f"✓ Schedule submitted — touId={tou_id}")
@@ -386,13 +417,32 @@ asyncio.run(main())
 
 ## Dispatch Code Reference
 
-| Code | Name | Description |
-|------|------|-------------|
-| 6 | Self-consumption | Maximise solar self-use |
-| 8 | Grid charge | aPower charges from solar + grid |
-| 9 | Grid export | Battery exports to grid |
-| 10 | Home backup | Battery powers home only |
-| 11 | Standby | Battery idle |
-| 22 | Solar only | Solar powers home, no battery |
+| Code | `dispatchCodeType` Enum | Description |
+|------|------------------------|-------------|
+| 1 | `HOME` / `HOME_LOADS` | aPower to home (surplus solar to grid) |
+| 2 | `STANDBY` | aPower on standby (surplus solar to grid) |
+| 3 | `SOLAR` / `SOLAR_CHARGE` | aPower charges from solar |
+| 6 | `SELF` / `SELF_CONSUMPTION` | Self-consumption (surplus solar to grid) |
+| 7 | `GRID_EXPORT` / `GRID_DISCHARGE` / `FORCE_DISCHARGE` | aPower to home/grid |
+| 8 | `GRID_CHARGE` / `GRID_IMPORT` / `FORCE_CHARGE` | aPower charges from solar/grid |
+
+## Wave Type (Pricing Tier) Reference
+
+| Code | `WaveType` Enum | Description |
+|------|----------------|-------------|
+| 0 | `OFF_PEAK` | Off-peak pricing tier |
+| 1 | `MID_PEAK` | Mid-peak pricing tier |
+| 2 | `ON_PEAK` | On-peak pricing tier |
+| 4 | `SUPER_OFF_PEAK` | Super off-peak pricing tier |
+
+## Work Mode Reference
+
+| Code | `workModeType` Enum | Constant | Description |
+|------|--------------------|-----------|----|
+| 1 | `TIME_OF_USE` | `TIME_OF_USE` | TOU dispatch schedule controls the battery |
+| 2 | `SELF_CONSUMPTION` | `SELF_CONSUMPTION` | Maximise solar self-use |
+| 3 | `EMERGENCY_BACKUP` | `EMERGENCY_BACKUP` | Full battery backup |
+
+> Import: `from franklinwh_cloud.const import TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP`
 
 > Full details in [TOU_SCHEDULE_GUIDE.md](TOU_SCHEDULE_GUIDE.md)
