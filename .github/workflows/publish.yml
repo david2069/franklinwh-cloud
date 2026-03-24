@@ -6,9 +6,6 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'   # Triggers on tags like v0.3.0, v1.0.0
   workflow_dispatch:               # Allow manual trigger from Actions tab
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
   contents: read
   id-token: write   # Required for Trusted Publisher (OIDC)
@@ -34,7 +31,7 @@ jobs:
         run: twine check dist/*
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2    # Node.js 24 native
         with:
           name: dist
           path: dist/
@@ -47,7 +44,7 @@ jobs:
       name: testpypi
       url: https://test.pypi.org/p/franklinwh-cloud
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0  # Node.js 24 native
         with:
           name: dist
           path: dist/
@@ -65,7 +62,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/franklinwh-cloud
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0  # Node.js 24 native
         with:
           name: dist
           path: dist/
