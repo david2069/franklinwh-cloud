@@ -3,15 +3,45 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "franklinwh-cloud-client"
+name = "franklinwh-cloud"
 version = "0.3.0"
-description = "FranklinWH Cloud API client library — performance monitoring, rate limiting, edge tracking"
-readme = "README.md"
+description = "Unofficial Python client library and CLI for FranklinWH energy storage systems via the Cloud API"
+readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+    {name = "david2069"},
+]
+keywords = [
+    "franklinwh", "battery", "solar", "energy-storage",
+    "home-energy-management", "agate", "apower", "tou",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "httpx[http2]",
     "jsonschema",
 ]
+
+[project.urls]
+Homepage = "https://david2069.github.io/franklinwh-cloud/"
+Documentation = "https://david2069.github.io/franklinwh-cloud/"
+Source = "https://github.com/david2069/franklinwh-cloud"
+"Bug Tracker" = "https://github.com/david2069/franklinwh-cloud/issues"
+Changelog = "https://github.com/david2069/franklinwh-cloud/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = [
