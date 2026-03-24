@@ -117,7 +117,7 @@ await client.set_tou_schedule(
     touSchedule=[{
         "startTime": "11:30", "endTime": "15:00",
         "dispatchId": dispatchCodeType.GRID_CHARGE.value,   # 8 = aPower charges from solar+grid
-        "tWaveTypeId": WaveType.OFF_PEAK.value,             # 0 = Off-peak pricing tier
+        "waveType": WaveType.OFF_PEAK.value,             # 0 = Off-peak pricing tier
     }],
     default_mode="SELF",       # Outside window = self-consumption
 )
@@ -452,7 +452,7 @@ Handle common errors: invalid time format, bad dispatch codes, and API failures.
                 "startTime": CHARGE_START,
                 "endTime": CHARGE_END,
                 "dispatchId": DISPATCH.value,       # dispatchCodeType.GRID_CHARGE = 8
-                "tWaveTypeId": WAVE_TYPE.value,      # WaveType.OFF_PEAK = 0
+                "waveType": WAVE_TYPE.value,      # WaveType.OFF_PEAK = 0
             }],
             default_mode="SELF",   # Outside window = self-consumption (dispatchId=6)
         )
@@ -597,7 +597,7 @@ was interrupted.
                     "startTime": b.get("startTime", "0:00"),
                     "endTime": b.get("endTime", "24:00"),
                     "dispatchId": b.get("dispatchId", 6),
-                    "tWaveTypeId": b.get("waveType", 0),
+                    "waveType": b.get("waveType", 0),
                 })
             await client.set_tou_schedule(
                 touMode="CUSTOM",
