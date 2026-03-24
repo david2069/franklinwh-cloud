@@ -114,6 +114,7 @@ franklinwh-cli raw get_stats --headers
 | `get_tou_detail_by_id` | `touId` | TOU config by ID |
 | `get_bonus_info` | — | TOU bonus/incentive info |
 | `get_vpp_tip` | — | VPP tips for TOU updates |
+| `calculate_expected_earnings` | JSON via stdin | Projected savings for tariff template |
 
 ### Billing & Savings
 
