@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Published to PyPI** — `pip install franklinwh-cloud` ([pypi.org/project/franklinwh-cloud](https://pypi.org/project/franklinwh-cloud))
+- **Automated publish pipeline** — GitHub Actions Trusted Publisher (OIDC) workflow triggers on version tags
+- **GitHub issue templates** — structured bug report and feature request forms with FranklinWH-specific fields (region, aGate model, component, redacted log sections)
+- **Troubleshooting Guide** (`docs/TROUBLESHOOTING.md`) — 7 sections: login/auth, network connectivity, device config, inaccurate metrics, CLI inspection, collecting diagnostics, masking vs redacting PII
+- **About & Disclaimer** — added to `docs/index.md` and `README.md` explaining unofficial nature, intended API users, educational-only purpose, and AS-IS no-fitness-warranty
+- **`calculate_expected_earnings`** registered in raw CLI (`franklinwh-cli raw calculate_expected_earnings`)
+
+### Fixed
+- **`tWaveTypeId` → `waveType`** in API Cookbook — corrected 3 instances to match the actual field name used by `set_tou_schedule`
+
 ## [0.3.0] — 2026-03-23
 
 ### Added
