@@ -1,11 +1,37 @@
 {
-  "catalog_version": "1.0.0",
-  "last_updated": "2026-03-23",
+  "catalog_version": "1.1.0",
+  "last_updated": "2026-03-25",
 
   "countries": {
     "1": {"name": "China", "code": "CN", "voltage": "220V", "supported": false},
     "2": {"name": "United States", "code": "US", "voltage": "240V split-phase", "supported": true},
     "3": {"name": "Australia", "code": "AU", "voltage": "230V single/415V 3-phase", "supported": true}
+  },
+
+  "region_quirks": {
+    "2": {
+      "country": "US",
+      "grid_standard": "UL9540 / IEEE 1547",
+      "v2l_available": true,
+      "nem_applicable": true,
+      "max_export_kw": null,
+      "programmes_applicable": ["sgipEntrance", "bbEntrance", "ja12Entrance", "isJoinJA12", "sdcpFlag"],
+      "api_null_fields": [],
+      "notes": "Split-phase 120/240V. NEM 2.0/3.0 applicable in CA/HI. SGIP/BB incentive programmes CA/HI-only."
+    },
+    "3": {
+      "country": "AU",
+      "grid_standard": "AS4777 / Clean Energy Council",
+      "v2l_available": false,
+      "nem_applicable": false,
+      "max_export_kw": 10.0,
+      "programmes_applicable": [],
+      "api_null_fields": [
+        "sgipEntrance", "bbEntrance", "ja12Entrance", "isJoinJA12", "sdcpFlag",
+        "nemType", "programmeList"
+      ],
+      "notes": "Single-phase 230V nominal. No V2L on AU hardware. Export typically limited to 10kW (varies by DNSP/state). US programme flags return null — expected behaviour, not an error."
+    }
   },
 
   "agate_models": {
@@ -37,6 +63,63 @@
     "254": {"name": "Meter Adapter Controller", "sku": "MAC-R1V1-US", "type": "mac1", "version": 1, "country_id": 2, "compatible_apower": [4, 5], "notes": "aPower S only, has RSD switch"},
     "301": {"name": "Generator Module V1-AU", "sku": "ACCY-GENV1-AU", "type": "generator", "version": 1, "country_id": 3, "compatible_agates": [102], "v2l_enables": false},
     "302": {"name": "Smart Circuits V1-AU", "sku": "ACCY-SCV1-AU", "type": "smart_circuits", "version": 1, "country_id": 3, "compatible_agates": [102], "circuit_count": 2, "v2l_port": false, "v2l_requires_generator": false, "notes": "No V2L capability on AU models"}
+  },
+
+  "accessory_quirks": {
+    "ahub": {
+      "display_name": "aHub",
+      "detected_via": "ahubAddressingFlag (feature flag) + accessoryList entry type 253",
+      "api_exposes": ["count", "presence"],
+      "api_opaque": ["firmware_version", "serial_number", "model_variant", "individual_port_status"],
+      "known_firmware_versions": ["1.0.3", "1.1.0"],
+      "workaround": "aHub firmware accessible via Modbus register 15xxx range if on local network",
+      "notes": "Cloud API only confirms presence and count. Serial/firmware not returned by any endpoint."
+    },
+    "apbox": {
+      "display_name": "aPBox Digital I/O",
+      "detected_via": "accessoryList entry type 251 + getApBoxStatus MQTT",
+      "api_exposes": ["presence", "digital_input_states", "digital_output_states"],
+      "api_opaque": ["firmware_version", "serial_number", "model_variant"],
+      "known_firmware_versions": [],
+      "workaround": "No known workaround for firmware version — use installer tools",
+      "notes": "DI/DO states exposed via getApBoxStatus MQTT command. Firmware not returned by Cloud API."
+    },
+    "mac1": {
+      "display_name": "Meter Adapter Controller (MAC-1 / MSA)",
+      "detected_via": "get_site_software_info msa_model / msa_serial fields",
+      "api_exposes": ["model", "serial_number"],
+      "api_opaque": ["firmware_version", "rsd_switch_state", "meter_readings"],
+      "known_firmware_versions": [],
+      "workaround": "RSD state not exposed — physical inspection required",
+      "notes": "aPower S only. MAC-1 model/serial returned via site software info. Firmware and RSD state not in Cloud API."
+    },
+    "split_ct": {
+      "display_name": "Split-CT (200A)",
+      "detected_via": "feature flags ct_split_grid / ct_split_pv",
+      "api_exposes": ["presence_grid", "presence_pv"],
+      "api_opaque": ["firmware_version", "calibration_status", "serial_number"],
+      "known_firmware_versions": [],
+      "workaround": "CT calibration test available via needCtTest flag in discover flags",
+      "notes": "API only confirms CT presence via boolean flags. No firmware or calibration data exposed."
+    },
+    "generator": {
+      "display_name": "Generator Module",
+      "detected_via": "accessoryList entry type 3 (gen V1) or accessory flags",
+      "api_exposes": ["presence", "version"],
+      "api_opaque": ["firmware_version", "generator_brand", "kw_rating", "runtime_hours"],
+      "known_firmware_versions": [],
+      "workaround": "Generator runtime/state available via getGeneratorStatus if generator is running",
+      "notes": "Brand, kW rating, and runtime hours not in Cloud API — configured at installation time only."
+    },
+    "smart_circuits": {
+      "display_name": "Smart Circuits",
+      "detected_via": "accessoryList entry type 4 + scVersion + scCount fields",
+      "api_exposes": ["version", "count", "circuit_names", "v2l_port", "merged_mode"],
+      "api_opaque": ["firmware_version", "individual_circuit_current", "thermal_status"],
+      "known_firmware_versions": [],
+      "workaround": "Live circuit current not in Cloud API — use local Modbus or FranklinWH Smart Circuits app",
+      "notes": "V1 requires Generator Module for V2L. V2 has built-in V2L. AU V1 has no V2L port at all."
+    }
   },
 
   "accessory_api_types": {
