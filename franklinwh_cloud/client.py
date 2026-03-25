@@ -22,7 +22,7 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption,
+    InvalidTOUScheduleOption, ApiTimeoutError,
 )
 # Operating Workand Run mode constants
 from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
@@ -505,24 +505,27 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         logger.debug(f"params={params}")
 
         async def __post():
-            if payload is not None:
-                headers.update({"Content-Type": "application/json", "accept-encoding": "gzip", "lang": "EN_US"})
-                if isinstance(payload, (dict, list)):
-                    resp = await self.session.post(url, headers=headers, params=params, json=payload, timeout=30)
+            try:
+                if payload is not None:
+                    headers.update({"Content-Type": "application/json", "accept-encoding": "gzip", "lang": "EN_US"})
+                    if isinstance(payload, (dict, list)):
+                        resp = await self.session.post(url, headers=headers, params=params, json=payload, timeout=30)
+                    else:
+                        # payload already serialized or primitive
+                        resp = await self.session.post(url, headers=headers, params=params, data=str(payload), timeout=30)
                 else:
-                    # payload already serialized or primitive
-                    resp = await self.session.post(url, headers=headers, params=params, data=str(payload), timeout=30)
-            else:
-                resp = await self.session.post(
-                    url,
-                    params=params,
-                    headers={
-                        "loginToken": self.token,
-                        "Content-Type": "application/json",
-                    },
-                    data=payload,
-                    timeout=30,
-                )
+                    resp = await self.session.post(
+                        url,
+                        params=params,
+                        headers={
+                            "loginToken": self.token,
+                            "Content-Type": "application/json",
+                        },
+                        data=payload,
+                        timeout=30,
+                    )
+            except httpx.TimeoutException:
+                raise ApiTimeoutError(url)
 
             return resp.json()
 
@@ -557,12 +560,14 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         logger.debug(f"params={params}")
 
         async def __get():
-            return (
-                await self.session.get(
+            try:
+                resp = await self.session.get(
                     url, params=params, headers={"loginToken": self.token},
                     timeout=30,
                 )
-            ).json()
+            except httpx.TimeoutException:
+                raise ApiTimeoutError(url)
+            return resp.json()
 
         from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
         return await instrumented_retry(
