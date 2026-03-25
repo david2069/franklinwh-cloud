@@ -114,6 +114,7 @@ graph LR
 
 | Section | What's covered |
 |---------|---------------|
+| [Python Setup](HOWTO_PYTHON.md) | Minimum versions, platform OS setups, and venv creation |
 | [Getting Started](getting-started.md) | Installation, credentials, first connection |
 | [API Cookbook](API_COOKBOOK.md) | Copy-paste recipes for common tasks |
 | [API Reference](API_REFERENCE.md) | All 70+ methods with parameters |
