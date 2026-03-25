@@ -178,6 +178,36 @@ class TestGetStatsResponseParsing:
         expected = empty_stats()
         assert stats.current.solar_production == expected.current.solar_production
 
+    @respx.mock
+    async def test_get_power_details_strict_url(self, mock_client):
+        """Ensure get_power_details constructs the URL exactly without double slashes."""
+        # This will fail with respx.PassThrough if the client requests //hes-gateway/...
+        respx.get(
+            "https://energy.franklinwh.com/hes-gateway/api-energy/electic/getFhpPowerData",
+            params={"gatewayId": "TEST-GW-001", "type": 1, "dayTime": "2026-03-26"}
+        ).mock(return_value=httpx.Response(200, json={
+            "code": 200,
+            "result": {"timestamp": "2026-03-26T00:00:00Z"}
+        }))
+
+        res = await mock_client.get_power_details(type=1, timeperiod="2026-03-26")
+        assert res.get("timestamp") == "2026-03-26T00:00:00Z"
+
+    @respx.mock
+    async def test_get_power_by_day_strict_url(self, mock_client):
+        """Ensure get_power_by_day constructs the URL without double slashes."""
+        respx.get(
+            "https://energy.franklinwh.com/hes-gateway/api-energy/power/getFhpPowerByDay",
+            params={"gatewayId": "TEST-GW-001", "dayTime": "2026-03-26"}
+        ).mock(return_value=httpx.Response(200, json={
+            "code": 200,
+            "result": {"timestamp": "2026-03-26T00:00:00Z"}
+        }))
+
+        res = await mock_client.get_power_by_day(dayTime="2026-03-26")
+        assert res.get("timestamp") == "2026-03-26T00:00:00Z"
+
+
 
 class TestGetStatsConditionalCalls:
     """get_stats conditionally fetches switch_usage and power_info."""
