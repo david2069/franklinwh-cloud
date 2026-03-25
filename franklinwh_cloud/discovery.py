@@ -260,6 +260,8 @@ class DeviceSnapshot:
     warranty: WarrantyInfo = field(default_factory=WarrantyInfo)
     electrical: ElectricalInfo = field(default_factory=ElectricalInfo)
     programmes: ProgrammeInfo = field(default_factory=ProgrammeInfo)
+    region_quirks: dict = field(default_factory=dict)
+    accessory_quirks: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to dict for JSON output."""

@@ -48,6 +48,7 @@ It fills a gap where no official developer tools exist, allowing FranklinWH syst
 - **Tariff Workflow** — Search utilities, browse tariffs, apply templates
 - **Network Diagnostics** — WiFi, Ethernet, 4G config via MQTT
 - **Billing & Savings** — Electricity data, charge history, benefit tracking
+- **[Hardware Quirks](REGION_QUIRKS.md)** — Living registry of region-specific API opacities and AU vs US gaps
 
 ## Quick Start
 
