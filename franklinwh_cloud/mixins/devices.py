@@ -617,7 +617,7 @@ class DevicesMixin:
         Parameters
         ----------
         site_id : str, optional
-            Site ID. If None, uses first site from account info.
+            Site ID. If None, auto-resolved from gateway list.
 
         Returns
         -------
@@ -626,9 +626,20 @@ class DevicesMixin:
              postCode, alphaCode, completeAddress}
         """
         if site_id is None:
-            # Auto-discover from account info
-            info = self.fetcher.info
-            site_id = str(info.get("siteId", ""))
+            # siteId is not in fetcher.info — it lives in the gateway list response.
+            # Match on gateway serial (self.gateway) to get the correct siteId.
+            try:
+                res = await self.get_home_gateway_list()
+                gateways = res.get("result", [])
+                # Match by gateway serial number, fall back to first gateway
+                matched = next(
+                    (gw for gw in gateways if gw.get("id") == self.gateway),
+                    gateways[0] if gateways else {}
+                )
+                site_id = str(matched.get("siteId", ""))
+            except Exception as e:
+                logger.warning(f"get_site_detail: could not resolve siteId: {e}")
+                site_id = ""
         url = self.url_base + "hes-gateway/terminal/site/get/SiteDetail"
         params = {
             "siteId": str(site_id),
@@ -636,6 +647,7 @@ class DevicesMixin:
         }
         data = await self._get(url, params=params)
         return data
+
 
     async def get_device_detail(self):
         """Get device/gateway detail (name, address, location).
