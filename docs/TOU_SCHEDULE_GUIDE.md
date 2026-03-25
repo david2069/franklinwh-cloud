@@ -167,6 +167,55 @@ Wave types (tariff periods): `OFF_PEAK=0`, `MID_PEAK=1`, `ON_PEAK=2`, `SUPER_OFF
 
 ---
 
+## Multi-Season & Weekday/Weekend Scheduling (V2 API)
+
+The FranklinWH App recently transitioned to a complex multi-season, multi-day-type representation of TOU schedules. The `set_tou_schedule_multi` method exposes this capability directly to Python.
+
+### Backwards Compatibility
+The original `set_tou_schedule` method has been internally refactored to act as a defensive wrapper around `set_tou_schedule_multi`. When called, it seamlessly downgrades your 1D array into a 12-month `strategyList` and auto-heals upstream API quirks (such as ensuring zero-value constraints and patching missing empty strings) without breaking existing scripts.
+
+### Live Testing & Verification
+Both `set_tou_schedule` and `set_tou_schedule_multi` have undergone live regression testing (Session 11) against out-of-the-box physical aGates. The testing confirmed:
+1. FranklinWH strictly validates the gateway serial string case (`A02F` vs `a02f`) at the authentication layer before writing schedules.
+2. The `saveTouDispatch` API strictly enforces Spring Boot `@NotBlank` restrictions on the payload strings.
+3. Successfully dispatched the complex JSON block and comprehensively restored the configurations without degradation. (See `tests/results/live_tou_results.md` or GitHub issue trackers for full payloads).
+
+### Syntax Example
+Instead of passing a single flat list of `detailVoList` blocks, you pass an array of `strategyList` blocks. Each block demarcates the `seasonName`, the `month` spans, and the sub-arrays for Weekday (`dayType=1`) vs Weekend (`dayType=2`):
+
+```python
+import json
+
+# Example syntax mapping
+multi_season = [
+    {
+        "seasonName": "Summer (Peak)",
+        "month": "6,7,8",
+        "dayTypeVoList": [
+            {
+                "dayName": "weekday", "dayType": 1,
+                "eleticRateShoulder": 1.25,
+                "detailVoList": [...] # Full 24h block
+            },
+            {
+                "dayName": "weekend", "dayType": 2,
+                "detailVoList": [...] # Full 24h block
+            }
+        ]
+    },
+    {
+        "seasonName": "Winter (Off-Peak)",
+        "month": "1,2,3,4,5,9,10,11,12",
+        "dayTypeVoList": [...]
+    }
+]
+
+# Dispatches seamlessly
+await client.set_tou_schedule_multi(multi_season)
+```
+
+---
+
 ## Schedule Entry Format (detailVoList)
 
 Each time block is a dict with **5 mandatory fields**:
