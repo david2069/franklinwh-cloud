@@ -135,6 +135,10 @@ class DiscoverMixin:
                     str(gw.get("countryId", 0)), {}
                 )
                 snap.site.country = country_info.get("name", "")
+                
+                # Attach region and accessory catalog quirks
+                snap.region_quirks = catalog.get("region_quirks", {}).get(str(snap.site.country_id), {})
+                snap.accessory_quirks = catalog.get("accessory_quirks", {})
         except Exception as e:
             logger.warning(f"discover: get_home_gateway_list failed: {e}")
 
