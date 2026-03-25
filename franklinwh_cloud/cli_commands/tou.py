@@ -34,8 +34,19 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               schedule_file: str | None = None, rates_file: str | None = None,
               season_name: str | None = None, season_months: str | None = None,
               day_type_str: str | None = None, wait_confirm: bool = False,
-              show_next: bool = False):
+              show_next: bool = False, show_price: bool = False,
+              multi_season_file: str | None = None):
     """Execute the TOU command."""
+
+    # ── tou --price ───────────────────────────────────────────────
+    if show_price:
+        await _handle_price(client, json_output)
+        return
+
+    # ── tou --multi-season ────────────────────────────────────────
+    if multi_season_file:
+        await _handle_multi_season(client, multi_season_file, json_output)
+        return
 
     # ── tou --set ────────────────────────────────────────────────
     if set_mode:
@@ -895,3 +906,137 @@ def _format_duration_short(total_seconds: int) -> str:
     if h > 0:
         return f"{h}h {m:02d}m"
     return f"{m}m"
+
+
+# ── tou --price handler ─────────────────────────────────────────────
+
+async def _handle_price(client, json_output: bool):
+    """Handle tou --price: show the current TOU pricing tier and rates."""
+    price = await client.get_current_tou_price()
+
+    if not price:
+        if json_output:
+            print_json_output({"error": "No TOU schedule configured or no block for current time."})
+        else:
+            print_warning("No TOU schedule configured or no active block for current time.")
+        return
+
+    if json_output:
+        print_json_output(price)
+        return
+
+    print_header("Current TOU Pricing Tier")
+
+    now_str = datetime.now().strftime("%H:%M")
+    print_section("⏱", f"Now: {now_str}")
+
+    # Tier badge
+    wave_name = price.get("wave_type_name", "Unknown")
+    wave_type = price.get("wave_type", 0)
+    wave_color = {0: "green", 1: "yellow", 2: "red", 3: "red", 4: "green"}.get(wave_type, "dim")
+    print_kv("Pricing Tier", c(wave_color, wave_name))
+    print_kv("Season", price.get("season_name", "?"))
+    print_kv("Day Type", price.get("day_type_name", "?"))
+    print_kv("Block", f"{price.get('block_name', '?')}  ({price.get('block_start')} → {price.get('block_end')})")
+
+    mins = price.get("minutes_remaining", 0)
+    h, m = divmod(mins, 60)
+    remaining_str = f"{h}h {m:02d}m" if h > 0 else f"{m}m"
+    remaining_color = "green" if mins > 30 else "yellow" if mins > 10 else "red"
+    print_kv("Time Remaining", c(remaining_color, remaining_str))
+
+    dispatch_id = price.get("dispatch_id")
+    if dispatch_id:
+        print_kv("Dispatch Strategy", f"ID {dispatch_id}")
+
+    # Rates (only non-null)
+    buy = price.get("buy_rates", {})
+    sell = price.get("sell_rates", {})
+    rate_labels = [
+        ("On-Peak", "peak"), ("Shoulder", "shoulder"), ("Off-Peak", "valley"),
+        ("Sharp", "sharp"), ("Super Off-Peak", "super_off_peak"),
+    ]
+    print()
+    for label, key in rate_labels:
+        b = buy.get(key)
+        s = sell.get(key)
+        if b is not None:
+            sell_str = f"   Sell: ${s:.4f}" if s is not None else ""
+            print_kv(f"  💰 {label}", f"Buy: ${b:.4f}{sell_str}")
+
+    print()
+
+
+# ── tou --multi-season handler ──────────────────────────────────────
+
+async def _handle_multi_season(client, multi_season_file: str, json_output: bool):
+    """Handle tou --multi-season FILE: load and apply a multi-season strategy file.
+
+    The FILE must be a JSON file with a 'strategyList' array (matching the
+    HAR fixture format in tests/fixtures/tou_save_multi_season.json), OR it
+    can be a bare strategyList array itself.
+    """
+    from franklinwh_cloud.exceptions import InvalidTOUScheduleOption
+
+    try:
+        with open(multi_season_file, "r") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        if json_output:
+            print_json_output({"error": f"File not found: {multi_season_file}"})
+        else:
+            print_error(f"File not found: {multi_season_file}")
+        return
+    except json.JSONDecodeError as e:
+        if json_output:
+            print_json_output({"error": f"Invalid JSON: {e}"})
+        else:
+            print_error(f"Invalid JSON in {multi_season_file}: {e}")
+        return
+
+    # Accept either {"strategyList": [...]} or bare [...]
+    if isinstance(data, dict):
+        strategy_list = data.get("strategyList", data.get("strategy_list"))
+    elif isinstance(data, list):
+        strategy_list = data
+    else:
+        if json_output:
+            print_json_output({"error": "File must contain a JSON array or an object with 'strategyList'"})
+        else:
+            print_error("File must contain a JSON array or an object with 'strategyList'.")
+        return
+
+    if not strategy_list:
+        if json_output:
+            print_json_output({"error": "strategyList is empty"})
+        else:
+            print_error("strategyList is empty.")
+        return
+
+    if not json_output:
+        print(f"Loading {len(strategy_list)} season(s) from {multi_season_file}...")
+
+    try:
+        result = await client.set_tou_schedule_multi(strategy_list)
+        if json_output:
+            print_json_output(result)
+        elif result.get("code") == 200:
+            tou_id = result.get("result", {}).get("id", "?")
+            print_success(f"Multi-season schedule submitted — touId={tou_id}")
+            print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
+            print()
+            await _handle_next(client, json_output=False)
+        else:
+            code = result.get("code", "?")
+            msg = result.get("msg", result.get("message", "Unknown error"))
+            print_error(f"API returned code={code}: {msg}")
+    except InvalidTOUScheduleOption as e:
+        if json_output:
+            print_json_output({"error": str(e), "type": "InvalidTOUScheduleOption"})
+        else:
+            print_error(f"Validation error: {e}")
+    except Exception as e:
+        if json_output:
+            print_json_output({"error": str(e), "type": type(e).__name__})
+        else:
+            print_error(f"{type(e).__name__}: {e}")

@@ -157,6 +157,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Day type: everyday (default), weekday, weekend")
     sub_tou.add_argument("--next", dest="show_next", action="store_true",
                          help="Show current and next dispatch with remaining time")
+    sub_tou.add_argument("--price", dest="show_price", action="store_true",
+                         help="Show the current TOU pricing tier, wave type, and rates")
+    sub_tou.add_argument("--multi-season", dest="multi_season_file", metavar="FILE",
+                         help="Load and apply a multi-season/multi-day-type schedule from JSON file")
     sub_tou.add_argument("--wait", dest="wait_confirm", action="store_true",
                          help="After --set, poll until dispatch is confirmed applied (up to 90s)")
 
@@ -345,7 +349,9 @@ async def async_main():
                               season_months=getattr(args, 'months', None),
                               day_type_str=getattr(args, 'day_type', None),
                               wait_confirm=getattr(args, 'wait_confirm', False),
-                              show_next=getattr(args, 'show_next', False))
+                              show_next=getattr(args, 'show_next', False),
+                              show_price=getattr(args, 'show_price', False),
+                              multi_season_file=getattr(args, 'multi_season_file', None))
 
             case "raw":
                 from franklinwh_cloud.cli_commands import raw
