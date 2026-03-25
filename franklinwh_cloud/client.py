@@ -378,6 +378,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         # Edge tracker — CloudFront PoP monitoring (always on, zero overhead)
         self.edge_tracker = EdgeTracker()
 
+        self._dynamic_modes_cache: dict[int, str] | None = None
+
         # Client identity headers — good API citizenship
         default_headers = {}
         if client_headers is True:

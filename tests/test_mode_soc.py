@@ -118,7 +118,7 @@ class TestGetAllModeSoc:
         active_modes = [e for e in result if e["active"]]
         assert len(active_modes) == 1
         assert active_modes[0]["workMode"] == 2
-        assert active_modes[0]["name"] == "Self-Consumption"
+        assert active_modes[0]["name"] == "Self Consumption"
 
     @pytest.mark.asyncio
     async def test_non_active_modes_not_flagged(self):
@@ -162,10 +162,10 @@ class TestGetAllModeSoc:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_mode_names_from_const(self):
-        """Mode names should come from OPERATING_MODES constant."""
-        from franklinwh_cloud.const import OPERATING_MODES
+    async def test_mode_names_from_payload(self):
+        """Mode names should come directly from the gateway's dynamic payload."""
         client = _make_mock_client()
         result = await client.get_all_mode_soc()
+        expected_names = {1: "Time of Use", 2: "Self Consumption", 3: "Emergency Backup"}
         for entry in result:
-            assert entry["name"] == OPERATING_MODES[entry["workMode"]]
+            assert entry["name"] == expected_names[entry["workMode"]]
