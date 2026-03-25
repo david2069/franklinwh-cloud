@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+### Fixed
+
+## [0.4.0] — 2026-03-26
+
+### Added
 - **Published to PyPI** — `pip install franklinwh-cloud` ([pypi.org/project/franklinwh-cloud](https://pypi.org/project/franklinwh-cloud))
 - **Automated publish pipeline** — GitHub Actions Trusted Publisher (OIDC) workflow triggers on version tags
 - **GitHub issue templates** — structured bug report and feature request forms with FranklinWH-specific fields (region, aGate model, component, redacted log sections)
