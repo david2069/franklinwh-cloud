@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **`tWaveTypeId` → `waveType`** in API Cookbook — corrected 3 instances to match the actual field name used by `set_tou_schedule`
+- **`DEF-SITE-DETAIL`** — `get_site_detail()` passed `siteId=''` because `fetcher.info` does not contain `siteId`; now resolves via `get_home_gateway_list()` matched on gateway serial number
 
 ## [0.3.0] — 2026-03-23
 

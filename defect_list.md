@@ -35,3 +35,4 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | DEF-MODE-ALARMS | Mixins | `currentAlarmVOList` stringified then iterated over characters | 2026-03-20 | `9dc7f52` |
 | DEF-MODE-CRASH | CLI Commands | `franklinwh-cli mode` crashes with NoneType when `get_mode()` fails | 2026-03-20 | `7dd2702` |
 | DEF-MODE-NAME | CLI Commands | `mode` command displays `self_consumption` instead of `Self-Consumption` | 2026-03-20 | `76d341e` |
+| DEF-SITE-DETAIL | Mixins | `get_site_detail()` sent `siteId=''` — `siteId` not in `fetcher.info`; fixed to resolve via `get_home_gateway_list()` + gateway serial match | 2026-03-25 | `09e1fdd` |
