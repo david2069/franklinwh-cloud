@@ -39,3 +39,20 @@ class BadRequestParsingError(BaseException):
 
 class InvalidTOUScheduleOption(BaseException):
     """Raised when the TOU schedule option is invalid."""
+
+
+class ApiTimeoutError(Exception):
+    """Raised when an API call exceeds the timeout threshold.
+
+    Attributes
+    ----------
+    url : str
+        The URL that timed out.
+    timeout_s : int
+        The timeout threshold in seconds.
+    """
+
+    def __init__(self, url: str, timeout_s: int = 30):
+        self.url = url
+        self.timeout_s = timeout_s
+        super().__init__(f"API request timed out after {timeout_s}s: {url}")
