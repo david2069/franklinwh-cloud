@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **About & Disclaimer** — added to `docs/index.md` and `README.md` explaining unofficial nature, intended API users, educational-only purpose, and AS-IS no-fitness-warranty
 - **`calculate_expected_earnings`** registered in raw CLI (`franklinwh-cli raw calculate_expected_earnings`)
 - **`FEAT-AUTH-CLI-OPTION`** — `franklinwh-cli --installer` flag sets `LOGIN_TYPE_INSTALLER` for certified installer accounts; default remains homeowner (`LOGIN_TYPE_USER`)
+- **`FEAT-REGION-QUIRKS`** — `device_catalog.json` v1.1.0: `region_quirks` (AU/US grid standard, V2L, NEM, max export, known API null fields) + `accessory_quirks` (aHub, aPBox, MAC-1, Split-CT, Generator, Smart Circuits: API exposes vs opaque, detection, known firmware). `franklinwh-cli discover -v` now shows ⚠ API opaque hints per accessory. `docs/REGION_QUIRKS.md` living document added.
 
 ### Fixed
 - **`tWaveTypeId` → `waveType`** in API Cookbook — corrected 3 instances to match the actual field name used by `set_tou_schedule`
