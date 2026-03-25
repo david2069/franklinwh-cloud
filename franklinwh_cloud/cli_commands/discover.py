@@ -245,6 +245,7 @@ def _render_accessories(snap):
     print_section("🔌", f"Accessories ({len(acc.items)} registered)")
     from franklinwh_cloud.mixins.discover import get_catalog
     catalog = get_catalog()
+    quirks = catalog.get("accessory_quirks", {})
     for item in acc.items:
         # Look up model/SKU from catalog by type
         model_info = ""
@@ -253,6 +254,13 @@ def _render_accessories(snap):
                 model_info = f"  Model: {acc_data.get('name', '')}  SKU: {acc_data.get('sku', '')}"
                 break
         print_kv(item.name, f"SN: {item.serial}{model_info}")
+        # Show what the API cannot tell us about this accessory
+        q = quirks.get(item.type_name)
+        if q and q.get("api_opaque"):
+            opaque = ", ".join(q["api_opaque"])
+            print_kv("  ⚠ API opaque", opaque)
+            if q.get("workaround"):
+                print_kv("  ↳ Workaround", q["workaround"])
 
     sc = acc.smart_circuits
     if sc:
@@ -266,6 +274,10 @@ def _render_accessories(snap):
                 print_kv(f"SC{i+1} Name", name)
         v2l = c("green", "Available") if sc.v2l_port else c("dim", "Not available")
         print_kv("V2L Port", v2l)
+        # SC quirks
+        q = quirks.get("smart_circuits")
+        if q and q.get("api_opaque"):
+            print_kv("  ⚠ API opaque", ", ".join(q["api_opaque"]))
 
     if acc.has_apbox:
         print_section("🔌", "aPBox Digital I/O")
@@ -273,6 +285,11 @@ def _render_accessories(snap):
             print_kv("Digital Inputs", str(acc.apbox_di))
         if acc.apbox_do_status:
             print_kv("Digital Outputs", str(acc.apbox_do_status))
+        q = quirks.get("apbox")
+        if q and q.get("api_opaque"):
+            print_kv("  ⚠ API opaque", ", ".join(q["api_opaque"]))
+
+
 
 
 def _render_grid(snap):
