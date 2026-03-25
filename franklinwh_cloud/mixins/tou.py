@@ -1244,3 +1244,404 @@ class TouMixin:
         data = await self._post(url, payload)
         return data
 
+    # ────────────────────────────────────────────────────────────────
+    # Multi-season scheduling (FEAT-TOU-MULTISEASON)
+    # ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _validate_strategy_months(strategy_list: list) -> None:
+        """Validate that all 12 months are covered exactly once across seasons.
+
+        Parameters
+        ----------
+        strategy_list : list
+            List of season dicts, each with a 'month' key (CSV string like '1,2,3').
+
+        Raises
+        ------
+        InvalidTOUScheduleOption
+            If months are missing, duplicated, or out of range.
+        """
+        seen: set[int] = set()
+        for i, season in enumerate(strategy_list):
+            month_str = season.get("month", "")
+            if not month_str:
+                raise InvalidTOUScheduleOption(
+                    f"Season {i+1} ('{season.get('seasonName', '?')}') has no 'month' key."
+                )
+            months = [m.strip() for m in str(month_str).split(",")]
+            for m in months:
+                if not m.isdigit() or not 1 <= int(m) <= 12:
+                    raise InvalidTOUScheduleOption(
+                        f"Season '{season.get('seasonName', '?')}' has invalid month: '{m}'"
+                    )
+                m_int = int(m)
+                if m_int in seen:
+                    raise InvalidTOUScheduleOption(
+                        f"Month {m_int} appears in more than one season."
+                    )
+                seen.add(m_int)
+        missing = set(range(1, 13)) - seen
+        if missing:
+            raise InvalidTOUScheduleOption(
+                f"Not all 12 months are covered. Missing: {sorted(missing)}"
+            )
+
+    async def set_tou_schedule_multi(
+        self,
+        strategy_list: list,
+        *,
+        nem_type: int = 0,
+        cover_content: bool = False,
+    ) -> dict:
+        """Set a full multi-season, multi-day-type TOU schedule.
+
+        Unlike set_tou_schedule(), which applies a single detailVoList to all
+        seasons and day types, this method accepts a fully-specified strategyList
+        where each season and each day type inside it has its own independent
+        schedule blocks and pricing rates.
+
+        This maps directly to the saveTouDispatch API payload — designed from
+        the captured HAR fixture in tests/fixtures/tou_save_multi_season.json.
+
+        Parameters
+        ----------
+        strategy_list : list
+            List of season strategy dicts. Each entry must contain:
+                seasonName : str   — e.g. 'Summer'
+                month      : str   — comma-separated months e.g. '10,11,12,1,2,3'
+                dayTypeVoList : list — list of day type dicts, each with:
+                    dayName     : str   — 'weekday' / 'weekend' / 'everyday'
+                    dayType     : int   — 1=weekday, 2=weekend, 3=everyday
+                    detailVoList: list  — time blocks (startHourTime, endHourTime,
+                                         waveType, name, dispatchId)
+                    [optional rate fields]: eleticRatePeak, eleticRateShoulder,
+                    eleticRateValley, eleticSellPeak, eleticSellShoulder, ...
+
+        nem_type : int, optional
+            NEM type (0=NEM 2.0, 1=NEM 3.0). Default 0. AU systems ignore this.
+
+        cover_content : bool, optional
+            Whether to overwrite the tariff template content. Default False.
+
+        Returns
+        -------
+        dict
+            API response from saveTouDispatch (includes touId on success).
+
+        Raises
+        ------
+        InvalidTOUScheduleOption
+            If months are missing, duplicated, or out of range across seasons.
+        ValidationError
+            If the API call fails.
+
+        Example
+        -------
+        Use tests/fixtures/tou_save_multi_season.json as a template:
+        ::
+
+            with open("tou_save_multi_season.json") as f:
+                fixture = json.load(f)
+            # Adjust strategy_list entries for your own tariff, then:
+            await client.set_tou_schedule_multi(fixture["strategyList"])
+
+        See also: docs/TOU_SCHEDULE_GUIDE.md, docs/API_COOKBOOK.md
+        """
+        logger.info(
+            f"set_tou_schedule_multi: {len(strategy_list)} seasons for aGate {self.gateway}"
+        )
+
+        # Validate months cover all 12
+        self._validate_strategy_months(strategy_list)
+
+        # Read existing template for metadata
+        null = None
+        res = await self.get_tou_dispatch_detail()
+        template = res.get("result", {}).get("template", {})
+
+        # Build account info
+        account = null
+        try:
+            gw_res = await self.get_home_gateway_list()
+            for gw in gw_res.get("result", []):
+                account = gw.get("account", null)
+                break
+        except Exception:
+            logger.warning("set_tou_schedule_multi: Could not fetch account from gateway list")
+
+        if template:
+            save_template = {
+                "id": template.get("id"),
+                "gatewayId": self.gateway,
+                "electricCompany": template.get("electricCompany"),
+                "eletricCompanyId": template.get("eletricCompanyId", -1),
+                "sdcpCompanyFlag": null,
+                "name": template.get("name"),
+                "electricityType": template.get("electricityType", 1),
+                "workMode": template.get("workMode", 1),
+                "countryId": template.get("countryId"),
+                "provinceId": template.get("provinceId"),
+                "account": account,
+                "accountId": -1,
+                "accountType": 0,
+                "countryEn": template.get("countryEn"),
+                "countryZh": template.get("countryZh"),
+                "eleCompanyFullName": template.get("eleCompanyFullName"),
+                "tariffName": template.get("name"),
+                "env": null,
+                "gridType": null,
+                "mookRunCount": null,
+                "priority": null,
+                "provinceEn": "",
+                "provinceZh": "",
+                "solarChargeMin": null,
+                "sourceType": null,
+                "status": null,
+                "templateFromType": null,
+                "templateId": null,
+                "updateTime": null,
+                "derSchdule": "Other",
+            }
+        else:
+            # No existing template — build minimal stub
+            save_template = {
+                "id": null,
+                "gatewayId": self.gateway,
+                "electricCompany": null,
+                "eletricCompanyId": -1,
+                "sdcpCompanyFlag": null,
+                "name": null,
+                "electricityType": 1,
+                "workMode": 1,
+                "countryId": null,
+                "provinceId": null,
+                "account": account,
+                "accountId": -1,
+                "accountType": 0,
+                "countryEn": null,
+                "countryZh": null,
+                "eleCompanyFullName": null,
+                "tariffName": null,
+                "env": null,
+                "gridType": null,
+                "mookRunCount": null,
+                "priority": null,
+                "provinceEn": "",
+                "provinceZh": "",
+                "solarChargeMin": null,
+                "sourceType": null,
+                "status": null,
+                "templateFromType": null,
+                "templateId": null,
+                "updateTime": null,
+                "derSchdule": "Other",
+            }
+
+        # Normalise strategy_list — strip persisted IDs so the API treats as new
+        normalised = []
+        for s in strategy_list:
+            day_types = []
+            for dt in s.get("dayTypeVoList", []):
+                day_types.append({
+                    "dayName": dt.get("dayName", "weekday"),
+                    "dayType": dt.get("dayType", 3),
+                    "eleticRatePeak": dt.get("eleticRatePeak"),
+                    "eleticRateSharp": dt.get("eleticRateSharp"),
+                    "eleticRateShoulder": dt.get("eleticRateShoulder"),
+                    "eleticRateValley": dt.get("eleticRateValley"),
+                    "eleticRateSuperOffPeak": dt.get("eleticRateSuperOffPeak"),
+                    "eleticSellPeak": dt.get("eleticSellPeak"),
+                    "eleticSellSharp": dt.get("eleticSellSharp"),
+                    "eleticSellShoulder": dt.get("eleticSellShoulder"),
+                    "eleticSellValley": dt.get("eleticSellValley"),
+                    "eleticSellSuperOffPeak": dt.get("eleticSellSuperOffPeak"),
+                    "detailVoList": [
+                        {
+                            "startHourTime": blk.get("startHourTime"),
+                            "endHourTime": blk.get("endHourTime"),
+                            "waveType": blk.get("waveType"),
+                            "name": blk.get("name", ""),
+                            "dispatchId": blk.get("dispatchId"),
+                        }
+                        for blk in dt.get("detailVoList", [])
+                    ],
+                })
+            normalised.append({
+                "id": null,
+                "seasonName": s.get("seasonName", f"Season {len(normalised) + 1}"),
+                "month": s.get("month", ""),
+                "templateId": null,
+                "dayTypeVoList": day_types,
+            })
+
+        payload = {
+            "template": save_template,
+            "strategyList": normalised,
+            "nemType": nem_type,
+            "coverContentFlag": cover_content,
+        }
+
+        logger.info(
+            f"set_tou_schedule_multi: submitting {len(normalised)} seasons to saveTouDispatch"
+        )
+        res = await self.save_tou_dispatch(payload)
+        if res.get("code") == 200:
+            tou_id = res.get("result", {}).get("id")
+            logger.info(f"set_tou_schedule_multi: success — touId={tou_id}")
+        else:
+            msg = f"set_tou_schedule_multi: saveTouDispatch failed: {res}"
+            logger.error(msg)
+            raise ValueError(msg)
+        return res
+
+    # ────────────────────────────────────────────────────────────────
+    # Real-time TOU price query (FEAT-TOU-CURRENT-PRICE)
+    # ────────────────────────────────────────────────────────────────
+
+    async def get_current_tou_price(self, *, now: datetime | None = None) -> dict:
+        """Return the current TOU pricing tier and block details.
+
+        Fetches the active TOU dispatch schedule, determines which day type
+        applies (weekday vs weekend), finds the active time block for the
+        current time, and returns pricing rates + time remaining in the block.
+
+        Parameters
+        ----------
+        now : datetime, optional
+            Override the current time (useful for testing / dry-run). If None,
+            uses datetime.now() (local time, matching aGate system assumption).
+
+        Returns
+        -------
+        dict
+            {
+                "season_name"      : str,        # e.g. 'Summer'
+                "day_type"         : int,         # 1=weekday, 2=weekend, 3=everyday
+                "day_type_name"    : str,         # 'Weekday' / 'Weekend'
+                "block_name"       : str,         # e.g. 'On-peak'
+                "wave_type"        : int,         # 0=off-peak, 1=mid, 2=on-peak
+                "wave_type_name"   : str,         # 'Off-Peak' / 'Mid-Peak' / 'On-Peak'
+                "dispatch_id"      : int,         # dispatch strategy code
+                "block_start"      : str,         # 'HH:MM'
+                "block_end"        : str,         # 'HH:MM'
+                "minutes_remaining": int,         # minutes until block ends
+                "buy_rates"        : dict,        # peak/shoulder/valley/off_peak rates
+                "sell_rates"       : dict,        # sell_peak/sell_shoulder/... rates
+            }
+            Returns empty dict if no schedule is configured.
+
+        Raises
+        ------
+        ApiTimeoutError
+            If the API call times out.
+        """
+        WAVE_TYPE_NAMES = {0: "Off-Peak", 1: "Mid-Peak", 2: "On-Peak", 3: "Super-Peak", 4: "Super-Off-Peak"}
+        DAY_TYPE_NAMES  = {1: "Weekday", 2: "Weekend", 3: "Everyday"}
+
+        if now is None:
+            now = datetime.now()
+
+        res = await self.get_tou_dispatch_detail()
+        result = res.get("result", {})
+        strategy_list = result.get("strategyList", [])
+        if not strategy_list:
+            logger.info("get_current_tou_price: no strategyList in response")
+            return {}
+
+        # Determine active season by current month
+        current_month = now.month
+        active_season = None
+        for season in strategy_list:
+            months = [int(m.strip()) for m in str(season.get("month", "")).split(",") if m.strip().isdigit()]
+            if current_month in months:
+                active_season = season
+                break
+
+        if active_season is None:
+            logger.warning(f"get_current_tou_price: month {current_month} not in any season")
+            return {}
+
+        # Determine day type: 1=weekday, 2=weekend
+        is_weekend = now.weekday() >= 5  # Saturday=5, Sunday=6
+        preferred_dt = 2 if is_weekend else 1
+
+        # Find best matching dayTypeVoList entry
+        day_types = active_season.get("dayTypeVoList", [])
+        active_dt = None
+        for dt in day_types:
+            if dt.get("dayType") == preferred_dt:
+                active_dt = dt
+                break
+        if active_dt is None and day_types:
+            # Fallback: everyday (3) or first entry
+            for dt in day_types:
+                if dt.get("dayType") == 3:
+                    active_dt = dt
+                    break
+            if active_dt is None:
+                active_dt = day_types[0]
+
+        if active_dt is None:
+            return {}
+
+        # Find active time block
+        current_hhmm = now.strftime("%H:%M")
+        current_minutes = now.hour * 60 + now.minute
+        detail_list = active_dt.get("detailVoList", [])
+        active_block = None
+
+        for block in detail_list:
+            start_str = block.get("startHourTime", "00:00")
+            end_str   = block.get("endHourTime", "24:00")
+            end_cmp   = "23:59" if end_str == "24:00" else end_str
+            start_m   = int(start_str[:2]) * 60 + int(start_str[3:])
+            end_m     = int(end_cmp[:2]) * 60 + int(end_cmp[3:])
+            if end_str == "24:00":
+                end_m += 1  # midnight inclusive
+            if start_m <= current_minutes < end_m:
+                active_block = block
+                break
+
+        if active_block is None:
+            logger.warning(f"get_current_tou_price: no block found for {current_hhmm}")
+            return {}
+
+        # Calculate minutes remaining in block
+        end_str = active_block.get("endHourTime", "24:00")
+        if end_str == "24:00":
+            end_total = 24 * 60
+        else:
+            end_total = int(end_str[:2]) * 60 + int(end_str[3:])
+        minutes_remaining = end_total - current_minutes
+
+        wave_type = active_block.get("waveType", 0)
+        day_type  = active_dt.get("dayType", 3)
+
+        return {
+            "season_name":       active_season.get("seasonName", ""),
+            "day_type":          day_type,
+            "day_type_name":     DAY_TYPE_NAMES.get(day_type, "Unknown"),
+            "block_name":        active_block.get("name", ""),
+            "wave_type":         wave_type,
+            "wave_type_name":    WAVE_TYPE_NAMES.get(wave_type, "Unknown"),
+            "dispatch_id":       active_block.get("dispatchId"),
+            "block_start":       active_block.get("startHourTime"),
+            "block_end":         active_block.get("endHourTime"),
+            "minutes_remaining": max(0, minutes_remaining),
+            "buy_rates": {
+                "peak":          active_dt.get("eleticRatePeak"),
+                "shoulder":      active_dt.get("eleticRateShoulder"),
+                "valley":        active_dt.get("eleticRateValley"),
+                "sharp":         active_dt.get("eleticRateSharp"),
+                "super_off_peak":active_dt.get("eleticRateSuperOffPeak"),
+            },
+            "sell_rates": {
+                "peak":          active_dt.get("eleticSellPeak"),
+                "shoulder":      active_dt.get("eleticSellShoulder"),
+                "valley":        active_dt.get("eleticSellValley"),
+                "sharp":         active_dt.get("eleticSellSharp"),
+                "super_off_peak":active_dt.get("eleticSellSuperOffPeak"),
+            },
+        }
+
