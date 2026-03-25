@@ -66,6 +66,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
+    - Python Environment Setup: HOWTO_PYTHON.md
     - Installation: getting-started.md
     - Sandbox Setup: SANDBOX_SETUP.md
   - Guides:
