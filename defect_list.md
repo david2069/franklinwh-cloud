@@ -16,10 +16,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
-| FEAT-CLI-DISCOVER-VERBOSE | CLI Commands | Enhanced `discover` with 3 verbosity tiers (-v/-vv), feature flags table, Hybrid A+B JSON catalog, ~55 new API fields surfaced. See `docs/DEVICE_CATALOG_DESIGN.md` and `docs/API_FIELD_REGISTRY.md` | 2026-03-23 |
-| DEF-CLIENT-TIMEOUT | Client / API Core | `_post()` has `timeout=30` but no graceful recovery on timeout | 2026-03-20 |
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
-| FEAT-AUTH-CLI-OPTION | CLI Commands | `--installer` flag on CLI to pass `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
 
 ---
@@ -36,3 +33,6 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | DEF-MODE-CRASH | CLI Commands | `franklinwh-cli mode` crashes with NoneType when `get_mode()` fails | 2026-03-20 | `7dd2702` |
 | DEF-MODE-NAME | CLI Commands | `mode` command displays `self_consumption` instead of `Self-Consumption` | 2026-03-20 | `76d341e` |
 | DEF-SITE-DETAIL | Mixins | `get_site_detail()` sent `siteId=''` — `siteId` not in `fetcher.info`; fixed to resolve via `get_home_gateway_list()` + gateway serial match | 2026-03-25 | `09e1fdd` |
+| FEAT-CLI-DISCOVER-VERBOSE | CLI Commands | Enhanced `discover` with 3 verbosity tiers, feature flags, Hybrid A+B JSON catalog | 2026-03-23 | `multiple` |
+| DEF-CLIENT-TIMEOUT | Client / API Core | `httpx.TimeoutException` propagated raw; now caught in `__post`/`__get` → `ApiTimeoutError` with friendly CLI message | 2026-03-25 | `f38d456` |
+| FEAT-AUTH-CLI-OPTION | CLI Commands | `franklinwh-cli --installer` flag passes `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-25 | `f38d456` |
