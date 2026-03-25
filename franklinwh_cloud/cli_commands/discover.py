@@ -29,6 +29,8 @@ async def run(client, *, json_output: bool = False, tier: int = 1):
 
     # ── Always: Site Identity ─────────────────────────────────────
     _render_site(snapshot)
+    if snapshot.region_quirks:
+        _render_region_quirks(snapshot)
     _render_agate(snapshot)
     _render_batteries_summary(snapshot)
     _render_flags(snapshot)
@@ -76,6 +78,25 @@ def _render_site(snap):
         print_kv("Utility", s.electric_company)
     if s.tariff_name:
         print_kv("Tariff", s.tariff_name)
+
+
+def _render_region_quirks(snap):
+    """Render region-specific hardware/grid details."""
+    q = snap.region_quirks
+    if not q:
+        return
+    print_section("🌍", f"Region Details: {q.get('country', 'Unknown')}")
+    if q.get("grid_standard"):
+        print_kv("Grid Standard", q["grid_standard"])
+    if "v2l_available" in q:
+        v2l = "Supported" if q["v2l_available"] else "Not Supported in this region"
+        print_kv("V2L Support", v2l)
+    limit = q.get("max_export_kw")
+    if limit is not None:
+        print_kv("Typical Export Limit", f"{limit} kW")
+    notes = q.get("notes")
+    if notes:
+        print_kv("Notes", notes)
 
 
 def _render_agate(snap):
@@ -203,19 +224,22 @@ def _render_flags(snap):
     ])
 
     # US-only accessory flags
+    api_nulls = snap.region_quirks.get("api_null_fields", [])
     is_us = snap.site.country_id == 2
     if is_us:
         flags.append(("MAC-1 (MSA)", f.mac1_detected,
                        "Detected" if f.mac1_detected else "Not detected"))
 
-    # Programme flags (region-filtered)
-    if is_us:
-        flags.extend([
-            ("NEM Type", bool(f.nem_type), f.nem_type or "—"),
-            ("SGIP (CA)", f.sgip, "Enrolled" if f.sgip else "Not enrolled"),
-            ("BB (Hawaii)", f.bb, "Enrolled" if f.bb else "Not enrolled"),
-            ("JA12 (CA)", f.ja12, "Enrolled" if f.ja12 else "Not applicable"),
-        ])
+    # Programme flags (region-filtered via catalog)
+    if "nemType" not in api_nulls:
+        flags.append(("NEM Type", bool(f.nem_type), f.nem_type or "—"))
+    if "sgipEntrance" not in api_nulls:
+        flags.append(("SGIP (CA)", f.sgip, "Enrolled" if f.sgip else "Not enrolled"))
+    if "bbEntrance" not in api_nulls:
+        flags.append(("BB (Hawaii)", f.bb, "Enrolled" if f.bb else "Not enrolled"))
+    if "ja12Entrance" not in api_nulls:
+        flags.append(("JA12 (CA)", f.ja12, "Enrolled" if f.ja12 else "Not applicable"))
+    
     flags.append(("VPP Programme", f.vpp_enrolled,
                    "Enrolled" if f.vpp_enrolled else "Not enrolled"))
 
@@ -335,6 +359,10 @@ def _render_warranty(snap):
 
 def _render_programmes(snap):
     """Render programme info (Tier 2+)."""
+    # If the region doesn't support programme lists, skip rendering completely
+    if "programmeList" in snap.region_quirks.get("api_null_fields", []):
+        return
+        
     p = snap.programmes
     if not p.enrolled:
         return
