@@ -6,11 +6,14 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 ### S2 — High
 
-*No items*
+| ID | Area | Description | Reported |
+|----|------|-------------|----------|
 
 ### S3 — Medium
 
-*No items*
+| ID | Area | Description | Reported |
+|----|------|-------------|----------|
+| FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. | 2026-03-26 |
 
 ### S4 — Low
 
@@ -25,6 +28,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
+| DEF-STATS-DOUBLE-SLASH | Mixins | `get_power_details` and `get_power_by_day` prepend `/hes-gateway/` to `self.url_base` causing 404 from CloudFront due to double slash `//` | 2026-03-26 | `pending` |
 | DEF-CLIENT-URL-BASE | Client / API Core | 34 methods used hardcoded `DEFAULT_URL_BASE` instead of `self.url_base`; base URL not configurable | 2026-03-21 | `2b55919` |
 | DEF-AUTH-LOGIN-TYPE | Client / API Core | `_login()` hardcoded `type: 1` (installer) — should be `type: 0` (user) for homeowner accounts | 2026-03-21 | `cba2b6d` |
 | DEF-MODE-GETMODE | Mixins | `get_mode()` chained 3 API calls without error handling; refactored with try/except, separate variables, proper error returns | 2026-03-20 | `b86cdc6` |
