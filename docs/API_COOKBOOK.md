@@ -121,6 +121,16 @@ await client.set_tou_schedule(
     }],
     default_mode="SELF",       # Outside window = self-consumption
 )
+
+# View current pricing tier, active block, and rates
+price = await client.get_current_tou_price()
+print(f"Current Tier: {price.get('wave_type_name')} — {price.get('minutes_remaining')} mins left")
+
+# Set a complex multi-season / weekday-weekend schedule
+import json
+with open("seasons.json", "r") as f:
+    strategy_list = json.load(f).get("strategyList")
+await client.set_tou_schedule_multi(strategy_list)
 ```
 
 > **Dispatch codes** — see [reference table](#dispatch-code-reference) below.

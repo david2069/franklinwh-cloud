@@ -10,7 +10,7 @@
 > - `minDischargeSoc` — **does not work** in recent testing (aGate ignores this field)
 > - Not all advanced TOU fields (`gridChargeMax`, `dischargePower`, `rampTime`, etc.) are fully supported or implemented by the aGate firmware
 > - For **compatibility with the official FranklinWH mobile app**, keep time periods in **30-minute boundaries** (e.g. 11:30, 12:00, 14:30). Arbitrary times like 11:49 work via the API but may display incorrectly or be overwritten in the app
-> - `set_tou_schedule` only supports a single season (all 12 months) and every-day scheduling (no weekday/weekend split)
+> - `set_tou_schedule` applies a single schedule to all 12 months. For complex multi-season or weekday/weekend schedules, use `set_tou_schedule_multi(strategy_list)`.
 
 ---
 
@@ -155,13 +155,15 @@ Wave types (tariff periods): `OFF_PEAK=0`, `MID_PEAK=1`, `ON_PEAK=2`, `SUPER_OFF
 | `get_tou_dispatch_detail()` | `GET /tou/getTouDispatchDetail` | Full template + strategies + dispatch list |
 | `get_gateway_tou_list()` | `POST /tou/getGatewayTouListV2` | TOU config status, send status, alerts |
 | `get_tou_info(option)` | _(wraps above)_ | `0`=raw, `1`=current+next, `2`=full detailVoList |
+| `get_current_tou_price()` | _(wraps above)_ | Current tier, wave type, rates, and remaining time |
 | `get_charge_power_details()` | `GET /chargePowerDetails` | SoC, estimated runtime, consumption |
 
 ### Writing
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `set_tou_schedule(touMode, touSchedule)` | → `POST /tou/saveTouDispatch` | Validate + gap-fill + submit schedule |
+| `set_tou_schedule(touMode, touSchedule)` | → `POST /tou/saveTouDispatch` | Set a single 24h schedule for all days/months |
+| `set_tou_schedule_multi(strategy_list)` | → `POST /tou/saveTouDispatch` | Submit a multi-season or weekday/weekend schedule |
 
 ---
 
@@ -555,8 +557,89 @@ franklinwh-cli tou --set CUSTOM --file schedule.json
 | **Advanced fields unsupported** | `gridChargeMax`, `dischargePower`, `rampTime`, `gridFeedMax`, etc. are accepted but may be ignored by aGate |
 | **30-minute boundaries** | For mobile app compatibility, use times like `11:30`, `12:00`, `14:30`. Arbitrary times (e.g. `11:49`) work via API but may render incorrectly in the official app or be overwritten when the user edits the schedule |
 | **24h coverage** | Schedule must total exactly 1440 minutes. Gap-fill handles this automatically |
-| **Single season only** | `set_tou_schedule` creates one "Season 1" covering all 12 months |
-| **Every-day only** | Uses `dayType=3` (every day). No weekday/weekend split |
+| **All months coverage** | Multi-season schedules must cover all 12 months exactly once (no gaps, no overlaps). |
+| **Day Types** | `dayType=3` is everyday. `dayType=1` is weekday, `dayType=2` is weekend. |
 | **Tariff must be TOU** | May not work if user has "Flat" or "Tiered" rate plans configured |
 | **touSendStatus** | After submit, `=1` means pending. May persist as false positive even after applied |
 | **String `'null'`** | The code uses the string `'null'` (not Python `None`) in some payload fields — this is intentional for the API |
+
+---
+
+## Multi-Season and Day-Type Setup
+
+For complex tariffs (like Australian/Californian separate Summer/Winter rates, or Weekday/Weekend splits), use `set_tou_schedule_multi(strategy_list)`.
+
+This accepts a list of season objects matching the exact format from the API's `getTouDispatchDetail` response.
+
+### Payload Structure
+
+```json
+[
+  {
+    "months": "10,11,12,1,2,3",
+    "name": "Summer",
+    "dayTypeVoList": [
+      {
+        "dayType": 1,
+        "name": "Weekday",
+        "detailVoList": [
+          { "name": "Off-Peak", "startHourTime": "00:00", "endHourTime": "15:00", "waveType": 0, "dispatchId": 6 },
+          { "name": "Peak", "startHourTime": "15:00", "endHourTime": "21:00", "waveType": 2, "dispatchId": 8 },
+          { "name": "Off-Peak", "startHourTime": "21:00", "endHourTime": "24:00", "waveType": 0, "dispatchId": 6 }
+        ]
+      },
+      {
+        "dayType": 2,
+        "name": "Weekend",
+        "detailVoList": [
+          { "name": "Off-Peak", "startHourTime": "00:00", "endHourTime": "24:00", "waveType": 0, "dispatchId": 6 }
+        ]
+      }
+    ]
+  },
+  {
+    "months": "4,5,6,7,8,9",
+    "name": "Winter",
+    "dayTypeVoList": [
+      {
+        "dayType": 3,
+        "name": "Everyday",
+        "detailVoList": [
+          { "name": "Off-Peak", "startHourTime": "00:00", "endHourTime": "24:00", "waveType": 0, "dispatchId": 6 }
+        ]
+      }
+    ]
+  }
+]
+```
+
+### Validation Rules
+1. **Months**: Every integer from 1 to 12 must appear exactly once across all seasons.
+2. **Day Types**: Each season must define `dayType=3` (Everyday) OR both `dayType=1` (Weekday) and `dayType=2` (Weekend).
+3. **24-hour Coverage**: Inside every `detailVoList`, the time blocks must span exactly `00:00` to `24:00` (1440 minutes).
+
+`set_tou_schedule_multi` automatically validates these rules, strips existing database IDs (`strategyId`, `id`), and preserves the existing TOU template metadata.
+
+---
+
+## Real-Time Pricing
+
+To determine the current active tariff block, use `get_current_tou_price()`. It downloads the current schedule and matches the local system clock against the season, day type, and time block.
+
+**Returns:**
+```python
+{
+    "tier": 2,
+    "wave_type": 2,
+    "wave_type_name": "On-Peak",
+    "season_name": "Summer",
+    "day_type_name": "Weekday",
+    "block_name": "Peak",
+    "block_start": "15:00",
+    "block_end": "21:00",
+    "minutes_remaining": 120,
+    "dispatch_id": 8,
+    "buy_rates": {"peak": 0.55, "valley": 0.20},
+    "sell_rates": {"peak": 0.40, "valley": 0.05}
+}
+```
