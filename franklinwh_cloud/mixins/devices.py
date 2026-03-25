@@ -235,26 +235,43 @@ class DevicesMixin:
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
-    async def set_smart_switch_state(self, state: tuple):
-        """Set the state of the smart circuits.
-
-        Setting a value in the state tuple to True will turn on that circuit,
-        False will turn off, None will leave unchanged.
+    async def set_smart_circuit_state(self, circuit: int, turn_on: bool):
+        """Toggle a Smart Circuit on or off.
+        
+        Parameters
+        ----------
+        circuit : int
+            Circuit number (1, 2, or 3)
+        turn_on : bool
+            True to turn on (Mode 1), False to turn off (Mode 0)
         """
-        def set_value(keys, value):
-            for key in keys:
-                payload[key] = int(value)
+        if circuit not in (1, 2, 3):
+            raise ValueError("Circuit must be 1, 2, or 3")
+        
+        # FranklinWH accepts partial updates via MQTT
+        payload = {f"Sw{circuit}Mode": 1 if turn_on else 0}
+        wire_payload = self._build_payload(310, payload)
+        return await self._mqtt_send(wire_payload)
 
-        payload = {}
-        if state[0] is not None:
-            set_value(["Sw1SocLowSet", "Sw1Mode", "Sw1ProLoad"], state[0])
-
-        if len(state) > 1 and state[1] is not None:
-            set_value(["Sw2SocLowSet", "Sw2Mode", "Sw2ProLoad"], state[1])
-
-        if len(state) > 2 and state[2] is not None:
-            set_value(["Sw3SocLowSet", "Sw3Mode", "Sw3ProLoad"], state[2])
-
+    async def set_smart_circuit_soc_cutoff(self, circuit: int, enable: bool, soc: int = 0):
+        """Configure the off-grid SOC Auto Cut-off threshold.
+        
+        Parameters
+        ----------
+        circuit : int
+            Circuit number (1, 2, or 3)
+        enable : bool
+            Whether to enable the cutoff threshold
+        soc : int
+            The battery percentage (0-100) at which to shed the load
+        """
+        if circuit not in (1, 2, 3):
+            raise ValueError("Circuit must be 1, 2, or 3")
+        
+        payload = {
+            f"Sw{circuit}AtuoEn": 1 if enable else 0,
+            f"Sw{circuit}SocLowSet": int(soc)
+        }
         wire_payload = self._build_payload(310, payload)
         return await self._mqtt_send(wire_payload)
 
