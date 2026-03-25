@@ -4,6 +4,8 @@ Tests the const/modes.py data structures and validation.
 """
 
 import pytest
+import respx
+import httpx
 
 from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
 from franklinwh_cloud.const.modes import (
@@ -87,3 +89,37 @@ class TestRunStatus:
         assert RUN_STATUS[5] == "Off-Grid Standby"
         assert RUN_STATUS[6] == "Off-Grid Charging"
         assert RUN_STATUS[7] == "Off-Grid Discharging"
+
+class TestDynamicModeName:
+    """Test the dynamic mode name caching (FEAT-MODE-DYNAMIC-LIST)."""
+
+    @respx.mock
+    async def test_lazy_loading_and_caching(self, minimal_client):
+        minimal_client.session = httpx.AsyncClient()
+        # We mock get_gateway_tou_list payload
+        route = respx.post(
+            "https://energy.franklinwh.com/hes-gateway/terminal/tou/getGatewayTouListV2"
+        ).mock(return_value=httpx.Response(200, json={
+            "code": 200,
+            "result": {
+                "list": [
+                    {"workMode": 1, "name": "peak"},
+                    {"workMode": 2, "name": "Self-Consumption"},
+                    {"workMode": 3, "name": "Emergency Backup"}
+                ]
+            }
+        }))
+
+        # First call should hit the mocked API
+        name1 = await minimal_client.get_operating_mode_name(1)
+        assert name1 == "peak"
+        assert route.call_count == 1
+
+        # Second call should use cache, preventing another API call
+        name2 = await minimal_client.get_operating_mode_name(2)
+        assert name2 == "Self-Consumption"
+        assert route.call_count == 1  # Still 1!
+
+        # Fallback for unknown modes should use hardcoded names
+        name99 = await minimal_client.get_operating_mode_name(99)
+        assert name99 == "Mode 99"
