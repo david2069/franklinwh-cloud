@@ -194,6 +194,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub_acc.add_argument("--power", action="store_true",
                          help="Include live power data for active accessories (extra MQTT call)")
 
+    # smart circuits
+    sub_sc = subs.add_parser("sc", aliases=["smart-circuits"],
+                             help="Detailed Smart Circuit configuration and control")
+    sub_sc.add_argument("--on", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 ON")
+    sub_sc.add_argument("--off", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 OFF")
+    sub_sc.add_argument("--cutoff", type=int, metavar="CIRCUIT", help="Enable SOC auto cut-off for Circuit 1/2/3")
+    sub_sc.add_argument("--disable-cutoff", type=int, metavar="CIRCUIT", help="Disable SOC auto cut-off for Circuit 1/2/3")
+    sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")
+
     # diag
     subs.add_parser("diag", aliases=["diagnostic"],
                     help="Diagnostic report — system, auth, device, power, API health")
@@ -375,6 +384,15 @@ async def async_main():
                 from franklinwh_cloud.cli_commands import accessories
                 await accessories.run(client, json_output=args.json,
                                       show_power=args.power)
+
+            case "sc" | "smart-circuits":
+                from franklinwh_cloud.cli_commands import sc
+                await sc.run(client, json_output=args.json,
+                             turn_on=getattr(args, 'on', None),
+                             turn_off=getattr(args, 'off', None),
+                             cutoff=getattr(args, 'cutoff', None),
+                             disable_cutoff=getattr(args, 'disable_cutoff', None),
+                             soc=getattr(args, 'soc', None))
 
             case "diag" | "diagnostic":
                 from franklinwh_cloud.cli_commands import diag
