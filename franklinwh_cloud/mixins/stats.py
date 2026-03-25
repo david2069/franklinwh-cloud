@@ -52,7 +52,7 @@ class StatsMixin:
         if workMode is None:
             workMode = 1
 
-        workMode_desc = OPERATING_MODES.get(workMode, "Unknown")
+        workMode_desc = await self.get_operating_mode_name(workMode)
         solarHaveVo = data_v2.get("solarHaveVo") or {}
         runtimedata_v2 = data_v2.get("runtimeData") or {}
 

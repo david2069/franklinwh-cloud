@@ -375,8 +375,8 @@ class ModesMixin:
         results = {
             "currendId": mode_entry["id"],
             "workMode": work_mode,
-            "modeName": MODE_MAP[work_mode],
-            "name": OPERATING_MODES[work_mode],
+            "modeName": mode_entry.get("name", MODE_MAP.get(work_mode, f"Unknown Mode {work_mode}")),
+            "name": mode_entry.get("name", OPERATING_MODES.get(work_mode, f"Mode {work_mode}")),
             "soc": current_soc,
             "minSoc": min_soc,
             "maxSoc": max_soc,
@@ -452,7 +452,7 @@ class ModesMixin:
             wm = entry.get("workMode")
             results.append({
                 "workMode": wm,
-                "name": OPERATING_MODES.get(wm, f"Mode {wm}"),
+                "name": entry.get("name", OPERATING_MODES.get(wm, f"Mode {wm}")),
                 "soc": entry.get("soc", 0),
                 "minSoc": entry.get("minSoc", 0),
                 "maxSoc": entry.get("maxSoc", 100),
@@ -460,3 +460,37 @@ class ModesMixin:
                 "active": entry.get("id") == int(current_id),
             })
         return results
+
+    async def get_operating_mode_name(self, work_mode: int) -> str:
+        """Get the dynamic gateway-specific name for a working mode.
+
+        Lazy-loads the mode mapping via get_gateway_tou_list and caches
+        it for the lifetime of the Client instance.
+
+        Parameters
+        ----------
+        work_mode : int
+            The integer ID of the operating mode (1, 2, 3)
+
+        Returns
+        -------
+        str
+            The specific customized name set by the dealer/installer
+            (e.g., 'peak', 'Self-Consumption'). Falls back to the standard
+            hardcoded name if the API call fails or mode is not found.
+        """
+        if getattr(self, "_dynamic_modes_cache", None) is None:
+            self._dynamic_modes_cache = {}
+            try:
+                res = await self.get_gateway_tou_list()
+                if res and res.get("code") == 200:
+                    tou_list = res.get("result", {}).get("list", [])
+                    for mode_entry in tou_list:
+                        w_id = mode_entry.get("workMode")
+                        name = mode_entry.get("name")
+                        if w_id is not None and name:
+                            self._dynamic_modes_cache[w_id] = name
+            except Exception as exc:
+                logger.warning(f"get_operating_mode_name: failed to fetch dynamic modes: {exc}")
+
+        return self._dynamic_modes_cache.get(work_mode, OPERATING_MODES.get(work_mode, f"Mode {work_mode}"))
