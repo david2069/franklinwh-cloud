@@ -116,6 +116,7 @@ graph LR
 |---------|---------------|
 | [Python Setup](HOWTO_PYTHON.md) | Minimum versions, platform OS setups, and venv creation |
 | [Getting Started](getting-started.md) | Installation, credentials, first connection |
+| [OpenAPI JSON Spec](franklinwh_openapi.json) | 12,000-line Swagger v3 spec generated from real-world mobile app traffic |
 | [API Cookbook](API_COOKBOOK.md) | Copy-paste recipes for common tasks |
 | [API Reference](API_REFERENCE.md) | All 70+ methods with parameters |
 | [TOU Guide](TOU_SCHEDULE_GUIDE.md) | Schedule management with workflow diagrams |

@@ -255,6 +255,7 @@ franklinwh_cloud/
 | Document | Description |
 |----------|-------------|
 | [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) | Rate limiting, CloudFront edge tracking, metrics, monitor usage |
+| [franklinwh_openapi.json](docs/franklinwh_openapi.json) | Unofficial Swagger v3 schema mapped from 123+ raw HTTP `.har` intercepts |
 | [FORK_ANALYSIS.md](FORK_ANALYSIS.md) | Detailed comparison with upstream `richo/franklinwh-python` |
 | [HISTORY.md](HISTORY.md) | Project timeline from fork to independence |
 | [UPSTREAM_STRATEGY.md](UPSTREAM_STRATEGY.md) | Contributing back to upstream — the trust ladder |
