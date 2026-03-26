@@ -218,10 +218,11 @@ class ModesMixin:
         url = url + f"&oldIndex={oldIndex}"
         url = url + f"&workMode={requestedOperatingMode}"
 
+        safe_backup_flag = reqbackupForeverFlag if reqbackupForeverFlag is not None else backupForeverFlag
+        url = url + f"&backupForeverFlag={safe_backup_flag}"
+
         if requestedOperatingMode == EMERGENCY_BACKUP:
-            if reqbackupForeverFlag is not None:
-                url = url + f"&backupForeverFlag={reqbackupForeverFlag}"
-            if reqbackupForeverFlag == 2:
+            if safe_backup_flag == 2:
                 if reqnextWorkMode not in [SELF_CONSUMPTION, TIME_OF_USE]:
                     nextWorkMode = SELF_CONSUMPTION
                 else:
@@ -248,7 +249,7 @@ class ModesMixin:
         logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
         logger.debug(f"set_mode: POST URL = {url}")
 
-        res = await self._post(url, payload=None, suppress_gateway=True, suppress_params=True)
+        res = await self._post(url, payload={})
         if res['code'] == 200:
             result = True
             logger.info(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")

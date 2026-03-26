@@ -33,4 +33,4 @@ tests/test_backward_compatibility.py::TestBackwardCompatibility::test_set_tou_sc
 tests/test_backward_compatibility.py::TestBackwardCompatibility::test_set_tou_schedule_legacy_mapping[7-EXPORT_TO_GRID_PEAKONLY0] PASSED [ 96%]
 tests/test_backward_compatibility.py::TestBackwardCompatibility::test_set_tou_schedule_legacy_mapping[7-EXPORT_TO_GRID_PEAKONLY1] PASSED [100%]
 
-============================== 25 passed in 0.08s ==============================
+============================== 25 passed in 0.07s ==============================
