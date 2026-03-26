@@ -14,10 +14,10 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
     if set_mode:
         # Setting a mode
         mode_val = None
-        # Try by name
-        for k, v in MODE_MAP.items():
-            if set_mode.lower() in k.lower():
-                mode_val = v
+        # Try by name (v is the string description, k is the integer mode ID)
+        for mode_num, mode_name in MODE_MAP.items():
+            if isinstance(mode_name, str) and set_mode.lower() in mode_name.lower():
+                mode_val = mode_num
                 break
         # Try by number
         if mode_val is None:
@@ -28,9 +28,12 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
                 print(f"  Available modes: {', '.join(MODE_MAP.keys())}")
                 return
 
-        kwargs = {"mode": mode_val}
+        kwargs = {"requestedOperatingMode": mode_val}
         if soc is not None:
-            kwargs["soc"] = soc
+            kwargs["requestedSOC"] = soc
+        kwargs["reqbackupForeverFlag"] = None
+        kwargs["reqnextWorkMode"] = None
+        kwargs["reqdurationMinutes"] = None
 
         print(f"Setting mode to {OPERATING_MODES.get(mode_val, set_mode)}...")
         result = await client.set_mode(**kwargs)
