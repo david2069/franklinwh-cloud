@@ -22,8 +22,9 @@ import configparser
 import os
 import sys
 
-from franklinwh_cloud.client import Client, TokenFetcher, LOGIN_TYPE_USER, LOGIN_TYPE_INSTALLER
-from franklinwh_cloud.exceptions import ApiTimeoutError
+from franklinwh_cloud.client import Client
+from franklinwh_cloud.auth import PasswordAuth, LOGIN_TYPE_USER, LOGIN_TYPE_INSTALLER
+from franklinwh_cloud.exceptions import FranklinWHTimeoutError
 from franklinwh_cloud.cli_output import (
     configure_logging, disable_color, print_error, print_warning,
     print_header, print_kv, print_json_output, print_section,
@@ -300,7 +301,7 @@ async def async_main():
     # Connect
     try:
         login_type = LOGIN_TYPE_INSTALLER if getattr(args, 'installer', False) else LOGIN_TYPE_USER
-        fetcher = TokenFetcher(email, password, login_type=login_type)
+        fetcher = PasswordAuth(email, password, login_type=login_type)
         await fetcher.get_token()
     except Exception as e:
         print_error(f"Login failed: {e}")
@@ -434,7 +435,7 @@ async def async_main():
     except KeyboardInterrupt:
         print("\nInterrupted.")
         sys.exit(130)
-    except ApiTimeoutError as e:
+    except FranklinWHTimeoutError as e:
         print_error(f"⚠ API timeout after {e.timeout_s}s — check your network connection and try again.")
         print_error(f"  URL: {e.url}")
         if args.verbose >= 2:
