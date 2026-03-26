@@ -20,6 +20,8 @@ The Risk Assessment must answer exactly three questions:
 2. **Why was the legacy code written this way?** You must execute differential git analysis (`git show HEAD~X`) to historically prove *why* legacy flags (like `suppress_params` or integer string-casting) exist before you declare them redundant or "ugly".
 3. **What is the worst-case upstream regression?** (e.g. "If `client.py` drops this HTTP header, all 401 Unauthorized API retry-loops will infinitely recurse, dropping the entire integration offline").
 
+**Proportionality Principle:** The greater the architectural changes, the greater the mandatory depth of detail and risk assessment. Detailed real-world test cases MUST be authored, and ALL test cases (both mocked unit tests and live E2E integration validations) MUST pass before committing.
+
 ## 3. Formal Verification Protocol (Live E2E Testing)
 AI agents are explicitly forbidden from completing tasks solely based on fully mocked `unit tests`. If a structural API change occurs:
 1. You must execute native `franklinwh-cli` Integration commands directly invoking the live target environment (or local container sandboxes, e.g., `fwhhai-app`).
