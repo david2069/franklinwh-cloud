@@ -1,0 +1,31 @@
+═══════════════════════════════════════════════════════════
+ TEST RESULTS — FIX-400-DEFECT
+ Date:    2026-03-27 04:17:37 AEDT
+ Branch:  main
+ Commit:  468c987 (pre-commit)
+ Result:  PASS ✅
+═══════════════════════════════════════════════════════════
+
+........................................................................ [ 24%]
+........................................................................ [ 48%]
+........................................................................ [ 72%]
+........................................................................ [ 96%]
+..........                                                               [100%]
+=============================== warnings summary ===============================
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_parses_current_power
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_parses_totals
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_no_switch_call_when_inactive
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
+tests/test_modes.py::TestDynamicModeName::test_lazy_loading_and_caching
+  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+298 passed, 34 deselected, 8 warnings in 4.38s
+
+═══════════════════════════════════════════════════════════
+ Summary: 298 passed, 34 deselected, 8 warnings in 4.38s
+═══════════════════════════════════════════════════════════
