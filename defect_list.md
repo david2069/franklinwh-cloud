@@ -21,6 +21,8 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 |----|------|-------------|----------|
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
+| FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) to validate real API behaviour against mocked unit tests | 2026-03-26 |
+| FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator that validates requests against an OpenAPI spec before returning synthetic responses | 2026-03-26 |
 
 ---
 

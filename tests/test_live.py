@@ -17,7 +17,8 @@ import configparser
 import os
 import pytest
 
-from franklinwh_cloud.client import Client, TokenFetcher, Stats
+from franklinwh_cloud.client import Client, Stats
+from franklinwh_cloud.auth import PasswordAuth
 from franklinwh_cloud.models import GridStatus
 
 
@@ -67,7 +68,7 @@ async def live_client():
     if not credentials_available():
         pytest.skip("No credentials — need franklinwh.ini or FRANKLIN_USERNAME/FRANKLIN_PASSWORD env vars")
 
-    fetcher = TokenFetcher(FRANKLIN_USERNAME, FRANKLIN_PASSWORD)
+    fetcher = PasswordAuth(FRANKLIN_USERNAME, FRANKLIN_PASSWORD)
     token = await fetcher.get_token()
     info = fetcher.info
 
@@ -94,7 +95,7 @@ class TestLiveLogin:
         if not credentials_available():
             pytest.skip("No credentials")
 
-        fetcher = TokenFetcher(FRANKLIN_USERNAME, FRANKLIN_PASSWORD)
+        fetcher = PasswordAuth(FRANKLIN_USERNAME, FRANKLIN_PASSWORD)
         token = await fetcher.get_token()
         assert token is not None
         assert len(token) > 0
@@ -103,7 +104,7 @@ class TestLiveLogin:
         if not credentials_available():
             pytest.skip("No credentials")
 
-        fetcher = TokenFetcher(FRANKLIN_USERNAME, FRANKLIN_PASSWORD)
+        fetcher = PasswordAuth(FRANKLIN_USERNAME, FRANKLIN_PASSWORD)
         await fetcher.get_token()
         assert fetcher.info is not None
         assert isinstance(fetcher.info, dict)

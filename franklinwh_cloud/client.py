@@ -205,107 +205,11 @@ class Mode:
             "workMode": str(self.workMode),
         }
 
-# Login account types for appUserOrInstallerLogin endpoint
-LOGIN_TYPE_USER = 0         # Homeowner / app user
-LOGIN_TYPE_INSTALLER = 1    # Installer / professional
-
-class TokenFetcher:
-    """Fetches and refreshes authentication tokens for FranklinWH API."""
-
-    def __init__(self, username: str, password: str, login_type: int = LOGIN_TYPE_USER) -> None:
-        """Initialize the TokenFetcher.
-
-        Parameters
-        ----------
-        login_type : int
-            0 = App user (homeowner), 1 = Installer.
-        """
-        self.username = username
-        self.password = password
-        self.login_type = login_type
-        self.info: dict | None = None
-
-    async def get_token(self, force_refresh=False):
-        """Fetch a new authentication token using the stored credentials.
-
-        Store the intermediate account information in self.info.
-        """
-        if self.info and self.info.get("token") and not force_refresh:
-            return self.info["token"]
-        
-        result = await TokenFetcher._login(self.username, self.password, self.login_type)
-        if not result or "token" not in result:
-             raise InvalidCredentialsException("Login failed: No token returned in response")
-             
-        self.info = result
-        return self.info["token"]
-
-    @property
-    def access_token(self):
-        """Synchronous property to get the access token. Forces a login if necessary."""
-        import asyncio
-        
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        if loop.is_running():
-            # If the loop is already running, we have a problem in sync property.
-            # But in app.py startup and simple scripts, it's not running.
-            # In Flask routes, we create a new loop anyway.
-            # To be safe, we try to use the current loop if possible.
-            # Since we can't await here, nested loop would be needed, but we avoid nest_asyncio.
-            # We'll just try to run it and hope for the best, or return cached.
-            if self.info and self.info.get("token"):
-                return self.info["token"]
-            return loop.run_until_complete(self.get_token())
-        else:
-            return loop.run_until_complete(self.get_token())
-
-    @staticmethod
-    async def login(username: str, password: str, login_type: int = 0):
-        """Log in to the FranklinWH API and retrieve an authentication token.
-
-        Parameters
-        ----------
-        login_type : int
-            0 = App user (homeowner), 1 = Installer
-        """
-        return (await TokenFetcher._login(username, password, login_type))["token"]
-
-    @staticmethod
-    async def _login(username: str, password: str, login_type: int = 0) -> dict:
-        """Log in to the FranklinWH API and retrieve account information.
-
-        Parameters
-        ----------
-        login_type : int
-            Account type: 0 = App user (homeowner), 1 = Installer.
-            The API endpoint ``appUserOrInstallerLogin`` supports both.
-        """
-        url = (
-            DEFAULT_URL_BASE + "hes-gateway/terminal/initialize/appUserOrInstallerLogin"
-        )
-        form = {
-            "account": username,
-            "password": hashlib.md5(bytes(password, "ascii")).hexdigest(),
-            "lang": "en_US",
-            "type": login_type,
-        }
-        async with httpx.AsyncClient(http2=True) as client:
-            res = await client.post(url, data=form, timeout=30)
-        res.raise_for_status()
-        js = res.json()
-
-        if js["code"] == 401:
-            raise InvalidCredentialsException(js["message"])
-
-        if js["code"] == 400:
-            raise AccountLockedException(js["message"])
-
-        return js["result"]
+# Auth Strategies
+from franklinwh_cloud.auth import (
+    BaseAuth, PasswordAuth, TokenAuth, TokenFetcher, 
+    LOGIN_TYPE_USER, LOGIN_TYPE_INSTALLER
+)
 
 
 async def retry(func, filter, refresh_func):
@@ -322,7 +226,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
     """Client for interacting with FranklinWH gateway API."""
 
     def __init__(
-        self, fetcher: TokenFetcher, gateway: str, url_base: str = DEFAULT_URL_BASE,
+        self, fetcher: BaseAuth, gateway: str, url_base: str = DEFAULT_URL_BASE,
         client_headers: dict | None | bool = True,
         rate_limiter=None,
         tolerate_stale_data: bool = False,
