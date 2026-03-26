@@ -228,14 +228,19 @@ class ModesMixin:
             if reqdurationMinutes is not None:
                 url = url + f"&durationMinute={str(int(reqdurationMinutes))}"
                 
-        # Optional parameters stripped of None values to prevent 400 Bad Request
+        # Optional parameters MUST NOT be stripped; Java Spring Boot @NotNull will reject missing params.
+        # Ensure safely typed integers are piped directly to the format args.
         res = await self.get_storm_settings()
         enableStorm = res["result"].get("enableStorm")
-        if enableStorm is not None:
-            url = url + f"&stromEn={enableStorm}"
+        safe_storm = enableStorm if enableStorm is not None else 1
+        url = url + f"&stromEn={safe_storm}"
             
-        if electricityType is not None:
-            url = url + f"&electricityType={electricityType}"
+        safe_elec = electricityType if electricityType is not None else 1
+        url = url + f"&electricityType={safe_elec}"
+        
+        # Guard against zero-SOC missing payloads as well
+        if "soc=" not in url:
+            url = url + "&soc=20"
 
         mode_name = MODE_MAP.get(requestedOperatingMode, f"Unknown Mode {requestedOperatingMode}")
         logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")

@@ -25,7 +25,7 @@ async def run(client, *, json_output: bool = False, set_mode: str | None = None,
                 mode_val = int(set_mode)
             except ValueError:
                 print_warning(f"Unknown mode: {set_mode}")
-                print(f"  Available modes: {', '.join(MODE_MAP.keys())}")
+                print(f"  Available modes: {', '.join(str(k) for k in MODE_MAP.keys())}")
                 return
 
         kwargs = {"requestedOperatingMode": mode_val}
