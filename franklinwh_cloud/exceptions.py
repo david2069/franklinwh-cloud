@@ -41,7 +41,7 @@ class InvalidTOUScheduleOption(BaseException):
     """Raised when the TOU schedule option is invalid."""
 
 
-class ApiTimeoutError(Exception):
+class FranklinWHTimeoutError(Exception):
     """Raised when an API call exceeds the timeout threshold.
 
     Attributes
