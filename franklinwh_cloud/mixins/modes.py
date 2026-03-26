@@ -194,15 +194,17 @@ class ModesMixin:
 
         url = self.url_base + "hes-gateway/terminal/tou/updateTouModeV2"
         url = url + f"?gatewayId={self.gateway}"
-        url = url + f"&currendId={touId}"
+        if touId is not None:
+            url = url + f"&currendId={touId}"
 
         logger.debug(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {self.gateway}")
         if requestedOperatingMode != EMERGENCY_BACKUP:
             if requestedSOC is None:
-                soc = int(current_soc)
+                soc = int(current_soc) if current_soc is not None else None
             else:
                 soc = int(requestedSOC)
-            url = url + f"&soc={soc}"
+            if soc is not None:
+                url = url + f"&soc={soc}"
 
         if requestedOperatingMode == TIME_OF_USE:
             oldIndex = 3
@@ -210,23 +212,30 @@ class ModesMixin:
             oldIndex = 2
         if requestedOperatingMode == EMERGENCY_BACKUP:
             oldIndex = 1
+            
         url = url + f"&oldIndex={oldIndex}"
         url = url + f"&workMode={requestedOperatingMode}"
 
         if requestedOperatingMode == EMERGENCY_BACKUP:
-            url = url + f"&backupForeverFlag={reqbackupForeverFlag}"
+            if reqbackupForeverFlag is not None:
+                url = url + f"&backupForeverFlag={reqbackupForeverFlag}"
             if reqbackupForeverFlag == 2:
                 if reqnextWorkMode not in [SELF_CONSUMPTION, TIME_OF_USE]:
                     nextWorkMode = SELF_CONSUMPTION
                 else:
                     nextWorkMode = int(reqnextWorkMode)
-            url = url + f"&nextWorkMode={nextWorkMode}"
+                url = url + f"&nextWorkMode={nextWorkMode}"
             if reqdurationMinutes is not None:
                 url = url + f"&durationMinute={str(int(reqdurationMinutes))}"
+                
+        # Optional parameters stripped of None values to prevent 400 Bad Request
         res = await self.get_storm_settings()
-        enableStorm = res["result"]["enableStorm"]
-        url = url + f"&stromEn={enableStorm}"
-        url = url + f"&electricityType={electricityType}"
+        enableStorm = res["result"].get("enableStorm")
+        if enableStorm is not None:
+            url = url + f"&stromEn={enableStorm}"
+            
+        if electricityType is not None:
+            url = url + f"&electricityType={electricityType}"
 
         mode_name = MODE_MAP.get(requestedOperatingMode, f"Unknown Mode {requestedOperatingMode}")
         logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
