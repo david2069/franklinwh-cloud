@@ -160,3 +160,54 @@ def empty_stats() -> Stats:
             0.0, 0.0,                              # mpan pv
         ),
     )
+
+@dataclass
+class SmartCircuitDetail:
+    """Represents a single Smart Circuit condition.
+    
+    Bridging V1 (integer minute intervals / explicit load limits)
+    and V2 (datetime strings array / discrete SwTimeEn) gateway firmwares.
+    """
+    id: int
+    name: str
+    mode: int
+    is_on: bool
+    soc_cutoff_enabled: bool
+    soc_cutoff_limit: int
+    pro_load_type: int
+    
+    # Optional V1 scheduling formats (Legacy)
+    open_time: int | None = None
+    close_time: int | None = None
+    open_time_2: int | None = None
+    close_time_2: int | None = None
+    load_limit: int | None = None
+
+    # Optional V2 scheduling formats (Modern)
+    time_enabled: list[int] | None = None
+    time_schedules: list[str] | None = None
+    time_set: list[int] | None = None
+
+    @classmethod
+    def from_api_payload(cls, payload: dict, circuit_id: int) -> "SmartCircuitDetail":
+        """Safely extract variables from the hardware JSON blob regardless of firmware edition."""
+        cid = circuit_id
+        return cls(
+            id=cid,
+            name=payload.get(f"Sw{cid}Name", ""),
+            mode=payload.get(f"Sw{cid}Mode", 0),
+            is_on=payload.get(f"Sw{cid}Mode", 0) == 1,
+            soc_cutoff_enabled=payload.get(f"Sw{cid}AtuoEn", 0) == 1,
+            soc_cutoff_limit=payload.get(f"Sw{cid}SocLowSet", 0),
+            pro_load_type=payload.get(f"Sw{cid}ProLoad", 0),
+            
+            open_time=payload.get(f"Sw{cid}OpenTime"),
+            close_time=payload.get(f"Sw{cid}CloseTime"),
+            open_time_2=payload.get(f"Sw{cid}OpenTime2"),
+            close_time_2=payload.get(f"Sw{cid}CloseTime2"),
+            load_limit=payload.get(f"Sw{cid}LoadLimit"),
+            
+            time_enabled=payload.get(f"Sw{cid}TimeEn"),
+            time_schedules=payload.get(f"Sw{cid}Time"),
+            time_set=payload.get(f"Sw{cid}TimeSet"),
+        )
