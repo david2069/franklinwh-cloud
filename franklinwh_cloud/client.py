@@ -436,6 +436,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 raise ApiTimeoutError(url)
 
             json_resp = resp.json()
+            if json_resp.get("code") in (401, 10009):
+                raise TokenExpiredException(f"Token expired or completely invalid: Code {json_resp.get('code')} - {json_resp.get('message', 'Unauthorized')}")
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -479,6 +481,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 raise ApiTimeoutError(url)
                 
             json_resp = resp.json()
+            if json_resp.get("code") in (401, 10009):
+                raise TokenExpiredException(f"Token expired or completely invalid: Code {json_resp.get('code')} - {json_resp.get('message', 'Unauthorized')}")
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -572,7 +576,10 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             raise DeviceTimeoutException(res["message"])
         if res["code"] == 136:
             raise GatewayOfflineException(res["message"])
-        assert res["code"] == 200, f"{res['code']}: {res['message']}"
+        if res.get("code") != 200:
+            from franklinwh_cloud.exceptions import FranklinWHError
+            raise FranklinWHError(f"Command failed gracefully with server rejection: {res.get('code')} - {res.get('message')}")
+            
         return res
 
 
