@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - **`DEF-STATS-DOUBLE-SLASH`** — fixed double-slash URL 404 error when calling `get_power_details` and `get_power_by_day`
 
+## [0.4.1] — 2026-03-26
+
+### Fixed
+- **`FEAT-HOTFIX-401`** — Downstream `AssertionError` collision natively trapped: HTTP API wrappers `_post` and `_get` now accurately intercept unresolvable `{ "code": 401 }` and `{ "code": 10009 }` authentication limits out of `instrumented_retry()`. Instead of crashing downstream loops, the core dynamically raises a trappable `TokenExpiredException`.
+
 ## [0.4.0] — 2026-03-26
 
 ### Added
