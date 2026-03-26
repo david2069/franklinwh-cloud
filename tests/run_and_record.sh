@@ -59,8 +59,16 @@ else
     PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo "python3")
 fi
 
-# Capture output and exit code (skip live tests)
-PYTEST_OUTPUT=$($PYTHON -m pytest tests/ -m "not live" -q --tb=short 2>&1) || EXIT_CODE=$?
+# Capture output and exit code
+if [[ "$*" == *"--live"* ]]; then
+    # Filter out --live from the ID label array so we don't mess up the filename
+    ID_PART=$(echo "$@" | sed 's/--live//g' | tr -s ' ' | tr ' ' '_')
+    echo "⚡️ DETECTED --live FLAG: Executing Physical Hardware E2E Verification"
+    PYTEST_OUTPUT=$($PYTHON -m pytest tests/ -m "live" -v -s --tb=short 2>&1) || EXIT_CODE=$?
+else
+    # Standard offline unit testing mock suite
+    PYTEST_OUTPUT=$($PYTHON -m pytest tests/ -m "not live" -q --tb=short 2>&1) || EXIT_CODE=$?
+fi
 
 # ── Determine result ─────────────────────────────────────────────
 if [ $EXIT_CODE -eq 0 ]; then
