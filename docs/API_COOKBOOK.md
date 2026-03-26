@@ -692,6 +692,132 @@ asyncio.run(main())
 
 ---
 
+## Smart Circuits & EV Charging
+
+### V2 Firmware Mutations & Compatibility
+FranklinWH recently migrated Smart Circuit (`Sw`) payloads from V1 integer timers (`Sw1OpenTime`/`Sw1CloseTime2`) to V2 string arrays (`time_enabled`, `time_schedules`, `time_set`). 
+* **Impact**: Writing schedules using the V1 integer schema will aggressively fail or be ignored by modern aGates. 
+* **Reading**: `franklinwh-cloud` transparently handles the parsing into `SmartCircuitDetail` dataclasses. You will see string representations like `'2025-10-04 20:11'`.
+* **Writing**: Until the exact V2 payload constructor is fully mapped natively, schedules should only be modified manually or toggled dynamically using boolean switches (`set_smart_switch_state`) and Amperage limits (`set_smart_circuit_load_limit`).
+
+### Complex Automation: Adaptive EV Solar Charging
+This script tracks Solar PV, SOC, and Home Load exactly as requested: it waits until native Solar generation exceeds a set threshold, confirms no grid export is currently required, checks that the battery is sufficiently high, and optionally reaches out to a Home Assistant WebSocket (like the Enphase integration) to verify EV presence before throwing the FranklinWH Smart Circuit ON.
+
+```python
+import asyncio
+import json
+import websockets # pip install websockets
+from franklinwh_cloud import FranklinWHCloud
+
+# Configuration Thresholds
+SOLAR_THRESHOLD_KW = 4.0      # Minimum solar generation required to charge EV
+MIN_SOC_PERCENT = 80          # Minimum FranklinWH battery level required
+EV_CIRCUIT_ID = 2             # The Smart Circuit physical port (1, 2, or 3)
+HA_WS_URL = "ws://homeassistant.local:8123/api/websocket"
+HA_TOKEN = "eyJhbGciOiJIUzI1..." 
+
+async def check_ev_presence_ha():
+    """Reach out to Home Assistant to verify the EV is plugged in and needs charge."""
+    try:
+        async with websockets.connect(HA_WS_URL) as ws:
+            await ws.send(json.dumps({"type": "auth", "access_token": HA_TOKEN}))
+            await ws.recv() # Wait for auth_ok
+            
+            # Request EV state from a custom HA Enphase/Tesla integration entity
+            req_id = 1
+            await ws.send(json.dumps({"id": req_id, "type": "get_states"}))
+            response = json.loads(await ws.recv())
+            
+            for entity in response.get("result", []):
+                if entity["entity_id"] == "sensor.ev_charger_status":
+                    return entity["state"] == "plugged_in"
+    except Exception as e:
+        print(f"HA WebSocket unreachable: {e}. Defaulting to True for safety.")
+    return True
+
+async def adaptive_ev_charging_loop():
+    client = FranklinWHCloud("user@example.com", "secret")
+    
+    while True:
+        try:
+            if not client.is_authenticated():
+                await client.login()
+                await client.select_gateway()
+
+            stats = await client.get_stats()
+            solar_kw = stats.current.solar_production
+            grid_kw = stats.current.grid_power
+            soc = stats.current.soc
+            
+            # Check if Smart Circuit is already ON
+            circuits = await client.get_smart_circuits_info()
+            ev_circuit_active = circuits.get(EV_CIRCUIT_ID).is_on
+            
+            # Criteria 1: Plenty of solar headroom
+            # Criteria 2: Battery SOC is healthy
+            # Criteria 3: Grid export is negative (we possess excess power not consumed by home)
+            solar_sufficient = solar_kw >= SOLAR_THRESHOLD_KW
+            battery_sufficient = soc >= MIN_SOC_PERCENT
+            excess_power_available = grid_kw < 0 
+            
+            if solar_sufficient and battery_sufficient and excess_power_available:
+                if not ev_circuit_active:
+                    # Optional: Verify the EV is physically connected via Home Assistant
+                    ev_plugged_in = await check_ev_presence_ha()
+                    if ev_plugged_in:
+                        print(f"Criteria Met (Solar: {solar_kw}kW, SOC: {soc}%, Grid: {grid_kw}kW). Activating EV Circuit!")
+                        # Toggle the specific Smart Circuit ON dynamically
+                        switches = [None, None, None]
+                        switches[EV_CIRCUIT_ID - 1] = True 
+                        await client.set_smart_switch_state(tuple(switches))
+                        
+            # Hysteresis / Shutdown Logic 
+            # If clouds roll in and we start heavily draining from the grid, cut the charger
+            elif grid_kw > 1.0 and ev_circuit_active:
+                print("Solar dropped or grid demand spiked. Deactivating EV circuit.")
+                switches = [None, None, None]
+                switches[EV_CIRCUIT_ID - 1] = False
+                await client.set_smart_switch_state(tuple(switches))
+
+        except Exception as e:
+            print(f"Polling fault: {e}")
+            
+        await asyncio.sleep(60) # Poll every 60 seconds
+
+# asyncio.run(adaptive_ev_charging_loop())
+```
+
+---
+
+## Storm Hedge 
+
+### Real-Time Weather Event Polling
+The FranklinWH aGate constantly polls national weather services indicating incoming storm cells. You can proactively poll these internal lists to hook into Home Assistant automations triggering shutters or pre-chilling HVAC systems.
+
+```python
+async def poll_weather_events():
+    client = FranklinWHCloud("user@example.com", "secret")
+    await client.login()
+    await client.select_gateway()
+
+    # Get active storm warnings tracked by the aGate
+    active_storms = await client.get_progressing_storm_list()
+    if active_storms:
+        for storm in active_storms:
+            print(f"🚨 Storm Detected: {storm.get('title')}")
+            print(f"   Severity: {storm.get('severity')}")
+            print(f"   Time: {storm.get('effective')} -> {storm.get('expires')}")
+    else:
+        print("☀️ No severe weather events tracked by FranklinWH.")
+
+    # Check if Storm Hedge is actively protecting the battery
+    storm_settings = await client.get_storm_settings()
+    if storm_settings.get("switchStatus") == 1:
+        print(f"Storm Hedge Enabled! Reserve SOC protected at {storm_settings.get('backUpSoc')}%")
+```
+
+---
+
 ## Dispatch Code Reference
 
 | Code | `dispatchCodeType` Enum | Description |
