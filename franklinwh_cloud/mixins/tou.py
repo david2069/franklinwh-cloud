@@ -536,7 +536,7 @@ class TouMixin:
         See const/test_fixtures.py for example schedule formats.
         """
         logger.info(f"set_tou_schedule:  touMode = '{touMode}' for aGate {self.gateway}")
-        validate_tou_mode = touMode.upper().replace(' ', '_').replace('-', '_')
+        validate_tou_mode = str(touMode).upper().replace(' ', '_').replace('-', '_')
         logger.info(f"set_tou_schedule: Validating TOU mode '{validate_tou_mode}' for aGate {self.gateway}")
 
         if validate_tou_mode in valid_tou_modes:
@@ -547,11 +547,16 @@ class TouMixin:
             except ValueError:
                 numeric_tou = None
 
-            valid_dispatch = DISPATCH_CODES.get(numeric_tou)
-            if valid_dispatch:
-                logger.info(f"set_mode: Verifying touMode is a integer and looking up: {touMode}")
-                touMode = valid_tou_modes[valid_dispatch]
-            else:
+            matched = False
+            if numeric_tou is not None:
+                for mode_str in valid_tou_modes:
+                    if DISPATCH_CODES.get(mode_str) == numeric_tou:
+                        touMode = mode_str
+                        matched = True
+                        logger.info(f"set_mode: Mapped numeric dispatch ID {numeric_tou} to canonical string mode: {touMode}")
+                        break
+            
+            if not matched:
                 raise InvalidTOUScheduleOption(f"Invalid TOU mode requested: {touMode}")
 
         logger.info(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {self.gateway}")
