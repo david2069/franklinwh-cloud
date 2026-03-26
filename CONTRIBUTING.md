@@ -1,115 +1,24 @@
-# Contributing to franklinwh-cloud-client
+# FranklinWH Cloud: Agent & Contributor Guardrails
 
-Thank you for your interest in contributing! This project is an unofficial,
-community-maintained client library for FranklinWH energy storage systems.
+## STRICT MANDATORY POLICY: Backward Compatibility
 
-## ⚖️ Before You Contribute
+**Effective Date:** March 27, 2026
 
-By contributing to this project, you agree that:
+Due to previous critical deployment failures involving unauthorized removal of legacy integrations, all AI Agents and Human Contributors **MUST** adhere to the following strict guardrails when modifying the `franklinwh-cloud` library.
 
-1. You have read and understood the [LICENSE](LICENSE) including the Additional Terms
-2. Your contributions will be licensed under the same MIT License
-3. You will not submit code that intentionally abuses FranklinWH's API or
-   violates their terms of service
-4. You understand this software controls energy storage equipment and will
-   test your changes thoroughly
+### 1. Zero-Regression Tolerance
+* **No Unauthorised Removal:** You are expressly forbidden from removing, deprecating, or arbitrarily restricting existing API method arguments, types, or behaviours without explicit written permission from the maintainer.
+* **Semantic Casting Retention:** If a legacy method (e.g. `set_mode` or `set_tou_schedule`) accepts both literal string descriptors (`"time_of_use"`) and integer types (`1` or `"1"`), any underlying structural refactoring (like introducing `match` cases or `Enum` types) **must natively inherit and map these legacy types**. Never throw `InvalidType` exceptions for historically valid payloads.
+* **Downstream Integration Safety:** Remember that platforms like Home Assistant (`franklinwh-ha-integrator`) rely on these wrappers. Breaking a string parser in the core library fundamentally breaks upstream user automations. 
 
-## 🏗️ Development Setup
+### 2. Mandatory Impact Analysis
+If an upstream Cloud API (e.g. Java Spring Boot backend changes) fundamentally forces a backward-incompatible schema change (e.g. the depreciation of `updateTouModeV2` on V2 Gateways):
+* **Stop and Plan:** You must immediately halt execution and author a formal Backward Compatibility Impact Analysis.
+* **User Consent:** You must present this analysis to the user and request permission to break the interface.
+* **Graceful Fallbacks:** Even if the underlying HTTP route changes, the Python interface (`client.py` and `mixins/`) should attempt to emulate the old behaviour seamlessly if mathematically possible (such as intercepting `set_mode(1)` and dynamically traversing `set_tou_schedule()` in the background).
 
-```bash
-git clone https://github.com/david2069/franklinwh-cloud.git
-cd franklinwh-cloud
-python3 -m venv venv
-source venv/bin/activate
-pip install -e ".[test]"
-```
+### 3. Automated Guardrails
+* **Test Before You Rest:** Any new architecture or refactored component MUST be verified against existing backward compatibility tests (e.g., `tests/test_backward_compatibility.py`).
+* **Traceable Documentation:** If a method signature is altered with permission, it must be thoroughly recorded in the `CHANGELOG.md` under a `Changed` or `Deprecated` header, explicitly warning downstream consumers.
 
-## 🧪 Running Tests
-
-```bash
-# Unit tests (mocked, no API credentials needed)
-pytest tests/ -m "not live" -v
-
-# Live tests (requires franklinwh.ini with credentials)
-pytest tests/ -m live -v
-```
-
-**All unit tests must pass before submitting a pull request.** Currently 74 unit tests.
-
-## 📏 Code Standards
-
-### API Citizenship
-
-This library prioritises being a **good API citizen**. All contributions must:
-
-- **Not increase API call volume** without justification
-- **Respect rate limiting** — use `RateLimiter` or equivalent
-- **Identify honestly** via client identity headers — never spoof the official app
-- **Handle errors gracefully** — timeouts, 429s, 5xx responses
-- **Log responsibly** — no credentials or tokens in log output
-
-### Code Style
-
-- Python 3.10+ type hints
-- Docstrings for all public methods (NumPy style)
-- `logging.getLogger("franklinwh_cloud")` — not `print()`
-- New API methods go in the appropriate `mixins/` module
-- New constants go in `const/`
-
-### Testing Requirements
-
-- New features require unit tests with mocked API responses
-- Use `respx` for HTTP mocking (already in test dependencies)
-- Tests must not make real API calls unless marked `@pytest.mark.live`
-- Record test results: `./tests/run_and_record.sh <TAG>`
-
-## 🔀 Pull Request Process
-
-1. **Fork** the repository
-2. **Branch** from `main` — use descriptive names: `fix/typo-in-mode-payload`, `feat/installer-account`
-3. **Test** — all 74+ unit tests must pass
-4. **Document** — update README/API_CLIENT_GUIDE if adding user-facing features
-5. **One concern per PR** — don't mix bug fixes with new features
-6. **Describe** — PR description should explain what and why
-
-### PR Checklist
-
-- [ ] All unit tests pass (`pytest tests/ -m "not live"`)
-- [ ] `CHANGELOG.md` updated under `[Unreleased]` (if user-facing change)
-- [ ] Docs site updated — any new API methods or user-facing features must be reflected in `docs/` (auto-deploys on push)
-- [ ] GitHub Issue referenced in commit message (if applicable)
-- [ ] No new API calls without rate limiter integration
-- [ ] Client identity headers not modified to spoof official app
-- [ ] No credentials or tokens logged at INFO level or above
-- [ ] Docstrings for all new public methods
-- [ ] README/docs updated if user-facing change
-
-## 🐛 Reporting Issues
-
-See [ISSUES.md](ISSUES.md) for detailed guidance on reporting bugs,
-requesting features, and what information to include.
-
-### Quick Issue Template
-
-**Before opening an issue:**
-- Check if it's already reported
-- Confirm you're on the latest version
-- Run `franklinwh-cli --version` to get your version
-
-**Include in your report:**
-- Library version (`franklinwh-cli --version`)
-- Python version (`python3 --version`)
-- What you expected vs. what happened
-- Relevant log output (redact credentials/tokens!)
-
-## 🚫 What We Won't Accept
-
-- Code that spoofs the official FranklinWH app identity
-- Brute-force or credential-stuffing utilities
-- Automated fleet-wide write operations for installer accounts
-- Features designed to circumvent FranklinWH's security measures
-- Dependencies on proprietary or non-OSS libraries
-
-## 💬 Questions?
-
-Open a GitHub Discussion or Issue. Please don't email the maintainers directly.
+**VIOLATING THIS POLICY CONSTITUTES UNACCEPTABLE CONDUCT AND WILL RESULT IN REVERTED PULL REQUESTS.**

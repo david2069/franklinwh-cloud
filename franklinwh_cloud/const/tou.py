@@ -33,7 +33,9 @@ valid_tou_modes = [
     "GRID_EXPORT",
     "GRID_DISCHARGE",
     "GRID_IMPORT",
-    "GRID_DISCHARGE",
+    "GRID_CHARGE",
+    "CHARGE_FROM_GRID",
+    "EXPORT_TO_GRID_PEAKONLY",
     "FORCE_CHARGE",
     "FORCE_DISCHARGE",
     "CUSTOM",           # No dispatch code - as specific to this interface

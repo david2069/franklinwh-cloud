@@ -36,7 +36,7 @@ class ModesMixin:
     The API endpoint is ``hes-gateway/terminal/tou/updateTouModeV2``.
     """
 
-    async def set_mode(self, requestedOperatingMode, requestedSOC, reqbackupForeverFlag, reqnextWorkMode, reqdurationMinutes):
+    async def set_mode(self, requestedOperatingMode, requestedSOC=None, reqbackupForeverFlag=None, reqnextWorkMode=None, reqdurationMinutes=None):
         """Set the Operating Work Mode.
 
         Switch from current to requestedOperatingMode value.
