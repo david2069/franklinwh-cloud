@@ -2,6 +2,8 @@
 
 Complete reference for all `FranklinWHCloud` client methods — arguments, types, return values, and notes.
 
+> 🔌 **OpenAPI Specification**: Building a client in another language (Go, Rust, JS)? Check out the massive 123-endpoint [franklinwh_openapi.json](franklinwh_openapi.json) spec dynamically generated from strict mobile app intercepts to bootstrap your external clients instantly.
+
 ## Connection
 
 ```python
