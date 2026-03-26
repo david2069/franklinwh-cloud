@@ -27,7 +27,7 @@ To prevent agents from liberally interpreting "risk", agents MUST calculate thei
 
 | Risk Level | Objective Trigger (What changed?) | Mandatory Verification Protocol |
 | :--- | :--- | :--- |
-| **CRITICAL (10)** | **Network Boundary Mutators:** Modifying `httpx` wrappers (`_get`, `_post`), URL parsers, header generation (e.g., JWT loading), or concurrency loops (`instrumented_retry`). | **100% Live E2E Tracing.** Simulated Pytest mocks are legally void. Must execute `franklinwh-cli --api-trace` against a live gateway/sandbox and document the raw HTTP bytes. |
+| **CRITICAL (10)** | **Network Boundary Mutators:** Modifying `httpx` wrappers (`_get`, `_post`), URL parsers, header generation (e.g., JWT loading), or concurrency loops (`instrumented_retry`). | **100% Live Physical Tracing.** Simulated Pytest mocks are legally void. Must execute `franklinwh-cli --api-trace` against the physical production aGate deployment (until the local Emulator is built) and document the raw HTTP bytes. |
 | **HIGH (8)** | **Payload & Schema Modifiers:** Adding, removing, or altering the datatype of a JSON/Query dictionary key (e.g., stripping `None` values, changing `soc=5` to `soc="5"`). | **Live Integration Testing.** Must execute the specific modified command against the live API and verify a `200 OK` response. |
 | **HIGH (8)** | **Public Signature Changes:** Altering `def` arguments of user-facing methods (e.g., `set_mode`, `set_tou_schedule`), stripping `kwargs`, or removing default `=None` fallbacks. | **Backward Compatibility Proof.** Must write an automated Pytest parameter matrix executing 10+ legacy permutations to prove historic integrations (like Home Assistant) will not crash. |
 | **MEDIUM (4)** | **CLI & Internal Logic:** Modifying data parsing *after* it returns from the API, CLI formatting (e.g., `table` outputs), or offline math calculations. | **Simulated Pytest Mocks.** Safe to validate entirely offline using existing JSON snapshot fixtures. |
@@ -35,7 +35,7 @@ To prevent agents from liberally interpreting "risk", agents MUST calculate thei
 
 ## 4. Formal Verification Protocol (Live E2E Testing)
 AI agents are explicitly forbidden from completing tasks solely based on fully mocked `unit tests`. If a structural API change occurs:
-1. You must execute native `franklinwh-cli` Integration commands directly invoking the live target environment (or local container sandboxes, e.g., `fwhhai-app`).
+1. **Physical Hardware Priority:** Until the standalone FranklinWH Emulator proxy is developed (`docs/EMULATOR_ARCHITECTURE.md`), any CRITICAL or HIGH risk modification requires live validation. You must execute native `franklinwh-cli` Integration commands directly invoking the live production API connected to an actual physical aGate gateway. Local container sandboxes (e.g., `fwhhai-app`) can validate read-only logic but *cannot* authorize structural POST modifications.
 2. You must execute tracing (e.g., `--api-trace`) to mathematically capture that the backend interceptors (e.g., Java Spring Boot `@NotNull` constraints) receive syntactically whole, schema-compliant JSON topologies.
 3. You must document the wire-level responses directly back into the repository test logs.
 
