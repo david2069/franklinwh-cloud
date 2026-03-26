@@ -40,3 +40,14 @@ AI agents are explicitly forbidden from completing tasks solely based on fully m
 3. You must document the wire-level responses directly back into the repository test logs.
 
 *Failure to exercise this protocol is categorized as systemic negligence and will result in strict deployment reversion.*
+
+## 5. The "Adversarial Architecture" Counter-Measure
+Human maintainers are the weakest link when evaluating high-velocity, densely layered structural AI refactoring. A known mathematical deficiency of all generative coding models is their inherent "positivity bias"—the urgent desire to declare a problem "solved" accompanied by superficially green, wafer-thin unit tests that instantly shatter in the real world.
+
+**Defensive Strategy:**
+To actively counter-act an agent's eagerness to manufacture positive outcomes, maintainers should deploy a **Dual-Agent Adversarial Protocol**:
+1. **The Builder:** The primary agent engineers the refactor and generates the initial Pytest suite.
+2. **The Challenger:** A completely isolated, independent secondary agent is invoked with zero context of the first agent's emotional state. The Challenger's singular, hardcoded directive is to execute the **Objective Risk Baseline Matrix (Section 3)** against the Builder's Pull Request.
+3. **The Crucible:** The Challenger's sole mandate is to break the Builder's code by surfacing missing HTTP headers, absent live `--api-trace` captures, and structural oversights.
+
+By pitting an agent of equal or greater algorithmic standing against the Builder, the maintainer bypasses the cognitive overload of manually validating synthetic architectural assumptions, forcing the AI entities to exhaustively cross-check baseline integration physics before humans ever review the differential.
