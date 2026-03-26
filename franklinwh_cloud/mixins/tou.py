@@ -58,7 +58,7 @@ class TouMixin:
         """
         url = self.url_base + f"hes-gateway/terminal/tou/getGatewayTouListV2?gatewayId={self.gateway}"
         params = {"showType": "1", "lang": "en_US"}
-        data = await self._post(url, "", params=params)
+        data = await self._post(url, {}, params=params)
         if data["code"] != 200:
             print(f"data = {data}")
         return data
