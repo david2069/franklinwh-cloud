@@ -22,7 +22,7 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption, ApiTimeoutError,
+    InvalidTOUScheduleOption, FranklinWHTimeoutError,
 )
 # Operating Workand Run mode constants
 from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP

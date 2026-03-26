@@ -140,6 +140,16 @@ class TestBuildParser:
         args = parser.parse_args(["monitor", "-i", "10"])
         assert args.interval == 10
 
+    def test_installer_flag_true(self):
+        parser = build_parser()
+        args = parser.parse_args(["--installer", "status"])
+        assert args.installer is True
+
+    def test_installer_flag_default_false(self):
+        parser = build_parser()
+        args = parser.parse_args(["status"])
+        assert getattr(args, "installer", False) is False
+
     def test_version_flag(self):
         parser = build_parser()
         with pytest.raises(SystemExit):
