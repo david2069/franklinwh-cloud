@@ -283,6 +283,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         self.edge_tracker = EdgeTracker()
 
         self._dynamic_modes_cache: dict[int, str] | None = None
+        self._canary_baseline_version = "APP2.11.0"
+        self._canary_tripped = False
 
         # Client identity headers — good API citizenship
         default_headers = {}
@@ -433,7 +435,9 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise ApiTimeoutError(url)
 
-            return resp.json()
+            json_resp = resp.json()
+            self._check_canary_trap(url, json_resp, resp.headers)
+            return json_resp
 
         from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
         return await instrumented_retry(
@@ -473,7 +477,10 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 )
             except httpx.TimeoutException:
                 raise ApiTimeoutError(url)
-            return resp.json()
+                
+            json_resp = resp.json()
+            self._check_canary_trap(url, json_resp, resp.headers)
+            return json_resp
 
         from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
         return await instrumented_retry(
@@ -504,6 +511,37 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         """Get the next sequence number for API requests."""
         self.snno += 1
         return self.snno
+
+    def _check_canary_trap(self, url, json_payload, headers):
+        """Monitors incoming API boundaries for silently incremented Firmware/App structures."""
+        # Check explicit HTTP response headers (rare, but user-requested fallback)
+        sv_header = headers.get("softwareversion") or headers.get("x-franklin-softwareversion")
+        
+        # Check core JSON body nodes (typical placement for FranklinWH gateways)
+        sv_body = None
+        if isinstance(json_payload, dict):
+            # Nested inside 'result' or 'data' or top-level
+            target = json_payload.get("result", json_payload.get("data", json_payload))
+            if isinstance(target, dict):
+                sv_body = target.get("softwareVersion") or target.get("sysHdVersion") or target.get("deviceVersion")
+        
+        detected_version = sv_header or sv_body
+        
+        # If the API returns a version identifier formally tracking newer than our APP2.11.0 baseline
+        if detected_version and isinstance(detected_version, str) and not self._canary_tripped:
+            # Strip standard prefixes to parse numerically if possible, or just strict compare
+            if detected_version != self._canary_baseline_version and "APP2.11" not in detected_version:
+                self._canary_tripped = True
+                logger.warning(f"🚨 API CANARY TRIPPED: Unrecognized Firmware/Software Version detected '{detected_version}' (Baseline: {self._canary_baseline_version})")
+                
+                # Automatically dump the alien structure to disk for survey mapping
+                dump_name = f"franklinwh_cloud_survey_dump_{int(time.time())}.json"
+                try:
+                    with open(dump_name, "w", encoding="utf-8") as f:
+                        json.dump({"url": url, "version": detected_version, "payload": json_payload}, f, indent=2)
+                    logger.warning(f"🚨 Alien layout safely preserved to {dump_name} for OpenAPI inspection.")
+                except Exception as e:
+                    logger.error(f"Failed to dump Canary payload: {e}")
 
     def _build_payload(self, ty, data):
         blob = json.dumps(data, separators=(",", ":")).encode("utf-8")
