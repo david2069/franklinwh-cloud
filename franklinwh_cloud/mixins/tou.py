@@ -542,7 +542,12 @@ class TouMixin:
         if validate_tou_mode in valid_tou_modes:
             logger.info(f"set_mode: Validated requested TOU mode: {touMode}")
         else:
-            valid_dispatch = DISPATCH_CODES.get(touMode)
+            try:
+                numeric_tou = int(touMode)
+            except ValueError:
+                numeric_tou = None
+
+            valid_dispatch = DISPATCH_CODES.get(numeric_tou)
             if valid_dispatch:
                 logger.info(f"set_mode: Verifying touMode is a integer and looking up: {touMode}")
                 touMode = valid_tou_modes[valid_dispatch]
