@@ -700,6 +700,46 @@ FranklinWH recently migrated Smart Circuit (`Sw`) payloads from V1 integer timer
 * **Reading**: `franklinwh-cloud` transparently handles the parsing into `SmartCircuitDetail` dataclasses. You will see string representations like `'2025-10-04 20:11'`.
 * **Writing**: Until the exact V2 payload constructor is fully mapped natively, schedules should only be modified manually or toggled dynamically using boolean switches (`set_smart_switch_state`) and Amperage limits (`set_smart_circuit_load_limit`).
 
+### Advanced Regional Discovery & Renaming
+US and AU/EU markets exhibit vastly different Smart Circuit topologies. US grids support multiple aGates chained together and "merged" Smart Circuits, while AU grids standardise on 3 physical outputs per aGate with V2L. You can parse the `DeviceSnapshot` tree to adapt your integration intelligently:
+
+```python
+import asyncio
+from franklinwh_cloud import Client
+
+async def diagnose_regional_smart_circuits():
+    client = Client("user@example.com", "secret")
+    await client.login()
+    await client.select_gateway()
+
+    # Discover Tier 2 loads all hardware Quirks and Accessories 
+    snapshot = await client.discover(tier=2)
+    acc = snapshot.accessories
+    
+    # Check if this gateway supports the US "merge" functionality or AU V2L
+    quirks = acc.get("gateway", {}).get("region_quirks", {})
+    if quirks.get("supports_smart_circuit_merge"):
+        print("🌍 US Region Detected: Application may contain merged Smart Circuits spanning multiple aGates.")
+    elif quirks.get("supports_v2l"):
+        print("🌍 AU Region Detected: Vehicle-to-Load output may occupy Smart Circuit 1.")
+
+    # Detect if a Generator or Smart Circuits are physically installed
+    installed = acc.get("installed", [])
+    if "Generator" in installed:
+        gen_status = acc.get("accessories", {}).get("generator", {}).get("status_desc")
+        print(f"⚡ Generator physically wired. Current State: {gen_status}")
+    if "Smart_Circuit" in installed:
+        count = acc.get("accessories", {}).get("smart_circuits", {}).get("count", 0)
+        print(f"🔌 {count} Smart Circuits physically tracked by this aGate.")
+
+    # Renaming a Smart Circuit requires a raw dictionary invoke as the API is undocumented
+    print("📝 Renaming Circuit 2 to 'EV Charger'...")
+    circuit_payload = {"swId": 2, "name": "EV Charger"}
+    await client._post("/hes-gateway/terminal/updateSmartCircuitName", payload=circuit_payload)
+
+# asyncio.run(diagnose_regional_smart_circuits())
+```
+
 ### Complex Automation: Adaptive EV Solar Charging
 This script tracks Solar PV, SOC, and Home Load exactly as requested: it waits until native Solar generation exceeds a set threshold, confirms no grid export is currently required, checks that the battery is sufficiently high, and optionally reaches out to a Home Assistant WebSocket (like the Enphase integration) to verify EV presence before throwing the FranklinWH Smart Circuit ON.
 
