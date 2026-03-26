@@ -233,8 +233,12 @@ These endpoints support the template-based tariff setup workflow used by the Fra
 | `get_agate_info()` | — | `dict` | aGate firmware version, serial, network |
 | `get_apower_info()` | — | `dict` | aPower battery details (capacity, serial, firmware) |
 | `get_bms_info(apower_serial_no)` | `apower_serial_no: str` | `dict` | BMS cell voltages, temps, modules |
-| `get_smart_circuits_info()` | — | `dict` | Smart circuit switch states + power |
-| `set_smart_switch_state(state)` | `state: tuple` (SW1, SW2, SW3) — `True`=on, `False`=off, `None`=unchanged | `dict` | Toggle smart circuit switches |
+| `get_smart_circuits_info()` | — | `dict` | Raw smart circuit JSON blobs |
+| `get_smart_circuits()` | — | `dict[int, SmartCircuitDetail]` | Parsed Smart Circuit config mapped natively bridging V1/V2 firmware gaps |
+| `set_smart_circuit_state(circuit, turn_on)` | `circuit: int` (1-3), `turn_on: bool` | `dict` | Toggle individual smart circuit |
+| `set_smart_circuit_soc_cutoff(circuit, enable, soc)` | `circuit: int` (1-3), `enable: bool`, `soc: int` | `dict` | Set automatic battery cutoff capacity |
+| `set_smart_circuit_load_limit(circuit, max_amps)` | `circuit: int` (1-3), `max_amps: int` | `dict` | Set hardware amperage constraints (V1 Firmwares) |
+| `set_smart_switch_state(state)` | `state: tuple` (SW1, SW2, SW3) — `True`=on, `False`=off, `None`=unchanged | `dict` | Legacy composite toggles |
 | `get_device_info()` | — | `dict` | Detailed device info (v2) |
 | `get_agate_network_info(requestType)` | `requestType: str` "1"=Network, "2"=Connectivity, "3"=WiFi | `dict` | aGate network/WiFi settings |
 | `get_power_info()` | — | `dict` | Grid/load voltages, currents, frequencies, relay states |
