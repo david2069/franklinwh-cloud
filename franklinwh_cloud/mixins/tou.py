@@ -1509,7 +1509,7 @@ class TouMixin:
     # Real-time TOU price query (FEAT-TOU-CURRENT-PRICE)
     # ────────────────────────────────────────────────────────────────
 
-    async def get_current_tou_price(self, *, now: datetime | None = None) -> dict:
+    async def get_current_tou_price(self, *, now: datetime | None = None, option: int = 0) -> dict:
         """Return the current TOU pricing tier and block details.
 
         Fetches the active TOU dispatch schedule, determines which day type
@@ -1521,6 +1521,9 @@ class TouMixin:
         now : datetime, optional
             Override the current time (useful for testing / dry-run). If None,
             uses datetime.now() (local time, matching aGate system assumption).
+        option : int, optional
+            0 = Return full comprehensive pricing metadata dictionary.
+            1 = Return only the active buy/sell exchange rates for the current tier.
 
         Returns
         -------
@@ -1628,6 +1631,34 @@ class TouMixin:
         wave_type = active_block.get("waveType", 0)
         day_type  = active_dt.get("dayType", 3)
 
+        buy_rates = {
+            "peak":          active_dt.get("eleticRatePeak"),
+            "shoulder":      active_dt.get("eleticRateShoulder"),
+            "valley":        active_dt.get("eleticRateValley"),
+            "sharp":         active_dt.get("eleticRateSharp"),
+            "super_off_peak":active_dt.get("eleticRateSuperOffPeak"),
+        }
+        sell_rates = {
+            "peak":          active_dt.get("eleticSellPeak"),
+            "shoulder":      active_dt.get("eleticSellShoulder"),
+            "valley":        active_dt.get("eleticSellValley"),
+            "sharp":         active_dt.get("eleticSellSharp"),
+            "super_off_peak":active_dt.get("eleticSellSuperOffPeak"),
+        }
+
+        # Map waveType enum to price dictionary index
+        wave_map = {0: "valley", 1: "shoulder", 2: "peak", 3: "sharp", 4: "super_off_peak"}
+        active_key = wave_map.get(wave_type, "peak")
+
+        current_buy_rate = buy_rates.get(active_key)
+        current_sell_rate = sell_rates.get(active_key)
+
+        if option == 1:
+            return {
+                "buy_rate": current_buy_rate,
+                "sell_rate": current_sell_rate
+            }
+
         return {
             "season_name":       active_season.get("seasonName", ""),
             "day_type":          day_type,
@@ -1639,19 +1670,9 @@ class TouMixin:
             "block_start":       active_block.get("startHourTime"),
             "block_end":         active_block.get("endHourTime"),
             "minutes_remaining": max(0, minutes_remaining),
-            "buy_rates": {
-                "peak":          active_dt.get("eleticRatePeak"),
-                "shoulder":      active_dt.get("eleticRateShoulder"),
-                "valley":        active_dt.get("eleticRateValley"),
-                "sharp":         active_dt.get("eleticRateSharp"),
-                "super_off_peak":active_dt.get("eleticRateSuperOffPeak"),
-            },
-            "sell_rates": {
-                "peak":          active_dt.get("eleticSellPeak"),
-                "shoulder":      active_dt.get("eleticSellShoulder"),
-                "valley":        active_dt.get("eleticSellValley"),
-                "sharp":         active_dt.get("eleticSellSharp"),
-                "super_off_peak":active_dt.get("eleticSellSuperOffPeak"),
-            },
+            "current_buy_rate":  current_buy_rate,
+            "current_sell_rate": current_sell_rate,
+            "buy_rates":         buy_rates,
+            "sell_rates":        sell_rates,
         }
 

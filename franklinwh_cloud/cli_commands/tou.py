@@ -35,12 +35,12 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               season_name: str | None = None, season_months: str | None = None,
               day_type_str: str | None = None, wait_confirm: bool = False,
               show_next: bool = False, show_price: bool = False,
-              multi_season_file: str | None = None):
+              active_only: bool = False, multi_season_file: str | None = None):
     """Execute the TOU command."""
 
     # ── tou --price ───────────────────────────────────────────────
     if show_price:
-        await _handle_price(client, json_output)
+        await _handle_price(client, json_output, active_only)
         return
 
     # ── tou --multi-season ────────────────────────────────────────
@@ -910,9 +910,9 @@ def _format_duration_short(total_seconds: int) -> str:
 
 # ── tou --price handler ─────────────────────────────────────────────
 
-async def _handle_price(client, json_output: bool):
+async def _handle_price(client, json_output: bool, active_only: bool = False):
     """Handle tou --price: show the current TOU pricing tier and rates."""
-    price = await client.get_current_tou_price()
+    price = await client.get_current_tou_price(option=1 if active_only else 0)
 
     if not price:
         if json_output:
@@ -923,6 +923,15 @@ async def _handle_price(client, json_output: bool):
 
     if json_output:
         print_json_output(price)
+        return
+
+    # If --active-only is set natively, do exactly what it says on the tin.
+    if active_only:
+        b = price.get("buy_rate")
+        s = price.get("sell_rate")
+        b_str = f"{b:.4f}" if b is not None else "None"
+        s_str = f"{s:.4f}" if s is not None else "None"
+        print(f"Buy: {b_str} | Sell: {s_str}")
         return
 
     print_header("Current TOU Pricing Tier")

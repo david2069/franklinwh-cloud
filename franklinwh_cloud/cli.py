@@ -145,6 +145,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="End time for --set window (e.g. 14:30)")
     sub_tou.add_argument("--default", dest="default_mode", metavar="MODE", default=None,
                          help="Dispatch mode for times outside --start/--end (required with --start/--end)")
+    sub_tou.add_argument("--active-only", action="store_true",
+                         help="Truncate --price output to only active exchange rates (ideal for scripts)")
     sub_tou.add_argument("--file", dest="schedule_file", metavar="PATH",
                          help="JSON schedule file for --set CUSTOM")
     sub_tou.add_argument("--rates-file", dest="rates_file", metavar="PATH",
@@ -361,7 +363,8 @@ async def async_main():
                               wait_confirm=getattr(args, 'wait_confirm', False),
                               show_next=getattr(args, 'show_next', False),
                               show_price=getattr(args, 'show_price', False),
-                              multi_season_file=getattr(args, 'multi_season_file', None))
+                              multi_season_file=getattr(args, 'multi_season_file', None),
+                              active_only=getattr(args, 'active_only', False))
 
             case "raw":
                 from franklinwh_cloud.cli_commands import raw
