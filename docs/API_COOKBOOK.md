@@ -703,6 +703,84 @@ asyncio.run(main())
 | 7 | `GRID_EXPORT` / `GRID_DISCHARGE` / `FORCE_DISCHARGE` | aPower to home/grid |
 | 8 | `GRID_CHARGE` / `GRID_IMPORT` / `FORCE_CHARGE` | aPower charges from solar/grid |
 
+## Method Count Summary
+
+| Mixin | Methods | Category |
+|-------|---------|----------|
+| `discover.py` | 1 | Device discovery (3-tier survey) |
+| `stats.py` | 4 | Power flow, runtime data |
+| `modes.py` | 4 | Operating mode control |
+| `tou.py` | 17 | TOU schedule + tariff management |
+| `power.py` | 5 | Grid status, PCS settings |
+| `devices.py` | 16 | Hardware, BMS, smart circuits, LED, generator |
+| `storm.py` | 5 | Weather, Storm Hedge |
+| `account.py` | 18 | Account, notifications, alarms, AI |
+| **Total** | **70** | |
+
+---
+
+## Exception Handling & Reliability
+
+FranklinWH Cloud infrastructure can occasionally experience timeouts, offline gateways, or session invalidation. Ensure your integration scripts are wrapped in the library's strictly defined exception structures.
+
+```python
+import asyncio
+from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.exceptions import (
+    FranklinWHTimeoutError,
+    DeviceTimeoutException,
+    GatewayOfflineException,
+    TokenExpiredException
+)
+
+async def reliable_polling_loop():
+    client = FranklinWHCloud("user@example.com", "secret")
+
+    while True:
+        try:
+            if not client.is_authenticated():
+                await client.login()
+                await client.select_gateway()
+
+            # Perform routine queries
+            snapshot = await client.get_stats()
+            print(f"Current SoC: {snapshot.current.soc}%")
+
+        except FranklinWHTimeoutError as e:
+            # Raised globally when httpx or socket drops the connection natively
+            print(f"Cloud API timed out: {e}. Retrying in 60s...")
+
+        except DeviceTimeoutException as e:
+            # Raised when the Cloud API is online, but your physical aGate stopped communicating
+            print(f"Your Gateway dropped offline from the mesh: {e}")
+
+        except GatewayOfflineException as e:
+            # Raised explicitly when attempting a WRITE command to a known offline box
+            print(f"WRITE blocked. Gateway disconnected: {e}")
+
+        except TokenExpiredException as e:
+            # Raised when the JWT natively expires
+            print("Session dead. Flagging rotation for next loop...")
+            client.clear_token()
+
+        except Exception as e:
+            # Generic catch-all for parsing failures
+            print(f"Unexpected fault: {e}")
+
+        await asyncio.sleep(60)
+
+```
+
+### Key Exception Hierarchy
+All library-specific exceptions inherit from `FranklinWHError`. Below are the primary failure modes:
+
+| Exception Class | Cause | Resolution |
+|-----------------|-------|------------|
+| `FranklinWHTimeoutError` | Raw API unresponsive / Connection reset | Standard retry backoff. |
+| `DeviceTimeoutException` | Node-to-Cloud telemetry lost (`offlineReason` triggered). | Investigate Edge WiFi or wait for 4G cellular failover. |
+| `TokenExpiredException` | JWT session rotation required. | Invoke `client.login()` or `client.get_token()` to renew. |
+| `InvalidCredentialsException` | 401 Unauthorized (`Code 10009`). | Verify username/password or `LOGIN_TYPE` flag. |
+| `BadRequestParsingError` | JSON blob abruptly mutated (V1 to V2). | Ensure dependencies are tracking the latest PyPI distribution. |
 ## Wave Type (Pricing Tier) Reference
 
 | Code | `WaveType` Enum | Description |
