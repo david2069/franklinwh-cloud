@@ -36,10 +36,10 @@ To prevent agents from liberally interpreting "risk", agents MUST calculate thei
 ## 4. Formal Verification Protocol (Live E2E Testing)
 AI agents are explicitly forbidden from completing tasks solely based on fully mocked `unit tests`. If a structural API change occurs:
 1. **Physical Hardware Priority:** Until the standalone FranklinWH Emulator proxy is developed (`docs/EMULATOR_ARCHITECTURE.md`), any CRITICAL or HIGH risk modification requires live validation. You must execute native `franklinwh-cli` Integration commands directly invoking the live production API connected to an actual physical aGate gateway. Local container sandboxes (e.g., `fwhhai-app`) can validate read-only logic but *cannot* authorize structural POST modifications.
-2. You must execute tracing (e.g., `--api-trace`) to mathematically capture that the backend interceptors (e.g., Java Spring Boot `@NotNull` constraints) receive syntactically whole, schema-compliant JSON topologies.
-3. You must document the wire-level responses directly back into the repository test logs.
+2. You must execute tracing (e.g., `--api-trace` or using `pytest -s`) to mathematically capture that the backend interceptors receive syntactically whole, schema-compliant JSON topologies.
+3. **The Audit Ledger (Qualified Proof):** You must permanently document the wire-level responses directly back into the repository test logs. All `CRITICAL` or `HIGH` structural tests MUST be formally captured using `./tests/run_and_record.sh <ISSUE_ID> --live`. This script intercepts the real-time API response and natively serializes it into a permanent, human-readable flat-file database inside `tests/results/YYYY-MM-DD_<ID>_pass.txt`, and commits the transaction to `test_history.log`. If client applications (like FHAI) report defects, this ledger is recalled to prove the foundational payload topology natively generated a `200 OK` on the day of the release.
 
-*Failure to exercise this protocol is categorized as systemic negligence and will result in strict deployment reversion.*
+*Failure to serialize your hardware traces into the Audit Ledger is categorized as systemic negligence and will result in strict deployment reversion.*
 
 ## 5. The "Adversarial Architecture" Counter-Measure
 Human maintainers are the weakest link when evaluating high-velocity, densely layered structural AI refactoring. A known mathematical deficiency of all generative coding models is their inherent "positivity bias"—the urgent desire to declare a problem "solved" accompanied by superficially green, wafer-thin unit tests that instantly shatter in the real world.
