@@ -99,12 +99,12 @@ class ModesMixin:
             case "tou_battery_import" | "tou_battery_export" | "tou_custom" | "tou_json":
                 requestedOperatingMode = TIME_OF_USE
                 tou_mode = validate_mode
-            case "1":
+            case "1" | "time_of_use" | "timeofuse" | "tou":
                 requestedOperatingMode = TIME_OF_USE
                 tou_mode = validate_mode
-            case "2":
+            case "2" | "self_consumption" | "selfconsumption" | "self":
                 requestedOperatingMode = SELF_CONSUMPTION
-            case "3":
+            case "3" | "emergency_backup" | "emergencybackup" | "emergency" | "backup":
                 requestedOperatingMode = EMERGENCY_BACKUP
                 if reqnextWorkMode not in [TIME_OF_USE, SELF_CONSUMPTION]:
                     raise InvalidOperatingMode(f"Emergency Backup Next Working Mode must be TIME_OF_USE or SELF_CONSUMPTION and NOT: {requestedOperatingMode}")
@@ -194,8 +194,10 @@ class ModesMixin:
 
         url = self.url_base + "hes-gateway/terminal/tou/updateTouModeV2"
         url = url + f"?gatewayId={self.gateway}"
-        if touId is not None:
-            url = url + f"&currendId={touId}"
+        # TouId may natively be None if the gateway has never saved a Time-of-Use profile structurally.
+        # It must NOT be decoupled from the URL otherwise Spring Boot rejects the route entirely.
+        safe_tou_id = touId if touId is not None else 0
+        url = url + f"&currendId={safe_tou_id}"
 
         logger.debug(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {self.gateway}")
         if requestedOperatingMode != EMERGENCY_BACKUP:
