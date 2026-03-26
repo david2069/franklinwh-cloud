@@ -22,3 +22,6 @@ If an upstream Cloud API (e.g. Java Spring Boot backend changes) fundamentally f
 * **Traceable Documentation:** If a method signature is altered with permission, it must be thoroughly recorded in the `CHANGELOG.md` under a `Changed` or `Deprecated` header, explicitly warning downstream consumers.
 
 **VIOLATING THIS POLICY CONSTITUTES UNACCEPTABLE CONDUCT AND WILL RESULT IN REVERTED PULL REQUESTS.**
+
+### 4. AI Agent Mandatory Risk Assessments
+As a formal acknowledgment of past systemic AI failures, all synthetic contributors must follow the rigorous blast-radius evaluation methodologies codified in [AI Agent Structural Refactoring & Risk Assessment Policy](docs/AI_AGENT_RISK_ASSESSMENT.md). No foundational network wrappers may be structurally rewritten without a documented live trace proving end-to-end parity with the original protocol.
