@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - **`DEF-STATS-DOUBLE-SLASH`** — fixed double-slash URL 404 error when calling `get_power_details` and `get_power_by_day`
 
+## [0.4.2] — 2026-03-27
+
+### Added
+- **`TEST-BACKWARD-COMPAT`** — Formalized and restored the original `richo/franklinwh` Python type mappings inside API setters. Methods like `set_mode` and `set_tou_schedule` now universally accept un-typed semantic string aliases (e.g. `'time_of_use'`) and raw integer casts, preventing downstream 400 errors across existing Integrations. See `docs/BACKWARD_COMPATIBILITY.md` for the executive impact analysis.
+
+### Fixed
+- **`DEF-SET-MODE-NULLID`** — Intercepted a secondary Java `@NotNull` crash where an un-customized aGate natively returns `touId: null`. The query string parser now explicitly injects a default `0` (`currendId=0`) rather than completely dropping the parameter key to satisfy upstream Spring Boot validators.
+
 ## [0.4.1] — 2026-03-27
 
 ### Added
