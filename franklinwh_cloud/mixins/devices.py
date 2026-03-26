@@ -235,6 +235,22 @@ class DevicesMixin:
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
+    async def get_smart_circuits(self) -> dict:
+        """Get Smart Circuit configuration explicitly mapped to Python structures.
+        
+        Returns
+        -------
+        dict[int, SmartCircuitDetail]
+            A dictionary mapping Circuit ID (1-3) directly to its SmartCircuitDetail class.
+        """
+        from franklinwh_cloud.models import SmartCircuitDetail
+        
+        raw_data = await self.get_smart_circuits_info()
+        circuits = {}
+        for i in range(1, 4):
+            circuits[i] = SmartCircuitDetail.from_api_payload(raw_data, i)
+        return circuits
+
     async def set_smart_circuit_state(self, circuit: int, turn_on: bool):
         """Toggle a Smart Circuit on or off.
         
@@ -272,6 +288,24 @@ class DevicesMixin:
             f"Sw{circuit}AtuoEn": 1 if enable else 0,
             f"Sw{circuit}SocLowSet": int(soc)
         }
+        wire_payload = self._build_payload(310, payload)
+        return await self._mqtt_send(wire_payload)
+
+    async def set_smart_circuit_load_limit(self, circuit: int, max_amps: int):
+        """Configure the maximum amperage draw for a Smart Circuit.
+        
+        Parameters
+        ----------
+        circuit : int
+            Circuit number (1, 2, or 3)
+        max_amps : int
+            The max allowed current (amps) for the circuit breaker constraint.
+            Set to 0 to disable or reset to hardware defaults.
+        """
+        if circuit not in (1, 2, 3):
+            raise ValueError("Circuit must be 1, 2, or 3")
+            
+        payload = {f"Sw{circuit}LoadLimit": int(max_amps)}
         wire_payload = self._build_payload(310, payload)
         return await self._mqtt_send(wire_payload)
 

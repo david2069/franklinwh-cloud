@@ -205,6 +205,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub_sc.add_argument("--cutoff", type=int, metavar="CIRCUIT", help="Enable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--disable-cutoff", type=int, metavar="CIRCUIT", help="Disable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")
+    sub_sc.add_argument("--load-limit", type=int, metavar="CIRCUIT",
+                        help="Configure the continuous Load Limit in amps for a specific circuit")
+    sub_sc.add_argument("--amps", type=int, metavar="A",
+                        help="The maximum amperage limit for --load-limit (0 to reset)")
 
     # diag
     subs.add_parser("diag", aliases=["diagnostic"],
@@ -396,7 +400,9 @@ async def async_main():
                              turn_off=getattr(args, 'off', None),
                              cutoff=getattr(args, 'cutoff', None),
                              disable_cutoff=getattr(args, 'disable_cutoff', None),
-                             soc=getattr(args, 'soc', None))
+                             soc=getattr(args, 'soc', None),
+                             load_limit=getattr(args, 'load_limit', None),
+                             amps=getattr(args, 'amps', None))
 
             case "diag" | "diagnostic":
                 from franklinwh_cloud.cli_commands import diag
