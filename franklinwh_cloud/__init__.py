@@ -2,7 +2,8 @@
 
 __version__ = "0.4.0"
 
-from .client import Client, TokenFetcher
+from .client import Client
+from .auth import BaseAuth, PasswordAuth, TokenAuth, TokenFetcher
 from .models import Stats, Current, Totals, GridStatus, empty_stats
 from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
@@ -30,6 +31,7 @@ __all__ = [
     "AccessoryType",
     "AccountLockedException",
     "BadRequestParsingError",
+    "BaseAuth",
     "Client",
     "Current",
     "DeviceTimeoutException",
@@ -39,7 +41,9 @@ __all__ = [
     "InvalidOperatingMode",
     "InvalidOperatingModeOption",
     "InvalidTOUScheduleOption",
+    "PasswordAuth",
     "Stats",
+    "TokenAuth",
     "TokenExpiredException",
     "TokenFetcher",
     "Totals",

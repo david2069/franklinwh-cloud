@@ -551,7 +551,7 @@ class TouMixin:
 
         logger.info(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {self.gateway}")
         res = await self.get_tou_dispatch_detail()
-        template = res["result"]["template"]
+        template = res.get("result", {}).get("template", None)
 
         saveTOUdispatch_template = None
         null = 'null'
@@ -598,6 +598,16 @@ class TouMixin:
                 "derSchdule": "Other",
             }
         else:
+            account = null
+            try:
+                gw_res = await self.get_home_gateway_list()
+                for gw in gw_res.get("result", []):
+                    if gw.get("id") == self.gateway:
+                        account = gw.get("account")
+                        break
+            except Exception:
+                pass
+
             saveTOUdispatch_template = {
                 "id": null,
                 "gatewayId": self.gateway,
@@ -609,7 +619,7 @@ class TouMixin:
                 "workMode": 1,
                 "countryId": null,
                 "provinceId": null,
-                "account": null,
+                "account": account,
                 "accountId": -1,
                 "accountType": 0,
                 "countryEn": null,
@@ -1374,10 +1384,10 @@ class TouMixin:
             save_template = {
                 "id": template.get("id"),
                 "gatewayId": self.gateway,
-                "electricCompany": template.get("electricCompany"),
+                "electricCompany": template.get("electricCompany") or "Unknown",
                 "eletricCompanyId": template.get("eletricCompanyId", -1),
                 "sdcpCompanyFlag": null,
-                "name": template.get("name"),
+                "name": template.get("name") or "Custom",
                 "electricityType": template.get("electricityType", 1),
                 "workMode": template.get("workMode", 1),
                 "countryId": template.get("countryId"),
@@ -1385,10 +1395,10 @@ class TouMixin:
                 "account": account,
                 "accountId": -1,
                 "accountType": 0,
-                "countryEn": template.get("countryEn"),
-                "countryZh": template.get("countryZh"),
-                "eleCompanyFullName": template.get("eleCompanyFullName"),
-                "tariffName": template.get("name"),
+                "countryEn": template.get("countryEn") or "Australia",
+                "countryZh": template.get("countryZh") or "澳大利亚",
+                "eleCompanyFullName": template.get("eleCompanyFullName") or "Unknown",
+                "tariffName": template.get("name") or "Custom",
                 "env": null,
                 "gridType": null,
                 "mookRunCount": null,
