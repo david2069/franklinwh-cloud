@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **API Mapping Documentation** — Generated `API_ENDPOINTS_MAPPING.md` via AST to fully document mapping of library methods to Cloud Endpoints. Added to MkDocs Wiki explicitly.
+- **Hardware Diagnostics** — Added `get_power_cap_config_list` (nameplate capacity/models) and `get_device_run_log_list` (alarm/error logs) natively to the codebase pipeline.
+- **CLI TOU Filtering** — `franklinwh-cli tou --current` strictly filters output table string representations to actively display only the currently active season blocks.
+- **Hardware Detection** — `franklinwh-cli accessories` dynamically queries `peHwVersion` per-serial from the cloud hardware dictionary to correctly print precise aPower model names (e.g. 'aPower X') implicitly.
+
 ### Fixed
+- **`DEF-CLI-TOU-SCOPE`** — Patched execution crash preventing the run of `tou --current` by successfully passing the unpacked `show_current` parameter downstream into the `tou.py` scope mapping.
+- **`DEF-TEST-FIXTURE`** — Fixed `test_live_mode.py` violently crashing PyTest by defining the missing `live_credentials` fixture in `conftest.py`. Unauthenticated suites correctly SKIP the integration testing suite safely now.
 - **`DEF-CLI-TOU-PRICE`** — `franklinwh-cli tou --price` now renders the active pricing tier by default, explicit $0.00 for empty rates, and supports `--all` flag.
 - **`DEF-STATS-DOUBLE-SLASH`** — fixed double-slash URL 404 error when calling `get_power_details` and `get_power_by_day`
 
