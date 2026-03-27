@@ -174,8 +174,8 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                     periods = day_type.get("detailVoList", [])
                     if periods:
                         # Table header
-                        print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'SOL CO'}")
-                        print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6}")
+                        print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
+                        print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
 
                         for block in periods:
                             start = block.get("startHourTime", "?")
@@ -185,7 +185,6 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                             wave_type = block.get("waveType", 0)
                             max_soc = block.get("maxChargeSoc")
                             min_soc = block.get("minDischargeSoc")
-                            solar_cutoff = block.get("solarCutoff", 0)
 
                             # Resolve dispatch name
                             disp_display = _resolve_dispatch(dispatch_id, dispatch_lookup)
@@ -198,9 +197,23 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
 
                             max_str = f"{max_soc}%" if max_soc else "—"
                             min_str = f"{min_soc}%" if min_soc else "—"
-                            solar_str = str(solar_cutoff) if solar_cutoff else "0"
+                            
+                            w_buy, w_sell = 0.0, 0.0
+                            if wave_type == 0:
+                                w_buy, w_sell = day_type.get("eleticRateValley"), day_type.get("eleticSellValley")
+                            elif wave_type == 1:
+                                w_buy, w_sell = day_type.get("eleticRateShoulder"), day_type.get("eleticSellShoulder")
+                            elif wave_type == 2:
+                                w_buy, w_sell = day_type.get("eleticRatePeak"), day_type.get("eleticSellPeak")
+                            elif wave_type == 3:
+                                w_buy, w_sell = day_type.get("eleticRateSharp"), day_type.get("eleticSellSharp")
+                            elif wave_type == 4:
+                                w_buy, w_sell = day_type.get("eleticRateSuperOffPeak"), day_type.get("eleticSellSuperOffPeak")
 
-                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{max_str:<9}{min_str:<9}{solar_str}")
+                            buy_str = f"${w_buy or 0.0:.2f}"
+                            sell_str = f"${w_sell or 0.0:.2f}"
+
+                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{max_str:<9}{min_str:<9}{buy_str:<7}{sell_str}")
 
                         total_blocks += len(periods)
                         print()
