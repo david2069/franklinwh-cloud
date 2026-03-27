@@ -138,10 +138,20 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
         if not strategies:
             print_warning("No TOU schedules configured.")
         else:
+            from datetime import datetime
+            current_month = str(datetime.now().month)
             total_blocks = 0
+            
             for season_idx, season in enumerate(strategies):
-                season_name = season.get("seasonName", f"Season {season_idx + 1}")
                 months = season.get("month", "")
+                
+                # Check --current flag constraint
+                if getattr(args, "show_current", False):
+                    active_months = [m.strip() for m in months.split(",") if m.strip()]
+                    if current_month not in active_months:
+                        continue
+                        
+                season_name = season.get("seasonName", f"Season {season_idx + 1}")
                 month_display = _format_months(months)
 
                 print_section("📅", f"{season_name} — {month_display}")
