@@ -71,6 +71,28 @@ class DevicesMixin:
                 url = self.url_base + "hes-gateway/common/getAccessoryList"
         return await self._get(url, params=params)
 
+    async def get_power_cap_config_list(self):
+        """Get gateway models and nameplate capabilities.
+
+        Returns
+        -------
+        dict
+            List of models with their rated capacity, charge power, and discharge power.
+        """
+        url = self.url_base + "hes-gateway/common/getPowerCapConfigList"
+        return await self._get(url)
+
+    async def get_device_run_log_list(self):
+        """Get historical run logs and raw alarm codes.
+
+        Returns
+        -------
+        dict
+            List of device run logs including alarmCode, logName, and enLogName.
+        """
+        url = self.url_base + "hes-gateway/common/selectDeviceRunLogList"
+        return await self._get(url)
+
     async def get_device_composite_info(self):
         """Get Gateway Composite Data to extract current runtime info, operating mode and details.
 

@@ -32,6 +32,8 @@ A complete mapping of the internal `franklinwh-cloud` Python methods to their co
 | Python Method | Arguments | HTTP | Cloud API Endpoint | Cookbook Sample |
 |---------------|-----------|------|--------------------|-----------------|
 | `get_accessories()` | `option` | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `get_power_cap_config_list()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `get_device_run_log_list()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_device_composite_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_agate_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_apower_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
