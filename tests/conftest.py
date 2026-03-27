@@ -50,3 +50,19 @@ def minimal_client():
     c.token = "test-token-abc123"
     c.metrics = ClientMetrics()
     return c
+
+
+@pytest.fixture
+def live_credentials():
+    """Load real credentials for live integration tests.
+
+    Skips the test if real credentials cannot be found via franklinwh_cloud.cli.load_credentials.
+    """
+    from franklinwh_cloud.cli import load_credentials
+    try:
+        email, password, gateway = load_credentials()
+        if not email or not password or not gateway:
+            pytest.skip("Live credentials not found. Skipping live test.")
+        return email, password, gateway
+    except Exception as e:
+        pytest.skip(f"Live credentials missing or invalid: {e}")
