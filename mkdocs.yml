@@ -72,6 +72,7 @@ nav:
   - Guides:
     - API Cookbook: API_COOKBOOK.md
     - API Reference: API_REFERENCE.md
+    - API Endpoint Mapping: API_ENDPOINTS_MAPPING.md
     - TOU Schedule Guide: TOU_SCHEDULE_GUIDE.md
     - TOU Tariff Reference: TOU_TARIFF_REFERENCE.md
     - Scheduling Nettest: SCHEDULING.md
