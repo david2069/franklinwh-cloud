@@ -273,6 +273,29 @@ warranty = await client.get_warranty_info()
 site = await client.siteinfo()
 ```
 
+### Diagnostics & Metrics
+
+The `franklinwh-cloud` client tracks detailed telemetry about every API call, retry, and HTTP connection it makes. You can pull this snapshot at any time to build API health dashboards.
+
+```python
+# Get a realtime snapshot of API client health
+metrics = client.get_metrics()
+
+# The snapshot contains detailed routing and latency info:
+print(f"Total API Calls: {metrics['uptime']['total_requests']}")
+print(f"CloudFront Edge: {metrics['edge']['last_pop']}")
+print(f"Average Latency: {metrics['timing']['avg_ms']:.0f} ms")
+
+# Endpoint specific hit-counts
+for ep, hits in metrics['endpoints'].items():
+    print(f"  {ep}: {hits} calls")
+
+# Error tracking and token refreshes
+print(f"Parse Errors: {metrics['errors']['parse']}")
+print(f"Auth Refreshes: {metrics['uptime']['token_refreshes']}")
+```
+
+
 ---
 
 ## Full Example: System Dashboard with SoC Estimation
