@@ -1,0 +1,57 @@
+{
+  "url": "https://energy.franklinwh.com/hes-gateway/terminal/getDeviceInfoV2?gatewayId=10060006AXXXXXXXXX&lang=EN_US",
+  "version": "102",
+  "payload": {
+    "code": 200,
+    "message": "Operate success!",
+    "result": {
+      "gatewayId": "10060006AXXXXXXXXX",
+      "date": "2026-03-27",
+      "deviceTime": "2026-03-27 10:42:37",
+      "countryId": 3,
+      "provinceId": 87,
+      "offGirdFlag": 0,
+      "sysHdVersion": "102",
+      "sysHdVersionInt": 102,
+      "realSysHdVersion": "FranklinWH System1.2",
+      "protocolVer": "V1.11.01",
+      "installerId": 2541,
+      "serviceVoltageFlag": null,
+      "offMessage": null,
+      "genEn": 1,
+      "chooseFinancierId": 0,
+      "firstName": "David",
+      "lastName": "Hona",
+      "fhpSn": "10050013AXXXXXXXXX",
+      "gridPhaseConSet": null,
+      "activeStatus": 1,
+      "emsDeviceVer": 0,
+      "solarFlag": true,
+      "solarTipMsg": "",
+      "v2lModeEnable": null,
+      "v2lRunState": null,
+      "newHomeFlag": null,
+      "sleepStatus": null,
+      "zoneInfo": "Australia/Sydney",
+      "peHwVerList": [
+        2
+      ],
+      "fixedPowerTotal": 5.0,
+      "fixedPowerAverage": 5.0,
+      "totalCap": 13.6,
+      "apowerList": [
+        {
+          "id": "10050013AXXXXXXXXX",
+          "ratedPwr": 5000,
+          "rateBatCap": 13600
+        }
+      ],
+      "blackSleepFlag": false,
+      "mpptEnFlag": false,
+      "apbox20Num": 0,
+      "equipType": null,
+      "msaInstallStartDetectTime": null
+    },
+    "success": true
+  }
+}
