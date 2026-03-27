@@ -512,9 +512,17 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         -------
         dict
             Metrics including uptime, call counts, timing, errors,
-            retries, and token refresh counts.
+            retries, and token refresh counts, as well as CloudFront 
+            edge tracking and caching telemetry.
         """
-        return self.metrics.snapshot()
+        payload = self.metrics.snapshot()
+        payload["edge"] = self.edge_tracker.snapshot()
+        if hasattr(self, "stale_cache"):
+            payload["cache"] = self.stale_cache.snapshot()
+        if self.rate_limiter:
+            payload["rate_limits"] = self.rate_limiter.snapshot()
+            
+        return payload
 
     def next_snno(self):
         """Get the next sequence number for API requests."""
