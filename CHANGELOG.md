@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 ### Fixed
+- **`DEF-CLI-TOU-PRICE`** — `franklinwh-cli tou --price` now renders the active pricing tier by default, explicit $0.00 for empty rates, and supports `--all` flag.
 - **`DEF-STATS-DOUBLE-SLASH`** — fixed double-slash URL 404 error when calling `get_power_details` and `get_power_by_day`
 
 ## [0.4.2] — 2026-03-27

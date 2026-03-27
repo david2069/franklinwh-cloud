@@ -162,6 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Show current and next dispatch with remaining time")
     sub_tou.add_argument("--price", dest="show_price", action="store_true",
                          help="Show the current TOU pricing tier, wave type, and rates")
+    sub_tou.add_argument("--all", dest="show_all_rates", action="store_true",
+                         help="Show all pricing tiers instead of just the active one")
     sub_tou.add_argument("--multi-season", dest="multi_season_file", metavar="FILE",
                          help="Load and apply a multi-season/multi-day-type schedule from JSON file")
     sub_tou.add_argument("--wait", dest="wait_confirm", action="store_true",
