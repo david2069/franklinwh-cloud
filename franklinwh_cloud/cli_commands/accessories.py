@@ -120,6 +120,15 @@ async def run(client, *, json_output: bool = False, show_power: bool = False):
     except Exception:
         accessories = []
 
+    # Power Cap Config (aPower hardware model mapping)
+    try:
+        cap_res = await client.get_power_cap_config_list()
+        power_caps = cap_res.get("result", [])
+    except Exception:
+        power_caps = []
+    
+    apower_models_by_hw = {c.get("peHwVersion"): c for c in power_caps}
+
     # ── Derive installed hardware flags from accessories ──────────
     has_smart_circuits = any(
         a.get("accessoryType") == ACCY_TYPE_SMART_CIRCUIT for a in accessories
@@ -167,17 +176,22 @@ async def run(client, *, json_output: bool = False, show_power: bool = False):
         }
 
         apower_list = dev_result.get("apowerList", [])
+        pe_hw_ver_list = dev_result.get("peHwVerList", [])
         warranty_devices = {
             d.get("sn"): d for d in warranty.get("deviceExpirationList", [])
         }
         output["apower"] = []
-        for ap in apower_list:
+        for i, ap in enumerate(apower_list):
             ap_sn = ap.get("id", "?")
+            hw_ver = pe_hw_ver_list[i] if i < len(pe_hw_ver_list) else None
+            ap_model = apower_models_by_hw.get(hw_ver, {})
             w = warranty_devices.get(ap_sn, {})
             output["apower"].append({
                 "serial": ap_sn,
                 "rated_power_w": ap.get("ratedPwr", 0),
                 "capacity_wh": ap.get("rateBatCap", 0),
+                "hardware_version": hw_ver,
+                "model_name": ap_model.get("modelName"),
                 "warranty_expires": w.get("expirationTime"),
             })
 
@@ -279,21 +293,29 @@ async def run(client, *, json_output: bool = False, show_power: bool = False):
 
     # aPower batteries
     apower_list = dev_result.get("apowerList", [])
+    pe_hw_ver_list = dev_result.get("peHwVerList", [])
     total_cap = dev_result.get("totalCap", 0)
     warranty_devices = {d.get("sn"): d for d in warranty.get("deviceExpirationList", [])}
 
     if apower_list:
         print_section("🔋", f"aPower Batteries ({len(apower_list)} units, {total_cap} kWh)")
-        for ap in apower_list:
+        for i, ap in enumerate(apower_list):
             ap_sn = ap.get("id", "?")
+            hw_ver = pe_hw_ver_list[i] if isinstance(pe_hw_ver_list, list) and i < len(pe_hw_ver_list) else None
+            ap_model = apower_models_by_hw.get(hw_ver, {})
+            model_name = ap_model.get("modelName")
             rated = ap.get("ratedPwr", 0)
             cap = ap.get("rateBatCap", 0)
             sn_short = ap_sn[-6:] if len(str(ap_sn)) > 6 else ap_sn
+            
             w = warranty_devices.get(ap_sn, {})
             w_exp = w.get("expirationTime", "")
+            
+            model_str = f"  Model: {model_name}" if model_name else ""
             w_str = f"  Warranty: {w_exp}" if w_exp else ""
+            
             print_kv(f"aPower {sn_short}",
-                     f"Rated: {rated}W  Capacity: {cap}Wh{w_str}")
+                     f"Rated: {rated}W  Capacity: {cap}Wh{model_str}{w_str}")
 
     # Accessories inventory
     if accessories:
