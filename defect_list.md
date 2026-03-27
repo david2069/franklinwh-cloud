@@ -42,3 +42,4 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | FEAT-CLI-DISCOVER-VERBOSE | CLI Commands | Enhanced `discover` with 3 verbosity tiers, feature flags, Hybrid A+B JSON catalog | 2026-03-23 | `multiple` |
 | DEF-CLIENT-TIMEOUT | Client / API Core | `httpx.TimeoutException` propagated raw; now caught in `__post`/`__get` → `ApiTimeoutError` with friendly CLI message | 2026-03-25 | `f38d456` |
 | FEAT-AUTH-CLI-OPTION | CLI Commands | `franklinwh-cli --installer` flag passes `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-25 | `f38d456` |
+| DEF-CLI-TOU-PRICE | CLI Commands | `franklinwh-cli tou` and `--price` do not display actual pricing rates; should default to zero if none | 2026-03-27 |

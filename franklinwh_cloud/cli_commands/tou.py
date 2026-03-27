@@ -35,12 +35,13 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               season_name: str | None = None, season_months: str | None = None,
               day_type_str: str | None = None, wait_confirm: bool = False,
               show_next: bool = False, show_price: bool = False,
-              active_only: bool = False, multi_season_file: str | None = None):
+              active_only: bool = False, multi_season_file: str | None = None,
+              show_all_rates: bool = False):
     """Execute the TOU command."""
 
     # ── tou --price ───────────────────────────────────────────────
     if show_price:
-        await _handle_price(client, json_output, active_only)
+        await _handle_price(client, json_output, active_only, show_all_rates)
         return
 
     # ── tou --multi-season ────────────────────────────────────────
@@ -165,8 +166,8 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                     if rates:
                         print()
                         for rate_name, buy, sell in rates:
-                            sell_str = f"  Sell: ${sell:.4f}" if sell is not None else ""
-                            print_kv(f"  💰 {rate_name}", f"Buy: ${buy:.4f}{sell_str}")
+                            sell_str = f"  Sell: ${sell:.2f}"
+                            print_kv(f"  💰 {rate_name}", f"Buy: ${buy:.2f}{sell_str}")
                         print()
 
                     # ── Dispatch periods ─────────────────────────
@@ -310,7 +311,7 @@ def _day_type_label(day_type: int, day_name: str) -> str:
 
 
 def _extract_rates(day_type: dict) -> list:
-    """Extract non-zero rate tiers from day type data."""
+    """Extract rate tiers from day type data, defaulting to zero if not set."""
     rates = []
     tiers = [
         ("On-Peak", "eleticRatePeak", "eleticSellPeak"),
@@ -910,7 +911,7 @@ def _format_duration_short(total_seconds: int) -> str:
 
 # ── tou --price handler ─────────────────────────────────────────────
 
-async def _handle_price(client, json_output: bool, active_only: bool = False):
+async def _handle_price(client, json_output: bool, active_only: bool = False, show_all_rates: bool = False):
     """Handle tou --price: show the current TOU pricing tier and rates."""
     price = await client.get_current_tou_price(option=1 if active_only else 0)
 
@@ -927,11 +928,9 @@ async def _handle_price(client, json_output: bool, active_only: bool = False):
 
     # If --active-only is set natively, do exactly what it says on the tin.
     if active_only:
-        b = price.get("buy_rate")
-        s = price.get("sell_rate")
-        b_str = f"{b:.4f}" if b is not None else "None"
-        s_str = f"{s:.4f}" if s is not None else "None"
-        print(f"Buy: {b_str} | Sell: {s_str}")
+        b = price.get("buy_rate") or 0.0
+        s = price.get("sell_rate") or 0.0
+        print(f"Buy: {b:.2f} | Sell: {s:.2f}")
         return
 
     print_header("Current TOU Pricing Tier")
@@ -958,22 +957,29 @@ async def _handle_price(client, json_output: bool, active_only: bool = False):
     if dispatch_id:
         print_kv("Dispatch Strategy", f"ID {dispatch_id}")
 
-    # Rates (only non-null)
-    buy = price.get("buy_rates", {})
-    sell = price.get("sell_rates", {})
-    rate_labels = [
-        ("On-Peak", "peak"), ("Shoulder", "shoulder"), ("Off-Peak", "valley"),
-        ("Sharp", "sharp"), ("Super Off-Peak", "super_off_peak"),
-    ]
-    print()
-    for label, key in rate_labels:
-        b = buy.get(key)
-        s = sell.get(key)
-        if b is not None:
-            sell_str = f"   Sell: ${s:.4f}" if s is not None else ""
-            print_kv(f"  💰 {label}", f"Buy: ${b:.4f}{sell_str}")
+    # Rates
+    if not show_all_rates:
+        b = price.get("buy_rate") or 0.0
+        s = price.get("sell_rate") or 0.0
+        sell_str = f"   Sell: ${s:.2f}"
+        print()
+        print_kv("  💰 Current Rate", f"Buy: ${b:.2f}{sell_str}")
+        print()
+    else:
+        buy = price.get("buy_rates", {})
+        sell = price.get("sell_rates", {})
+        rate_labels = [
+            ("On-Peak", "peak"), ("Shoulder", "shoulder"), ("Off-Peak", "valley"),
+            ("Sharp", "sharp"), ("Super Off-Peak", "super_off_peak"),
+        ]
+        print()
+        for label, key in rate_labels:
+            b = buy.get(key) or 0.0
+            s = sell.get(key) or 0.0
+            sell_str = f"   Sell: ${s:.2f}"
+            print_kv(f"  💰 {label}", f"Buy: ${b:.2f}{sell_str}")
 
-    print()
+        print()
 
 
 # ── tou --multi-season handler ──────────────────────────────────────
