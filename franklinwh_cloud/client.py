@@ -532,14 +532,15 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             # Nested inside 'result' or 'data' or top-level
             target = json_payload.get("result", json_payload.get("data", json_payload))
             if isinstance(target, dict):
-                sv_body = target.get("softwareVersion") or target.get("sysHdVersion") or target.get("deviceVersion")
+                # Restrict to explicit software headers, avoiding hardware model IDs like '102'
+                sv_body = target.get("softwareVersion")
         
         detected_version = sv_header or sv_body
         
         # If the API returns a version identifier formally tracking newer than our APP2.11.0 baseline
         if detected_version and isinstance(detected_version, str) and not self._canary_tripped:
             # Strip standard prefixes to parse numerically if possible, or just strict compare
-            if detected_version != self._canary_baseline_version and "APP2.11" not in detected_version:
+            if detected_version.startswith("APP") and detected_version != self._canary_baseline_version and "APP2.11" not in detected_version:
                 self._canary_tripped = True
                 logger.warning(f"🚨 API CANARY TRIPPED: Unrecognized Firmware/Software Version detected '{detected_version}' (Baseline: {self._canary_baseline_version})")
                 
