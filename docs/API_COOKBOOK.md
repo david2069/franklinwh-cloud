@@ -284,12 +284,15 @@ import asyncio
 from franklinwh_cloud import FranklinWHCloud
 
 RESERVE_SOC = 20    # Your backup reserve %
-BATTERY_KWH = 13.6  # aPower 2 capacity (check get_apower_info for yours)
 
 async def main():
     client = FranklinWHCloud.from_config("franklinwh.ini")
     await client.login()
     await client.select_gateway()
+
+    # Get dynamic battery capacity directly from the API
+    device_info = await client.get_device_info()
+    battery_kwh = device_info.get("result", {}).get("totalCap", 13.6)
 
     stats = await client.get_stats()
     c = stats.current
@@ -313,14 +316,14 @@ async def main():
     # ── SoC Time Estimation ──
     bat_kw = abs(c.battery_power)
     if bat_kw > 0.05:  # ignore noise below 50W
-        current_kwh = (c.soc / 100) * BATTERY_KWH
+        current_kwh = (c.soc / 100) * battery_kwh
         if c.battery_power < 0:  # Charging
-            remaining_kwh = BATTERY_KWH - current_kwh
+            remaining_kwh = battery_kwh - current_kwh
             hours = remaining_kwh / bat_kw
             h, m = int(hours), int((hours % 1) * 60)
             print(f"⏱️  Estimated ~{h}h {m}m to 100%  (at {bat_kw:.1f} kW)")
         else:  # Discharging
-            usable_kwh = current_kwh - (RESERVE_SOC / 100) * BATTERY_KWH
+            usable_kwh = current_kwh - (RESERVE_SOC / 100) * battery_kwh
             if usable_kwh > 0:
                 hours = usable_kwh / bat_kw
                 h, m = int(hours), int((hours % 1) * 60)
@@ -409,12 +412,12 @@ async def main():
     original_schedule = await client.get_tou_dispatch_detail()
     print(f"📋 Saved state — Mode: {original_mode_name} (workMode={original_mode_id})")
 
-    # ── 1b. Check battery capacity ──
-    apower = await client.get_apower_info()
-    battery_count = apower.get("result", {}).get("apowerCount", 1)
-    # aPower 2 = 13.6 kWh, aPower S = 5.0 kWh (check your model)
-    est_capacity_kwh = battery_count * 13.6
-    print(f"🔋 Batteries: {battery_count} × aPower = ~{est_capacity_kwh:.1f} kWh")
+    # ── 1b. Check battery capacity via API ──
+    device_info = await client.get_device_info()
+    result_data = device_info.get("result", {})
+    battery_count = len(result_data.get("apowerList", [])) or 1
+    total_capacity_kwh = result_data.get("totalCap", 13.6)
+    print(f"🔋 Batteries: {battery_count} = {total_capacity_kwh:.1f} kWh")
 
     stats = await client.get_stats()
     current_soc = stats.current.soc
