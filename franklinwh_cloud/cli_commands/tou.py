@@ -36,6 +36,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               day_type_str: str | None = None, wait_confirm: bool = False,
               show_next: bool = False, show_price: bool = False,
               active_only: bool = False, multi_season_file: str | None = None,
+              show_current: bool = False,
               show_all_rates: bool = False, extended: bool = False):
     """Execute the TOU command."""
 
@@ -146,7 +147,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                 months = season.get("month", "")
                 
                 # Check --current flag constraint
-                if getattr(args, "show_current", False):
+                if show_current:
                     active_months = [m.strip() for m in months.split(",") if m.strip()]
                     if current_month not in active_months:
                         continue
