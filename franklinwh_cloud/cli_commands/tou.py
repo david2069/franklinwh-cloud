@@ -36,7 +36,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               day_type_str: str | None = None, wait_confirm: bool = False,
               show_next: bool = False, show_price: bool = False,
               active_only: bool = False, multi_season_file: str | None = None,
-              show_all_rates: bool = False):
+              show_all_rates: bool = False, extended: bool = False):
     """Execute the TOU command."""
 
     # ── tou --price ───────────────────────────────────────────────
@@ -173,9 +173,15 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                     # ── Dispatch periods ─────────────────────────
                     periods = day_type.get("detailVoList", [])
                     if periods:
+                        has_soc = extended or any(b.get("maxChargeSoc") is not None or b.get("minDischargeSoc") is not None for b in periods)
+
                         # Table header
-                        print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
-                        print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
+                        if has_soc:
+                            print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
+                            print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
+                        else:
+                            print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'BUY':<7}{'SELL'}")
+                            print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*6} {'─'*6}")
 
                         for block in periods:
                             start = block.get("startHourTime", "?")
@@ -197,6 +203,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
 
                             max_str = f"{max_soc}%" if max_soc else "—"
                             min_str = f"{min_soc}%" if min_soc else "—"
+                            soc_cols = f"{max_str:<9}{min_str:<9}" if has_soc else ""
                             
                             w_buy, w_sell = 0.0, 0.0
                             if wave_type == 0:
@@ -213,7 +220,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                             buy_str = f"${w_buy or 0.0:.2f}"
                             sell_str = f"${w_sell or 0.0:.2f}"
 
-                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{max_str:<9}{min_str:<9}{buy_str:<7}{sell_str}")
+                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{soc_cols}{buy_str:<7}{sell_str}")
 
                         total_blocks += len(periods)
                         print()
