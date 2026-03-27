@@ -166,6 +166,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Show all pricing tiers instead of just the active one")
     sub_tou.add_argument("--extended", action="store_true",
                          help="Always show extended columns (e.g. SoC limits) even if empty")
+    sub_tou.add_argument("--current", dest="show_current", action="store_true",
+                         help="Only show the active season's schedule.")
     sub_tou.add_argument("--multi-season", dest="multi_season_file", metavar="FILE",
                          help="Load and apply a multi-season/multi-day-type schedule from JSON file")
     sub_tou.add_argument("--wait", dest="wait_confirm", action="store_true",
