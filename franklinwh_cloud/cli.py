@@ -376,6 +376,7 @@ async def async_main():
                               show_all_rates=getattr(args, 'show_all_rates', False),
                               extended=getattr(args, 'extended', False),
                               multi_season_file=getattr(args, 'multi_season_file', None),
+                              show_current=getattr(args, 'show_current', False),
                               active_only=getattr(args, 'active_only', False))
 
             case "raw":
