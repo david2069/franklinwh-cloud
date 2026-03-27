@@ -36,7 +36,7 @@ class ModesMixin:
     The API endpoint is ``hes-gateway/terminal/tou/updateTouModeV2``.
     """
 
-    async def set_mode(self, requestedOperatingMode, requestedSOC=None, reqbackupForeverFlag=None, reqnextWorkMode=None, reqdurationMinutes=None):
+    async def set_mode(self, requestedOperatingMode, requestedSOC, reqbackupForeverFlag, reqnextWorkMode, reqdurationMinutes):
         """Set the Operating Work Mode.
 
         Switch from current to requestedOperatingMode value.
@@ -99,12 +99,12 @@ class ModesMixin:
             case "tou_battery_import" | "tou_battery_export" | "tou_custom" | "tou_json":
                 requestedOperatingMode = TIME_OF_USE
                 tou_mode = validate_mode
-            case "1" | "time_of_use" | "timeofuse" | "tou":
+            case "1":
                 requestedOperatingMode = TIME_OF_USE
                 tou_mode = validate_mode
-            case "2" | "self_consumption" | "selfconsumption" | "self":
+            case "2":
                 requestedOperatingMode = SELF_CONSUMPTION
-            case "3" | "emergency_backup" | "emergencybackup" | "emergency" | "backup":
+            case "3":
                 requestedOperatingMode = EMERGENCY_BACKUP
                 if reqnextWorkMode not in [TIME_OF_USE, SELF_CONSUMPTION]:
                     raise InvalidOperatingMode(f"Emergency Backup Next Working Mode must be TIME_OF_USE or SELF_CONSUMPTION and NOT: {requestedOperatingMode}")
@@ -194,19 +194,15 @@ class ModesMixin:
 
         url = self.url_base + "hes-gateway/terminal/tou/updateTouModeV2"
         url = url + f"?gatewayId={self.gateway}"
-        # TouId may natively be None if the gateway has never saved a Time-of-Use profile structurally.
-        # It must NOT be decoupled from the URL otherwise Spring Boot rejects the route entirely.
-        safe_tou_id = touId if touId is not None else 0
-        url = url + f"&currendId={safe_tou_id}"
+        url = url + f"&currendId={touId}"
 
         logger.debug(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {self.gateway}")
         if requestedOperatingMode != EMERGENCY_BACKUP:
             if requestedSOC is None:
-                soc = int(current_soc) if current_soc is not None else None
+                soc = int(current_soc)
             else:
                 soc = int(requestedSOC)
-            if soc is not None:
-                url = url + f"&soc={soc}"
+            url = url + f"&soc={soc}"
 
         if requestedOperatingMode == TIME_OF_USE:
             oldIndex = 3
@@ -214,43 +210,29 @@ class ModesMixin:
             oldIndex = 2
         if requestedOperatingMode == EMERGENCY_BACKUP:
             oldIndex = 1
-            
         url = url + f"&oldIndex={oldIndex}"
         url = url + f"&workMode={requestedOperatingMode}"
 
-        safe_backup_flag = reqbackupForeverFlag if reqbackupForeverFlag is not None else backupForeverFlag
-        if safe_backup_flag is not None:
-            url = url + f"&backupForeverFlag={safe_backup_flag}"
-
         if requestedOperatingMode == EMERGENCY_BACKUP:
-            if safe_backup_flag == 2:
+            url = url + f"&backupForeverFlag={reqbackupForeverFlag}"
+            if reqbackupForeverFlag == 2:
                 if reqnextWorkMode not in [SELF_CONSUMPTION, TIME_OF_USE]:
                     nextWorkMode = SELF_CONSUMPTION
                 else:
                     nextWorkMode = int(reqnextWorkMode)
-                url = url + f"&nextWorkMode={nextWorkMode}"
+            url = url + f"&nextWorkMode={nextWorkMode}"
             if reqdurationMinutes is not None:
                 url = url + f"&durationMinute={str(int(reqdurationMinutes))}"
-                
-        # Optional parameters MUST NOT be stripped; Java Spring Boot @NotNull will reject missing params.
-        # Ensure safely typed integers are piped directly to the format args.
         res = await self.get_storm_settings()
-        enableStorm = res["result"].get("enableStorm")
-        safe_storm = enableStorm if enableStorm is not None else 1
-        url = url + f"&stromEn={safe_storm}"
-            
-        safe_elec = electricityType if electricityType is not None else 1
-        url = url + f"&electricityType={safe_elec}"
-        
-        # Guard against zero-SOC missing payloads as well
-        if "soc=" not in url:
-            url = url + "&soc=20"
+        enableStorm = res["result"]["enableStorm"]
+        url = url + f"&stromEn={enableStorm}"
+        url = url + f"&electricityType={electricityType}"
 
         mode_name = MODE_MAP.get(requestedOperatingMode, f"Unknown Mode {requestedOperatingMode}")
         logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
         logger.debug(f"set_mode: POST URL = {url}")
 
-        res = await self._post(url, payload=None)
+        res = await self._post(url, payload=None, suppress_gateway=True, suppress_params=True)
         if res['code'] == 200:
             result = True
             logger.info(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")

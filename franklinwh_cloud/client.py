@@ -413,6 +413,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         logger.debug(f"params={params}")
 
         async def __post():
+            headers["loginToken"] = str(self.token)
             try:
                 if payload is not None:
                     headers.update({"Content-Type": "application/json", "accept-encoding": "gzip", "lang": "EN_US"})
@@ -422,13 +423,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                         # payload already serialized or primitive
                         resp = await self.session.post(url, headers=headers, params=params, data=str(payload), timeout=30)
                 else:
+                    headers.update({"Content-Type": "application/json"})
                     resp = await self.session.post(
                         url,
                         params=params,
-                        headers={
-                            "loginToken": self.token,
-                            "Content-Type": "application/json",
-                        },
+                        headers=headers,
                         data=payload,
                         timeout=30,
                     )
@@ -436,16 +435,19 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 raise ApiTimeoutError(url)
 
             json_resp = resp.json()
-            if json_resp.get("code") in (401, 10009):
-                raise TokenExpiredException(f"Token expired or completely invalid: Code {json_resp.get('code')} - {json_resp.get('message', 'Unauthorized')}")
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
         from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
-        return await instrumented_retry(
+        final_res = await instrumented_retry(
             self.metrics, extract_endpoint(url), "POST",
-            __post, lambda j: j["code"] != 401, self.refresh_token,
+            __post, lambda j: j.get("code") not in [401, 10009], self.refresh_token,
         )
+        
+        if final_res.get("code") in [401, 10009]:
+            raise TokenExpiredException(f"Token expired or completely invalid: Code {final_res.get('code')} - {final_res.get('message', 'Unauthorized')}")
+            
+        return final_res
 
 
 
@@ -474,25 +476,28 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         async def __get():
             try:
                 resp = await self.session.get(
-                    url, params=params, headers={"loginToken": self.token},
+                    url, params=params, headers={"loginToken": str(self.token)},
                     timeout=30,
                 )
             except httpx.TimeoutException:
                 raise ApiTimeoutError(url)
                 
             json_resp = resp.json()
-            if json_resp.get("code") in (401, 10009):
-                raise TokenExpiredException(f"Token expired or completely invalid: Code {json_resp.get('code')} - {json_resp.get('message', 'Unauthorized')}")
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
         from franklinwh_cloud.metrics import instrumented_retry, extract_endpoint
-        return await instrumented_retry(
+        final_res = await instrumented_retry(
             self.metrics, extract_endpoint(url), "GET",
-            __get, lambda j: j.get("code") != 401, self.refresh_token,
+            __get, lambda j: j.get("code") not in [401, 10009], self.refresh_token,
             rate_limiter=self.rate_limiter,
             stale_cache=self.stale_cache,
         )
+        
+        if final_res.get("code") in [401, 10009]:
+            raise TokenExpiredException(f"Token expired or completely invalid: Code {final_res.get('code')} - {final_res.get('message', 'Unauthorized')}")
+            
+        return final_res
 
 
     async def refresh_token(self):
