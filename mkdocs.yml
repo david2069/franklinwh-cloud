@@ -78,6 +78,7 @@ nav:
     - Scheduling Nettest: SCHEDULING.md
     - Logging Strategy: LOGGING.md
     - Telemetry & Privacy: TELEMETRY.md
+    - Serial Numbers Format: SERIAL_NUMBERS.md
   - CLI:
     - Raw API Methods: cli-raw.md
   - Device Discovery:

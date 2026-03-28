@@ -284,18 +284,11 @@ def _render_accessories(snap):
                 model_info = f"  Model: {acc_data.get('name', '')}  SKU: {acc_data.get('sku', '')}"
                 break
         print_kv(item.name, f"SN: {item.serial}{model_info}")
-        # Show what the API cannot tell us about this accessory
-        q = quirks.get(item.type_name)
-        if q and q.get("api_opaque"):
-            opaque = ", ".join(q["api_opaque"])
-            print_kv("  ⚠ API opaque", opaque)
-            if q.get("workaround"):
-                print_kv("  ↳ Workaround", q["workaround"])
 
     # Global accessory operational states from runtime payload
-    if acc.generator_state:
+    if acc.generator_state and (acc.has_generator or snap.flags.generator_enabled):
         print_kv("Generator State", acc.generator_state)
-    if acc.v2l_state:
+    if acc.v2l_state and (snap.flags.v2l_enabled or snap.flags.v2l_eligible):
         print_kv("V2L State", acc.v2l_state)
 
     sc = acc.smart_circuits
@@ -311,10 +304,6 @@ def _render_accessories(snap):
                 print_kv(f"SC{i+1} Name", f"{name}  [Mode: {mode_str}]")
         v2l = c("green", "Available") if sc.v2l_port else c("dim", "Not available")
         print_kv("V2L Port", v2l)
-        # SC quirks
-        q = quirks.get("smart_circuits")
-        if q and q.get("api_opaque"):
-            print_kv("  ⚠ API opaque", ", ".join(q["api_opaque"]))
 
     if acc.has_apbox:
         print_section("🔌", "aPBox Digital I/O")
@@ -322,9 +311,6 @@ def _render_accessories(snap):
             print_kv("Digital Inputs", ", ".join(acc.apbox_di))
         if acc.apbox_do_status:
             print_kv("Digital Outputs", ", ".join(acc.apbox_do_status))
-        q = quirks.get("apbox")
-        if q and q.get("api_opaque"):
-            print_kv("  ⚠ API opaque", ", ".join(q["api_opaque"]))
 
 
 
@@ -334,17 +320,23 @@ def _render_grid(snap):
     g = snap.grid
     if not g.pcs_entrance:
         return
-    print_section("⚡", "Grid Limits")
-    if g.global_discharge_max_kw:
-        print_kv("Export Limit", f"{g.global_discharge_max_kw} kW")
-    if g.global_charge_max_kw:
-        print_kv("Import Limit", f"{g.global_charge_max_kw} kW")
-    if g.feed_max_kw:
-        print_kv("Feed-in Max", f"{g.feed_max_kw} kW")
-    if g.import_max_kw:
-        print_kv("Import Max", f"{g.import_max_kw} kW")
-    if g.peak_demand_max_kw:
-        print_kv("Peak Demand", f"{g.peak_demand_max_kw} kW")
+    print_section("⚡", "Grid Import & Export")
+    
+    def _fmt(val):
+        if val == -1.0:
+            return "Unlimited"
+        return f"{val} kW"
+
+    if g.global_discharge_max_kw is not None:
+        print_kv("Export Limit", _fmt(g.global_discharge_max_kw))
+    if g.global_charge_max_kw is not None:
+        print_kv("Import Limit", _fmt(g.global_charge_max_kw))
+    if g.feed_max_kw is not None:
+        print_kv("Max Export to Grid", _fmt(g.feed_max_kw))
+    if g.import_max_kw is not None:
+        print_kv("Max Charge from Grid", _fmt(g.import_max_kw))
+    if g.peak_demand_max_kw is not None:
+        print_kv("Peak Demand", _fmt(g.peak_demand_max_kw))
 
 
 def _render_warranty(snap):
@@ -352,8 +344,38 @@ def _render_warranty(snap):
     w = snap.warranty
     if not w.expiry:
         return
+
+    def _format_expiry_countdown(date_str: str) -> str:
+        from datetime import datetime
+        if not date_str: return date_str
+        try:
+            exp = datetime.strptime(date_str.split(" ")[0], "%Y-%m-%d")
+            now = datetime.now()
+            if exp < now: return f"{date_str}  (Expired)"
+            
+            years = exp.year - now.year
+            months = exp.month - now.month
+            days = exp.day - now.day
+            
+            if days < 0:
+                months -= 1
+                days += 30
+            if months < 0:
+                years -= 1
+                months += 12
+                
+            parts = []
+            if years > 0: parts.append(f"{years} yrs")
+            if months > 0: parts.append(f"{months} mos")
+            if days > 0: parts.append(f"{days} days")
+            
+            if not parts: return f"{date_str}  (Expires today)"
+            return f"{date_str}  (in {' '.join(parts)})"
+        except Exception:
+            return date_str
+
     print_section("📋", "Warranty")
-    print_kv("Expires", w.expiry)
+    print_kv("Expires", _format_expiry_countdown(w.expiry))
     if w.throughput_mwh:
         remaining_pct = round((w.remaining_kwh / (w.throughput_mwh * 1000)) * 100) if w.throughput_mwh else 0
         print_kv("Throughput", f"{w.throughput_mwh} MWh warranted")
@@ -364,9 +386,9 @@ def _render_warranty(snap):
         print_kv("Installer Phone", w.installer_phone)
     for dev in w.devices:
         sn_short = dev.serial[-6:] if len(dev.serial) > 6 else dev.serial
-        exp_str = dev.expiry
+        exp_str = _format_expiry_countdown(dev.expiry)
         if dev.sub_module_expiry:
-            exp_str += f"  (sub-module: {dev.sub_module_expiry})"
+            exp_str += f"  (sub-module: {_format_expiry_countdown(dev.sub_module_expiry)})"
         print_kv(f"{dev.model} {sn_short}", f"Expires: {exp_str}")
 
 
@@ -425,6 +447,10 @@ def _render_electrical(snap):
             "apbox": "aPBox Relay",
         }
         for key, state in e.relays.items():
+            if key == "generator" and not (snap.accessories.has_generator or snap.flags.generator_enabled):
+                continue
+            if key == "v2l" and not (snap.flags.v2l_enabled or snap.flags.v2l_eligible):
+                continue
             label = relay_labels.get(key, key)
             icon = c("green", "ON") if state else c("dim", "OFF")
             print_kv(label, icon)

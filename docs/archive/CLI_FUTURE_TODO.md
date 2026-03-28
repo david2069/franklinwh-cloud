@@ -1,6 +1,7 @@
-# CLI Future TODO
+# [ARCHIVED] CLI Future TODO
 
-> Feature ideas and analysis items — not currently in scope.
+> **Status: Archived (2026-03-28)**
+> Feature ideas and analysis items regarding advanced scheduling, watch daemons, and HA entity imports. These concepts have been deemed out-of-scope for the core `franklinwh-cloud` library and are actively deferred to downstream automation platforms (like Home Assistant or the independent FEM framework). Routine discovery tasks have already been natively implemented in `franklinwh-cli discover` and `accessories`.
 
 ---
 
