@@ -421,7 +421,7 @@ class DiscoverMixin:
                 current_id = gp.get("currentId", 0)
                 for p in profiles:
                     if p.get("id") == current_id:
-                        snap.site.der_schedule = p.get("name", "")
+                        snap.site.grid_profile = p.get("name", "")
                         break
         except Exception as e:
             logger.warning(f"discover: get_grid_profile_info failed: {e}")
