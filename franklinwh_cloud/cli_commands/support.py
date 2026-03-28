@@ -1384,7 +1384,7 @@ async def run_info(client, json_output: bool = False):
                     gw_node["devices"].append({"type": "solar", "count": len(solar)})
                 
                 try:
-                    acc_res = await client.get_accessories(2)
+                    acc_res = await client.get_accessories(0)
                     accessories = acc_res.get("result", [])
                 except Exception:
                     accessories = []

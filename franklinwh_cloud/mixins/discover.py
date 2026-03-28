@@ -361,7 +361,7 @@ class DiscoverMixin:
 
         # 7. Accessories
         try:
-            accy = await self.get_accessories(2)  # IoT accessory list
+            accy = await self.get_accessories(0)  # Common accessory list (includes AU SC)
             accy_list = accy.get("result", []) if isinstance(accy, dict) else []
             for item in accy_list:
                 atype = item.get("accessoryType", 0)
