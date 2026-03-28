@@ -92,6 +92,9 @@ class APowerUnit:
     bl_ver: str = ""             # bootloader
     th_ver: str = ""             # thermal
     mppt_app_ver: str = ""       # aPower S MPPT firmware
+    # Operational states
+    bms_state: str = ""
+    pcs_state: str = ""
 
 
 @dataclass
@@ -117,9 +120,10 @@ class AccessoryItem:
 class SmartCircuitConfig:
     """Smart circuit configuration from MQTT cmd 311."""
     count: int = 0               # 2 or 3
-    version: int = 0             # 1 or 2
+    version: int = 1             # 1 or 2
     merged: bool = False         # SwMerge — SC1+SC2 merged
     names: List[str] = field(default_factory=list)
+    modes: List[str] = field(default_factory=list)
     v2l_port: bool = False       # V2L available on this SC
     v2l_enabled: bool = False    # V2L currently active
 
@@ -135,8 +139,10 @@ class AccessoriesInfo:
     has_mac1: bool = False
     smart_circuits: Optional[SmartCircuitConfig] = None
     # aPBox digital I/O
-    apbox_di: List[int] = field(default_factory=list)
-    apbox_do_status: List[int] = field(default_factory=list)
+    apbox_di: List[str] = field(default_factory=list)
+    apbox_do_status: List[str] = field(default_factory=list)
+    generator_state: str = ""
+    v2l_state: str = ""
 
 
 @dataclass

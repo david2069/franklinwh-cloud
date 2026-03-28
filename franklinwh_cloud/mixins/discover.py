@@ -19,6 +19,9 @@ from franklinwh_cloud.discovery import (
     AccessoryItem, SmartCircuitConfig, AccessoriesInfo, FeatureFlags,
     GridInfo, WarrantyDevice, WarrantyInfo, ElectricalInfo, ProgrammeInfo,
 )
+from franklinwh_cloud.const.states import (
+    APBOX_IO_STATE, SMART_CIRCUIT_MODE, GENERATOR_STATE, V2L_RUN_STATE, PCS_STATE, BMS_STATE
+)
 
 logger = logging.getLogger(__name__)
 
@@ -292,12 +295,29 @@ class DiscoverMixin:
                 # aPBox digital I/O
                 di = runtime.get("di")
                 do_st = runtime.get("doStatus")
-                if isinstance(di, list) and any(v != 0 for v in di):
-                    snap.accessories.apbox_di = di
-                    snap.accessories.has_apbox = True
-                if isinstance(do_st, list) and any(v != 0 for v in do_st):
-                    snap.accessories.apbox_do_status = do_st
-                    snap.accessories.has_apbox = True
+                if isinstance(di, list):
+                    snap.accessories.apbox_di = [APBOX_IO_STATE.get(v, str(v)) for v in di]
+                    if any(v != 0 for v in di): snap.accessories.has_apbox = True
+                if isinstance(do_st, list):
+                    snap.accessories.apbox_do_status = [APBOX_IO_STATE.get(v, str(v)) for v in do_st]
+                    if any(v != 0 for v in do_st): snap.accessories.has_apbox = True
+
+                # Generator and V2L States
+                gen_stat = runtime.get("genStat")
+                if gen_stat is not None:
+                    snap.accessories.generator_state = GENERATOR_STATE.get(gen_stat, str(gen_stat))
+                v2l_stat = runtime.get("v2lRunState")
+                if v2l_stat is not None:
+                    snap.accessories.v2l_state = V2L_RUN_STATE.get(v2l_stat, str(v2l_stat))
+
+                # BMS and PCS Operational Arrays
+                bms_work = runtime.get("bms_work", [])
+                pe_stat = runtime.get("pe_stat", [])
+                for i, unit in enumerate(snap.batteries.units):
+                    if i < len(bms_work):
+                        unit.bms_state = BMS_STATE.get(bms_work[i], str(bms_work[i]))
+                    if i < len(pe_stat):
+                        unit.pcs_state = PCS_STATE.get(pe_stat[i], str(pe_stat[i]))
         except Exception as e:
             logger.warning(f"discover: get_device_composite_info failed: {e}")
 
@@ -387,9 +407,12 @@ class DiscoverMixin:
                 sc_info = await self.get_smart_circuits_info()
                 if isinstance(sc_info, dict):
                     names = []
-                    for key in ["Sw1Name", "Sw2Name", "Sw3Name"]:
+                    modes = []
+                    for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
                         name = sc_info.get(key, "") or ""
                         names.append(name.strip() if name else "")
+                        m = sc_info.get(mode_key, 0)
+                        modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
                     # Determine SC version from aGate generation
                     sc_version = 2 if snap.agate.generation == 2 else 1
                     # Determine circuit count from catalog (hardware truth)
@@ -400,13 +423,15 @@ class DiscoverMixin:
                                 and acc_info.get("country_id") == snap.site.country_id):
                             count = acc_info.get("circuit_count", 2)
                             break
-                    # Trim names to actual circuit count
+                    # Trim arrays to actual circuit count
                     names = names[:count]
+                    modes = modes[:count]
                     snap.accessories.smart_circuits = SmartCircuitConfig(
                         count=count,
                         version=sc_version,
                         merged=sc_info.get("SwMerge", 0) == 1,
                         names=names,
+                        modes=modes,
                         v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
                         v2l_enabled=snap.flags.v2l_enabled,
                     )
