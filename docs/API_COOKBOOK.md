@@ -25,6 +25,23 @@ async def main():
 asyncio.run(main())
 ```
 
+### Custom Client Identity (HTTP Headers)
+
+By default, the library sends a generic `franklinwh-cloud-client` User-Agent. If you are building an integration (e.g., a Home Assistant add-on or custom dashboard), you can declare your identity to FranklinWH's servers:
+
+```python
+    custom_headers = {
+        "User-Agent": "HomeAssistant-Addon/1.0.0",
+        "X-Client-Version": "1.0.0"
+    }
+
+    client = FranklinWHCloud(
+        email="user@example.com", 
+        password="secret", 
+        client_headers=custom_headers
+    )
+```
+
 Or load from config file:
 
 ```python
