@@ -1204,42 +1204,38 @@ async def run_info(client, json_output: bool = False):
         pass
 
     try:
-        gw_res = await client.get_home_gateway_list()
-        gateways = gw_res.get("result", [])
+        site_info_res = await client.get_site_and_device_info()
+        sites_data = site_info_res.get("result", [])
     except Exception as e:
-        print_error(f"Failed to fetch gateways: {e}")
+        print_error(f"Failed to fetch site list: {e}")
         return
 
-    # Group by site/group
-    sites = {}
-    for gw in gateways:
-        site_name = gw.get("groupName") or "Default Site"
-        site_id = gw.get("groupId") or "Unknown"
-        site_key = f"{site_name} (SiteId: {site_id})"
-        if site_key not in sites:
-            sites[site_key] = []
-        sites[site_key].append(gw)
-        
+    # Using get_site_and_device_info for proper topology
     if json_output:
-        out = {"email": email, "userId": user_id, "sites": sites}
+        out = {"email": email, "userId": user_id, "sites": sites_data}
         print_json_output(out)
         return
         
     print(f"{c('cyan', email)} (UserId: {user_id})")
     print("  │")
     
-    for site_idx, (site_key, site_gws) in enumerate(sites.items()):
-        is_last_site = site_idx == len(sites) - 1
+    for site_idx, site in enumerate(sites_data):
+        is_last_site = site_idx == len(sites_data) - 1
         site_prefix = "  └──" if is_last_site else "  ├──"
-        print(f"{site_prefix} {c('yellow', site_key)}")
         
-        for gw_idx, gw in enumerate(site_gws):
-            is_last_gw = gw_idx == len(site_gws) - 1
+        site_name = site.get("siteName") or "Default Site"
+        site_id = site.get("siteId") or "Unknown"
+        site_label = f"{site_name} (SiteId: {site_id})"
+        print(f"{site_prefix} {c('yellow', site_label)}")
+        
+        gws = site.get("basicDeviceInfoVOList", [])
+        for gw_idx, gw in enumerate(gws):
+            is_last_gw = gw_idx == len(gws) - 1
             gw_prefix = "        └──" if is_last_gw else "        ├──"
             bar = " " if is_last_site else "│"
             
-            gw_id = gw.get("id", "?")
-            gw_name = gw.get("name", "FHP")
+            gw_id = gw.get("gatewayId", "?")
+            gw_name = gw.get("gatewayName", "FHP")
             print(f"  {bar}     │")
             print(f"  {bar}     {gw_prefix} {c('green', gw_name)} (aGate: {gw_id})")
             
