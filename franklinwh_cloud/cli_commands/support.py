@@ -1297,7 +1297,32 @@ async def run_info(client, json_output: bool = False):
                     status_str = f"{run_status} ({work_mode})"
                 except Exception:
                     status_str = "Unknown"
+                    
+                sync_flags = {}
+                try:
+                    modes_res = await client.get_gateway_tou_list()
+                    m_res = modes_res.get("result", {})
+                    tou_send = m_res.get("touSendStatus")
+                    stop_mode = m_res.get("stopMode")
+                    alert_msg = m_res.get("touAlertMessage")
+                    
+                    if stop_mode:
+                        status_str += " [STOP MODE!]"
+                    if tou_send:
+                        status_str += f" [Sync Pending]"
+                    if alert_msg:
+                        status_str += f" [Alert: {alert_msg}]"
+                        
+                    sync_flags = {
+                        "touSendStatus": tou_send,
+                        "stopMode": stop_mode,
+                        "touAlertMessage": alert_msg
+                    }
+                except Exception:
+                    pass
+                
                 gw_node["status"] = status_str
+                gw_node.update(sync_flags)
                     
                 try:
                     tou_res = await client.get_tou_dispatch_detail()
