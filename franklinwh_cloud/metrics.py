@@ -18,7 +18,7 @@ logger = logging.getLogger("franklinwh_cloud")
 # ── Client Identity ──────────────────────────────────────────────────
 
 # Library version — kept in sync with pyproject.toml
-__version__ = "0.2.0"
+__version__ = "0.4.3"
 
 # Legal disclaimer — logged once at Client init
 DISCLAIMER = (
