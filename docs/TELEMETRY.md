@@ -82,6 +82,42 @@ Before implementing the library hook, you should understand exactly what this im
 * **Where**: It transmits directly to `https://app.posthog.com/capture/` over HTTPS TLS.
 * **Viewability**: The metric acts as a raw "Event" in PostHog. You can log into your PostHog dashboard, open the "Events" tab, and immediately view a live bar-graph grouping by Command Name to show aggregated daily frequencies and average latencies.
 
+---
+
+## 6. PostHog Extraction & Interpretation Guide
+
+When `dispatch_cli_event` fires, it transmits exactly one event to PostHog named `franklinwh_cloud_execution`. 
+
+### The JSON Payload (`What` is collected)
+If a user runs your custom `franklinwh-cli status` wrapper, PostHog receives this exact dictionary under the event's "Properties" tab:
+```json
+{
+  "event": "franklinwh_cloud_execution",
+  "distinct_id": "c7b2... (user UUID)",
+  "properties": {
+    "command": "status",
+    "execution_latency_ms": 412,
+    "success": true
+  }
+}
+```
+
+### How to Build Dashboards & Interpret the Metrics
+
+Once your users start generating these events, you can log into PostHog to extract the data using **Insights**. Here are the three mandatory metrics you should monitor and how to interpret them:
+
+**1. API Degradation Tracking (Latency)**
+* **How to build**: Create a *Trends* Insight. Set Series to `franklinwh_cloud_execution`, click the Y-axis metric and change it to `Average Property Value`, then select `execution_latency_ms`. Group the chart by the `command` property.
+* **Interpretation**: If your "Average Latency" chart historically hovers around 400ms, but suddenly spikes to 9,000ms+ globally across all your users, the upstream FranklinWH Cloud API server is experiencing a major outage. You don't need to guess if the lag is your code's fault or theirs.
+
+**2. Error Rate Spikes (Success = false)**
+* **How to build**: Create a *Trends* Insight. Filter the events where `success` equals `false`.
+* **Interpretation**: If this number suddenly spikes, FranklinWH likely changed a JSON schema upstream, breaking your parser, or the user's authentication token pool was completely invalidated. 
+
+**3. Feature Adoption Rates**
+* **How to build**: Create a *Pie Chart* Insight. Group by the `command` property.
+* **Interpretation**: If you spend 20 hours building a massive new `dispatch` feature, but this pie chart reveals that 98% of your users only ever execute the `status` command, you instantly know where to focus your future developmental resources. 
+
 ### Worked Example
 
 Here is exactly how you connect the tracking pipeline into your own script's `main()` lifecycle:
