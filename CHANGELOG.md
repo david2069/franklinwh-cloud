@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.4.3] - 2026-03-28
 
 ### Added
+- **Telemetry Opt-In Engine** — Formalized tracking privacy policy in `TELEMETRY.md` and injected robust Scarf Edge PoP integration in `README.md`. Shipped an optional asynchronous HTTP PostHog dispatcher in `telemetry.py` running gracefully on a background daemon to capture zero-friction client executions.
+- **Strict Headers Customization** — Officially documented HTTP identity injection rules inside `API_COOKBOOK.md` to safely permit Home Assistant API integrations.
+- **Unified Accessory Translations** — Refactored deeply-nested proprietary hardware binary schemas natively into english output maps. Arrays mapping directly resolved in `discover -v`: Generator (`genStat`), V2L (`v2lRunState`), Power Control Systems (`pe_stat`), BMS (`bms_work`), Smart Circuits (`Sw1Mode`), and Remote Sensors (`doStatus` / `di`).
 - **API Mapping Documentation** — Generated `API_ENDPOINTS_MAPPING.md` via AST to fully document mapping of library methods to Cloud Endpoints. Added to MkDocs Wiki explicitly.
 - **Hardware Diagnostics** — Added `get_power_cap_config_list` (nameplate capacity/models) and `get_device_run_log_list` (alarm/error logs) natively to the codebase pipeline.
 - **CLI TOU Filtering** — `franklinwh-cli tou --current` strictly filters output table string representations to actively display only the currently active season blocks.
