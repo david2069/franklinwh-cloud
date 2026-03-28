@@ -1225,7 +1225,11 @@ async def run_info(client, json_output: bool = False):
         
         site_name = site.get("siteName") or "Default Site"
         site_id = site.get("siteId") or "Unknown"
+        address = site.get("completeAddress", "")
         site_label = f"{site_name} (SiteId: {site_id})"
+        if address:
+            site_label += f" — {address}"
+            
         print(f"{site_prefix} {c('yellow', site_label)}")
         
         gws = site.get("basicDeviceInfoVOList", [])
@@ -1236,8 +1240,14 @@ async def run_info(client, json_output: bool = False):
             
             gw_id = gw.get("gatewayId", "?")
             gw_name = gw.get("gatewayName", "FHP")
+            gw_addr = gw.get("completeAddress", "")
+            
+            gw_label = f"{gw_name} (aGate: {gw_id})"
+            if gw_addr and gw_addr != address:
+                gw_label += f" — {gw_addr}"
+                
             print(f"  {bar}     │")
-            print(f"  {bar}     {gw_prefix} {c('green', gw_name)} (aGate: {gw_id})")
+            print(f"  {bar}     {gw_prefix} {c('green', gw_label)}")
             
             try:
                 old_gw = client.gateway
