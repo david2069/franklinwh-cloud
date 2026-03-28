@@ -432,7 +432,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                         timeout=30,
                     )
             except httpx.TimeoutException:
-                raise FranklinWHTimeoutError(url, timeout_s)
+                raise FranklinWHTimeoutError(url, 30)
 
             json_resp = resp.json()
             self._check_canary_trap(url, json_resp, resp.headers)
@@ -480,7 +480,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                     timeout=30,
                 )
             except httpx.TimeoutException:
-                raise FranklinWHTimeoutError(url, timeout_s)
+                raise FranklinWHTimeoutError(url, 30)
                 
             json_resp = resp.json()
             self._check_canary_trap(url, json_resp, resp.headers)
