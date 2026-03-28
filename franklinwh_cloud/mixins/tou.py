@@ -32,7 +32,10 @@ from franklinwh_cloud.const.test_fixtures import (
     export_to_grid_peakonly, charge_from_grid, standby_schedule,
     power_home_only, charge_from_solar, self_schedule, custom_schedule,
 )
-from franklinwh_cloud.exceptions import InvalidTOUScheduleOption
+from franklinwh_cloud.exceptions import (
+    InvalidTOUScheduleOption,
+    FranklinWHTimeoutError,
+)
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -1556,7 +1559,7 @@ class TouMixin:
 
         Raises
         ------
-        ApiTimeoutError
+        FranklinWHTimeoutError
             If the API call times out.
         """
         WAVE_TYPE_NAMES = {0: "Off-Peak", 1: "Mid-Peak", 2: "On-Peak", 3: "Super-Peak", 4: "Super-Off-Peak"}
