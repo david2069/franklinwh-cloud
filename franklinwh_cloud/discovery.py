@@ -33,6 +33,7 @@ class SiteInfo:
     electric_company: str = ""
     tariff_name: str = ""
     der_schedule: str = ""       # NEM type from TOU template
+    grid_profile: str = ""       # Grid compliance profile (e.g. AS4777 or User Defined)
     pto_date: str = ""           # Permission to Operate date
 
 
