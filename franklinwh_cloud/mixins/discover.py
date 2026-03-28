@@ -14,6 +14,9 @@ import logging
 from datetime import datetime
 from importlib.resources import files as pkg_files
 
+from franklinwh_cloud.exceptions import FranklinWHTimeoutError
+
+
 from franklinwh_cloud.discovery import (
     DeviceSnapshot, SiteInfo, AgateInfo, APowerUnit, BatteryInfo,
     AccessoryItem, SmartCircuitConfig, AccessoriesInfo, FeatureFlags,
@@ -50,7 +53,7 @@ def _ts_to_str(ts_ms):
         return None
     try:
         return datetime.fromtimestamp(ts_ms / 1000.0).strftime("%Y-%m-%d %H:%M")
-    except (TypeError, ValueError, OSError):
+    except (FranklinWHTimeoutError, ValueError, OSError):
         return None
 
 
