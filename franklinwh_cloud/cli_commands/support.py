@@ -1218,13 +1218,11 @@ async def run_info(client, json_output: bool = False):
         print_error(f"Failed to fetch site list: {e}")
         return
 
-    # Using get_site_and_device_info for proper topology
-    if json_output:
-        out = {"email": email, "userId": user_id, "sites": sites_data}
-        print_json_output(out)
-        return
-        
-    print(f"{c('cyan', email)} (UserId: {user_id})")
+    # We will build a unified output dictionary so JSON clients get everything
+    topology = {"email": email, "userId": user_id, "sites": []}
+    
+    if not json_output:
+        print(f"{c('cyan', email)} (UserId: {user_id})")
     
     for site_idx, site in enumerate(sites_data):
         is_last_site = site_idx == len(sites_data) - 1
@@ -1234,11 +1232,20 @@ async def run_info(client, json_output: bool = False):
         site_name = site.get("siteName") or "Default Site"
         site_id = site.get("siteId") or "Unknown"
         address = site.get("completeAddress", "")
-        site_label = f"{site_name} (SiteId: {site_id})"
-        if address:
-            site_label += f" — {address}"
-            
-        print(f"{site_prefix} {c('yellow', site_label)}")
+        
+        site_node = {
+            "siteName": site_name,
+            "siteId": site_id,
+            "completeAddress": address,
+            "gateways": []
+        }
+        topology["sites"].append(site_node)
+        
+        if not json_output:
+            site_label = f"{site_name} (SiteId: {site_id})"
+            if address:
+                site_label += f" — {address}"
+            print(f"{site_prefix} {c('yellow', site_label)}")
         
         gws = site.get("basicDeviceInfoVOList", [])
         for gw_idx, gw in enumerate(gws):
@@ -1254,11 +1261,22 @@ async def run_info(client, json_output: bool = False):
             hw_ver = gw.get("sysHdVersion")
             agate_model = FRANKLINWH_MODELS.get(int(hw_ver), {}).get("model", "aGate") if hw_ver else "aGate"
             
-            gw_label = f"{gw_name} ({agate_model}: {gw_id})"
-            if gw_addr and gw_addr != address:
-                gw_label += f" — {gw_addr}"
-                
-            print(f"{site_bar}{gw_prefix} {c('green', gw_label)}")
+            gw_node = {
+                "gatewayId": gw_id,
+                "gatewayName": gw_name,
+                "gatewayModel": agate_model,
+                "completeAddress": gw_addr,
+                "status": "Unknown",
+                "lifecycle": {},
+                "devices": []
+            }
+            site_node["gateways"].append(gw_node)
+            
+            if not json_output:
+                gw_label = f"{gw_name} ({agate_model}: {gw_id})"
+                if gw_addr and gw_addr != address:
+                    gw_label += f" — {gw_addr}"
+                print(f"{site_bar}{gw_prefix} {c('green', gw_label)}")
             
             try:
                 old_gw = client.gateway
@@ -1279,6 +1297,7 @@ async def run_info(client, json_output: bool = False):
                     status_str = f"{run_status} ({work_mode})"
                 except Exception:
                     status_str = "Unknown"
+                gw_node["status"] = status_str
                     
                 try:
                     tou_res = await client.get_tou_dispatch_detail()
@@ -1301,6 +1320,13 @@ async def run_info(client, json_output: bool = False):
                 pto_str = pto if pto else "Pending"
                 exp_str = f" | Expires {expires}" if expires else ""
                 
+                gw_node["lifecycle"] = {
+                    "createdOn": create_str,
+                    "activatedOn": active_str,
+                    "expiresOn": expires,
+                    "ptoDate": pto_str
+                }
+                
                 items = [
                     f"Status: {status_str}",
                     f"Lifecycle: Created {create_str} | Activated {active_str}{exp_str} | PTO: {pto_str}"
@@ -1313,7 +1339,6 @@ async def run_info(client, json_output: bool = False):
                     apower_configs = []
 
                 apower_models = {}
-                from franklinwh_cloud.const import FRANKLINWH_MODELS
                 for cfg in apower_configs:
                     sn = cfg.get("peSn")
                     ver = cfg.get("peHwVersion") or (cfg.get("peHwVerList") or [None])[0]
@@ -1327,9 +1352,11 @@ async def run_info(client, json_output: bool = False):
                 for i, ap in enumerate(apowers):
                     model_name = apower_models.get(ap, "aPower")
                     items.append(f"{model_name} (Serial: {ap})")
+                    gw_node["devices"].append({"type": "battery", "model": model_name, "serial": ap})
                 
                 if solar:
                     items.append(f"Solar PV: {len(solar)} strings")
+                    gw_node["devices"].append({"type": "solar", "count": len(solar)})
                 
                 try:
                     acc_res = await client.get_accessories(2)
@@ -1343,17 +1370,25 @@ async def run_info(client, json_output: bool = False):
                     
                     if sc_cnt:
                         items.append(f"Smart Circuit × {sc_cnt}")
+                        gw_node["devices"].append({"type": "smart_circuit", "count": sc_cnt})
                     if gen_cnt:
                         items.append(f"Generator × {gen_cnt}")
+                        gw_node["devices"].append({"type": "generator", "count": gen_cnt})
                 
-                for item_idx, item in enumerate(items):
-                    is_last_item = item_idx == len(items) - 1
-                    item_prefix = "└──" if is_last_item else "├──"
-                    print(f"{site_bar}{gw_bar}{item_prefix} {c('dim', item)}")
+                if not json_output:
+                    for item_idx, item in enumerate(items):
+                        is_last_item = item_idx == len(items) - 1
+                        item_prefix = "└──" if is_last_item else "├──"
+                        print(f"{site_bar}{gw_bar}{item_prefix} {c('dim', item)}")
                     
                 client.gateway = old_gw
             except Exception as e:
-                print(f"{site_bar}{gw_bar}└── Error fetching devices: {e}")
+                gw_node["error"] = str(e)
+                if not json_output:
+                    print(f"{site_bar}{gw_bar}└── Error fetching devices: {e}")
+
+    if json_output:
+        print_json_output(topology)
 
 # ── CLI entry point ──────────────────────────────────────────────────
 
