@@ -1250,7 +1250,11 @@ async def run_info(client, json_output: bool = False):
             gw_name = gw.get("gatewayName", "FHP")
             gw_addr = gw.get("completeAddress", "")
             
-            gw_label = f"{gw_name} (aGate: {gw_id})"
+            from franklinwh_cloud.const import FRANKLINWH_MODELS
+            hw_ver = gw.get("sysHdVersion")
+            agate_model = FRANKLINWH_MODELS.get(int(hw_ver), {}).get("model", "aGate") if hw_ver else "aGate"
+            
+            gw_label = f"{gw_name} ({agate_model}: {gw_id})"
             if gw_addr and gw_addr != address:
                 gw_label += f" — {gw_addr}"
                 
@@ -1316,7 +1320,7 @@ async def run_info(client, json_output: bool = False):
                     if sn and ver:
                         try:
                             model_dict = FRANKLINWH_MODELS.get(int(ver), {})
-                            apower_models[sn] = model_dict.get("name", "aPower")
+                            apower_models[sn] = model_dict.get("model", "aPower")
                         except (ValueError, TypeError):
                             pass
                             
