@@ -251,9 +251,14 @@ class ModesMixin:
         logger.debug(f"set_mode: POST URL = {url}")
 
         res = await self._post(url, payload=None)
-        if res['code'] == 200:
+        res_code = res.get('code')
+        
+        if res_code in (200, 176):
             result = True
-            logger.info(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")
+            if res_code == 176:
+                logger.warning(f"set_mode: Mode '{mode_name}' queued for offline sync (code 176) for aGate {self.gateway}")
+            else:
+                logger.info(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")
         else:
             logger.error(f"set_mode: failed switched operating mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex} for aGate {self.gateway}: {res}")
             result = False
