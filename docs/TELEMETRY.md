@@ -1,37 +1,86 @@
 # Telemetry & Privacy Policy
 
-The `franklinwh-cloud` library and CLI prioritize user privacy. Because this integration handles smart home appliances, battery gateways, and cloud credentials, strict privacy boundaries are mathematically enforced across all community telemetry tools.
+The `franklinwh-cloud` library and CLI prioritize user privacy. Because this integration handles critical smart home appliances and cloud credentials, strict privacy boundaries are mathematically enforced. 
 
-## What is Tracked?
-We use two explicit telemetry services to understand exactly how the open-source community leverages the library.
+This document outlines an end-to-end explanation of our telemetry philosophy, strictly bounded by a "Need to Know" basis.
 
-### 1. Scarf (Passive Installation Tracking)
-We use [Scarf](https://scarf.sh/) to track package downloads, Home Assistant integration pulls, and PyPI installations.
-- **Data Collected**: Package version, Operating System family (e.g. Linux vs MacOS), abstract geographic region.
-- **Privacy Model**: All raw IPs are aggressively masked and anonymized by Scarf before the maintainers ever see the analytics dashboard. Scarf strips identifying information to strictly maintain GDPR/CCPA compliance.
+## 1. Why it Exists & What is Collected
 
-### 2. PostHog (Active Feature Usage)
-For deeper CLI usage (e.g., figuring out if users genuinely use the `--extended` table views or which operating modes are dispatched the most), we leverage [PostHog](https://posthog.com/).
-- **Data Collected**: The name of the Python commands invoked, execution latency, and success/failure flags. 
-- **Privacy Model**: PostHog telemetry is **100% Opt-In**. If enabled, your terminal is assigned a localized, randomized, anonymous UUID (e.g. `c7b2-4d1a...`). We mathematically never collect, serialize, or transmit your FranklinWH emails, passwords, serials numbers, gateway hardware identifiers, or localized battery capacities.
+Telemetry exists to help maintainers understand how the library is utilized in the wild, enabling us to deprecate unused endpoints safely, focus on highly trafficked features, and diagnose widespread API timeouts.
 
-## How to Opt Out
-If you operate `franklinwh-cloud` via the Python library natively, PostHog telemetry is inherently disabled unless explicitly initialized into the root dispatcher.
+### Passive Installation Tracking (Scarf)
+We use [Scarf](https://scarf.sh/) to passively track generic package downloads (e.g., PyPI installations or Home Assistant pulls).
+- **Base Metrics Collected**: Package version, OS family, and abstract geographic region.
+- **Privacy Model**: IPs are aggressively anonymized *before* hitting our dashboard to maintain GDPR/CCPA compliance.
+- **Example Use Case**: Knowing that 90% of downloads are targeting Linux architectures allows us to prioritize testing on Linux over Windows.
+- **Example Data Link**: [Scarf Privacy & Data Examples](https://about.scarf.sh/privacy)
 
-If you operate via `franklinwh-cli`, the client strictly enforces the `telemetry.enabled` configuration key located in your runtime `franklinwh.ini` configurations. If you decline the setup wizard or strip the key, your footprint remains absolutely invisible.
+### Active Feature Usage (PostHog)
+For deeper operational usage, we provide an **OPTIONAL** integration with [PostHog](https://posthog.com/). **This is never used without explicit user consent under any circumstances.**
+- **Base Metrics Collected**: The specific Python command invoked (e.g., `discover`, `tou --set`), execution latency, and success/failure flags. We only collect what is needed—nothing more, nothing less.
+- **Privacy Model**: 100% Opt-In. If enabled, the terminal is assigned an anonymous UUID (e.g., `c7b2...`). We never extract emails, passwords, gateway serials, or battery configurations.
+- **Example Use Case**: Determining if users genuinely utilize the `--extended` table views or identifying which operating modes fail most frequently.
+- **Example Data Link**: [PostHog Event Tracking Examples](https://posthog.com/docs/getting-started/send-events)
 
-### Home Assistant Integration Compliance
-If you consume `franklinwh-cloud` heavily via a downstream Home Assistant (HACS) wrap, tracking falls strictly onto the Custom Integration's specific UI configuration wizard in line with the Home Assistant Analytics protocol. No ghost analytics are actively bypassed by our Python library under the hood.
+## 2. Who Will Benefit
+The telemetry ecosystem is carefully designed to benefit three distinct parties:
+1. **Users** (Homeowners / End-Consumers)
+2. **Developers** (Authors of downstream tools, like Home Assistant overlays)
+3. **Maintainers** (The core contributors of `franklinwh-cloud`)
 
-*For any questions regarding runtime privacy, please raise an issue strictly on the project GitHub.*
+## 3. How Will Each Party Benefit
+* **Users**: Experience significantly faster bug resolutions. If an API endpoint changes upstream and causes 500 timeouts, telemetry allows the maintainers to push a hotfix before the user even has to file a GitHub issue.
+* **Developers**: Gain visibility into which features of their custom wrapper are actually being leveraged by their specific user base, allowing them to optimize performance.
+* **Maintainers**: Avoid flying blind. Maintainers can confidently refactor components, permanently knowing exactly which CLI commands or endpoints are critical and which rely on legacy logic.
+
+## 4. Where Can You See the Metrics Collected?
+Currently, raw telemetry is securely ingested into the library's private Scarf and PostHog organizational dashboards accessible only by the core architectural maintainers. 
+
+However, because the `dispatch_cli_event` pipeline is strictly open-sourced, **downstream Developers** are actively encouraged to fork the PostHog API keys to route their specific user-metrics into their own personal PostHog dashboards for their own applications.
+
+---
+
+## 5. End-to-End Architecture Flow
+
+The following Mermaid diagram outlines exactly how the strict opt-in framework protects user data before it ever touches an external network.
+
+```mermaid
+flowchart TD
+    User([End User]) -->|Executes Command| App[Client App / CLI]
+    App -->|Reads Local Config| Config{franklinwh.ini}
+    
+    Config -->|telemetry.enabled = false| Blocked[🚫 Data Dropped Locally]
+    Config -->|telemetry.enabled = true| Consent[✅ Explicit Opt-In Confirmed]
+    
+    Consent -->|Triggers Background Daemon| Lib[franklinwh-cloud Library]
+    Lib -->|Strips PII & Formats Payload| Sync[Metrics Dispatcher]
+    
+    Sync -->|Async HTTP POST| PH[(PostHog Cloud)]
+    
+    classDef secure fill:#d4edda,stroke:#28a745,color:#155724;
+    classDef blocked fill:#f8d7da,stroke:#dc3545,color:#721c24;
+    class Blocked blocked;
+    class Consent secure;
+```
 
 ---
 
 ## Developer Guide: Implementing PostHog Telemetry
 
-If you are building a custom CLI wrapper (e.g., `franklinwh_cli.py`) or a Home Assistant component using `franklinwh-cloud` and you want to opt-in / securely hook your application into our metrics system, you can use the natively bundled PostHog dispatcher. 
+If you are building a custom CLI wrapper (e.g., `franklinwh_cli.py`) or a Home Assistant component using `franklinwh-cloud`, you **MUST** properly comply with all consent requirements. **You must formally request opt-in consent from your users via a UI toggle or explicitly written configuration file.**
 
-The dispatcher uses a highly isolated zero-dependency **synchronous daemon thread** running built-in `urllib` to ensure your main script/CLI tears down instantly without waiting for HTTP connections, mathematically guaranteeing zero application lag.
+**Plain English translation:** When your code calls our tracking function, it doesn't wait around for the internet to connect or the data to send. It simply hands the data off to a background worker and instantly moves on. This guarantees your app never slows down, freezes, or lags just because it's trying to send a metric.
+
+*(Technical detail: The dispatcher uses a highly isolated zero-dependency **synchronous daemon thread** running built-in `urllib` to ensure your main script/CLI tears down instantly without waiting for HTTP connections, mathematically guaranteeing zero application lag.)*
+
+### The `dispatch_cli_event` Method Explained
+
+Before implementing the library hook, you should understand exactly what this import does beneath the hood:
+* **Why**: To non-intrusively log that a specific feature of your interface (e.g., custom Modbus polling or Home Assistant action) was successfully executed. This allows you to objectively measure adoption rates of your own custom components.
+* **How**: By spinning up a completely detached Python background daemon thread (`urllib`) that fires an asynchronous HTTP `POST`. This guarantees 0ms of latency added to your script's exit sequence.
+* **What**: It constructs a tiny, strictly formed JSON payload containing only: the `command_executed` string, an executed timestamp, execution latency (ms), a success boolean, and your user's localized `execution_uuid`.
+* **Where**: It transmits directly to `https://app.posthog.com/capture/` over HTTPS TLS.
+* **Viewability**: The metric acts as a raw "Event" in PostHog. You can log into your PostHog dashboard, open the "Events" tab, and immediately view a live bar-graph grouping by Command Name to show aggregated daily frequencies and average latencies.
 
 ### Worked Example
 
