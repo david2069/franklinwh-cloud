@@ -27,7 +27,8 @@ DISCLAIMER = (
     "| You must read and understand the LICENSE and its Additional Terms before use. "
     "| This software may break without notice due to upstream API changes, "
     "outages, or authentication changes by FranklinWH. "
-    "| MIT License — see LICENSE for details."
+    "| MIT License — see LICENSE for details. "
+    "| TELEMETRY Priv: Opt-in strictly via config (telemetry.enabled) — see TELEMETRY.md."
 )
 
 
