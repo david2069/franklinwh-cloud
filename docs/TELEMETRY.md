@@ -24,3 +24,61 @@ If you operate via `franklinwh-cli`, the client strictly enforces the `telemetry
 If you consume `franklinwh-cloud` heavily via a downstream Home Assistant (HACS) wrap, tracking falls strictly onto the Custom Integration's specific UI configuration wizard in line with the Home Assistant Analytics protocol. No ghost analytics are actively bypassed by our Python library under the hood.
 
 *For any questions regarding runtime privacy, please raise an issue strictly on the project GitHub.*
+
+---
+
+## Developer Guide: Implementing PostHog Telemetry
+
+If you are building a custom CLI wrapper (e.g., `franklinwh_cli.py`) or a Home Assistant component using `franklinwh-cloud` and you want to opt-in / securely hook your application into our metrics system, you can use the natively bundled PostHog dispatcher. 
+
+The dispatcher uses a highly isolated zero-dependency **synchronous daemon thread** running built-in `urllib` to ensure your main script/CLI tears down instantly without waiting for HTTP connections, mathematically guaranteeing zero application lag.
+
+### Worked Example
+
+Here is exactly how you connect the tracking pipeline into your own script's `main()` lifecycle:
+
+```python
+import configparser
+import os
+import sys
+
+# 1. Import your main client components
+from franklinwh_cloud.client import Client
+
+# 2. Import the isolated tracking daemon
+from franklinwh_cloud.telemetry import dispatch_cli_event
+
+def main():
+    # Example: you parse the incoming CLI command (e.g. 'status', 'tou --set')
+    command_executed = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+
+    # 3. Read the user's explicit Opt-In consent config
+    telemetry_enabled = False
+    telemetry_uuid = "anonymous"
+    
+    ini_path = "franklinwh.ini"
+    if os.path.exists(ini_path):
+        config = configparser.ConfigParser()
+        config.read(ini_path)
+        try:
+            if config.getboolean("telemetry", "enabled", fallback=False):
+                telemetry_enabled = True
+                telemetry_uuid = config.get("telemetry", "uuid", fallback="anonymous")
+        except Exception:
+            pass
+
+    # 4. Fire the dispatcher!
+    # If telemetry_enabled == False, this silently returns and does absolutely nothing.
+    # If True, it launches a detached daemon thread to PostHog and instantly returns control back to your script.
+    dispatch_cli_event(
+        command=command_executed, 
+        is_opted_in=telemetry_enabled, 
+        execution_uuid=telemetry_uuid
+    )
+
+    # 5. Continue executing your normal sync/async workload...
+    # asyncio.run(my_async_business_logic())
+
+if __name__ == "__main__":
+    main()
+```
