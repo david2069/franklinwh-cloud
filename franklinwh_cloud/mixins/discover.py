@@ -484,6 +484,32 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list (Tier 2) failed: {e}")
 
+        # 14. Real-time Grid Limits (PCS constraints)
+        try:
+            pcs = await self.get_power_control_settings()
+            res = pcs.get("result", {}) if isinstance(pcs, dict) else {}
+            if res:
+                # Prioritize real PCS settings over entrance cache
+                gdm = res.get("globalGridDischargeMax")
+                gcm = res.get("globalGridChargeMax")
+                if gdm is not None:
+                    snap.grid.global_discharge_max_kw = float(gdm) if gdm > 0 else None
+                if gcm is not None:
+                    snap.grid.global_charge_max_kw = float(gcm) if gcm > 0 else None
+                
+                feed_max = res.get("gridFeedMax")
+                if feed_max is not None:
+                    snap.grid.feed_max_kw = float(feed_max)
+                imp_max = res.get("gridMax")
+                if imp_max is not None:
+                    snap.grid.import_max_kw = float(imp_max)
+                peak_max = res.get("peakDemandGridMax")
+                if peak_max is not None:
+                    snap.grid.peak_demand_max_kw = float(peak_max)
+        except Exception as e:
+            logger.warning(f"discover: get_power_control_settings failed: {e}")
+
+
     # ── Tier 3 ────────────────────────────────────────────────────
 
     async def _discover_tier3(self, snap, catalog):
