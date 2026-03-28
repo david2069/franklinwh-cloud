@@ -1,0 +1,23 @@
+services:
+  chaos-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fwh-chaos-runner
+    cap_add:
+      - NET_ADMIN   # Crucial capability required allowing iptables to run inside container
+    volumes:
+      - ../../:/app:ro  # Mount entire repository tree Read-Only
+      - pytest-cache:/app/.pytest_cache
+    environment:
+      - FWH_CHAOS_MODE=1
+      # Local variables mapped dynamically by the runner script
+    networks:
+      - chaos-net
+
+volumes:
+  pytest-cache:
+
+networks:
+  chaos-net:
+    driver: bridge
