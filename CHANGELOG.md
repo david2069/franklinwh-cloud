@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-28
+
 ### Added
 - **API Mapping Documentation** — Generated `API_ENDPOINTS_MAPPING.md` via AST to fully document mapping of library methods to Cloud Endpoints. Added to MkDocs Wiki explicitly.
 - **Hardware Diagnostics** — Added `get_power_cap_config_list` (nameplate capacity/models) and `get_device_run_log_list` (alarm/error logs) natively to the codebase pipeline.
