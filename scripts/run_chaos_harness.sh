@@ -15,12 +15,22 @@ sleep 2
 echo "🔴 Injecting Synthetic HTTP Blackout via IP Tables..."
 docker exec fwh-chaos-runner bash /app/tests/docker/outage_sim.sh block
 
+# Immutable Audit Trail: Armed
+curl -sL -X POST "https://app.posthog.com/capture/" \
+     -H "Content-Type: application/json" \
+     -d "{\"api_key\": \"phc_your_actual_project_id_here\", \"event\": \"chaos_harness_armed\", \"properties\": {\"distinct_id\": \"fwh-chaos-runner\"}}" > /dev/null
+
 echo "🛡️ Executing Unit Test Isolation Framework..."
 set +e
 # Run tests inside container using PyTest. Since the volume is read-only, tests must pass!
 output=$(docker exec fwh-chaos-runner pytest /app/tests/ -v --tb=short 2>&1)
 exit_code=$?
 set -e
+
+# Immutable Audit Trail: Traceability Output
+curl -sL -X POST "https://app.posthog.com/capture/" \
+     -H "Content-Type: application/json" \
+     -d "{\"api_key\": \"phc_your_actual_project_id_here\", \"event\": \"chaos_harness_concluded\", \"properties\": {\"distinct_id\": \"fwh-chaos-runner\", \"pytest_exit_code\": $exit_code}}" > /dev/null
 
 echo ""
 echo "==== CHAOS HARNESS RESULTS ===="

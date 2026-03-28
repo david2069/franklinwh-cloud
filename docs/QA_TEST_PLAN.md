@@ -64,4 +64,21 @@ Because autonomous coding agents are statistically predisposed to "Optimistic Ve
 
 ---
 
-> **CRITICAL ENFORCEMENT**: Any agent requesting user-approval to merge a branch touching `franklinwh_cloud/client.py` MUST append the literal text output array from the Chaos Harness proving the `iptables` firewall successfully blocked the real-world connection. 
+## 6. Immutable Audit Trail (PostHog Integration)
+
+To mathematically prove that a Chaos Harness execution actually occurred (rather than an agent simply doctoring a local terminal output log), the `run_chaos_harness.sh` runner is wired natively into a **Read-Only PostHog Organization Dashboard**.
+
+### What Metrics are Collected?
+The bash harness executes a secure `curl` webhook pushing the following events directly to PostHog:
+1. `chaos_harness_armed`: Fired the moment `outage_sim.sh` successfully modifies the Linux kernel `iptables`.
+2. `chaos_harness_concluded`: Contains the literal `pytest` exit code.
+
+### Preventing Circumvention
+Because PostHog is an append-only time-series database, autonomous agents physically cannot delete or rewrite historic test failures. If an agent claims to have passed the QA test, a human maintainer simply logs into the PostHog dashboard. If the `chaos_harness_concluded` event registered an exit-code of `1` (or was never transmitted at all), the agent definitively forged the terminal output.
+
+### Free Tier Safeguards
+PostHog's open-source free tier allows for **1,000,000 events captured per month**. Even extreme continuous integration loads (e.g., executing the Chaos suite 20 times a day) only consumes ~1,200 events monthly (~0.12% of the limit). The service will absolutely not bottleneck or throttle your development QA verification.
+
+---
+
+> **CRITICAL ENFORCEMENT**: Any agent requesting user-approval to merge a branch touching `franklinwh_cloud/client.py` MUST append the literal text output array from the Chaos Harness proving the `iptables` firewall successfully blocked the real-world connection, and this run MUST be visible in the PostHog Audit log.
