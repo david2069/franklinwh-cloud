@@ -1186,11 +1186,116 @@ def _display_nettest_summary(total_ms: float, all_ok: bool, failures: list):
 
 # ── CLI entry point ──────────────────────────────────────────────────
 
+# ── Account Info ─────────────────────────────────────────────────────
+
+async def run_info(client, json_output: bool = False):
+    """Implement franklinwh-cli support --info mapping the account taxonomy."""
+    from franklinwh_cloud.cli_output import c, print_json_output
+    import json
+    
+    email = getattr(client.fetcher, "email", "UnknownUser")
+    user_id = getattr(client.fetcher, "user_id", "Unknown")
+    
+    try:
+        site = await client.siteinfo()
+        user_id = site.get("userId", user_id)
+        email = site.get("email", email)
+    except Exception:
+        pass
+
+    try:
+        gw_res = await client.get_home_gateway_list()
+        gateways = gw_res.get("result", [])
+    except Exception as e:
+        print_error(f"Failed to fetch gateways: {e}")
+        return
+
+    # Group by site/group
+    sites = {}
+    for gw in gateways:
+        site_name = gw.get("groupName") or "Default Site"
+        site_id = gw.get("groupId") or "Unknown"
+        site_key = f"{site_name} (SiteId: {site_id})"
+        if site_key not in sites:
+            sites[site_key] = []
+        sites[site_key].append(gw)
+        
+    if json_output:
+        out = {"email": email, "userId": user_id, "sites": sites}
+        print_json_output(out)
+        return
+        
+    print(f"{c('cyan', email)} (UserId: {user_id})")
+    print("  │")
+    
+    for site_idx, (site_key, site_gws) in enumerate(sites.items()):
+        is_last_site = site_idx == len(sites) - 1
+        site_prefix = "  └──" if is_last_site else "  ├──"
+        print(f"{site_prefix} {c('yellow', site_key)}")
+        
+        for gw_idx, gw in enumerate(site_gws):
+            is_last_gw = gw_idx == len(site_gws) - 1
+            gw_prefix = "        └──" if is_last_gw else "        ├──"
+            bar = " " if is_last_site else "│"
+            
+            gw_id = gw.get("id", "?")
+            gw_name = gw.get("name", "FHP")
+            print(f"  {bar}     │")
+            print(f"  {bar}     {gw_prefix} {c('green', gw_name)} (aGate: {gw_id})")
+            
+            try:
+                old_gw = client.gateway
+                client.gateway = gw_id
+                
+                comp = await client.get_device_composite_info()
+                rt = comp.get("result", {}).get("runtimeData", {})
+                
+                apowers = rt.get("fhpSn", [])
+                solar = rt.get("solarVo", [])
+                
+                try:
+                    acc_res = await client.get_accessories(2)
+                    accessories = acc_res.get("result", [])
+                except Exception:
+                    accessories = []
+                
+                items = []
+                for i, ap in enumerate(apowers):
+                    items.append(f"aPower{i+1} (Serial: {ap})")
+                
+                if solar:
+                    items.append(f"Solar PV: {len(solar)} strings")
+                
+                if accessories:
+                    sc_cnt = sum(1 for a in accessories if a.get("accessoryType") in (202, 204, 302))
+                    gen_cnt = sum(1 for a in accessories if a.get("accessoryType") in (201, 203, 301))
+                    
+                    if sc_cnt:
+                        items.append(f"Smart Circuit × {sc_cnt}")
+                    if gen_cnt:
+                        items.append(f"Generator × {gen_cnt}")
+                
+                bar2 = " " if is_last_gw else "│"
+                for item_idx, item in enumerate(items):
+                    is_last_item = item_idx == len(items) - 1
+                    item_prefix = "└──" if is_last_item else "├──"
+                    print(f"  {bar}           {bar2}     {item_prefix} {c('dim', item)}")
+                    
+                client.gateway = old_gw
+            except Exception as e:
+                print(f"  {bar}           {bar2}     └── Error fetching devices: {e}")
+
+# ── CLI entry point ──────────────────────────────────────────────────
+
 async def run(client, *, json_output: bool = False, save: bool = False,
               redact: str | None = None, label: str | None = None,
               analyze: bool = False, compare_file: str | None = None,
-              scope: str = "all"):
+              scope: str = "all", info: bool = False):
     """Execute the support command."""
+
+    if info:
+        await run_info(client, json_output=json_output)
+        return
 
     # Collect snapshot
     data = await collect_snapshot(client)

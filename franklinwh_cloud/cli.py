@@ -227,6 +227,8 @@ def build_parser() -> argparse.ArgumentParser:
     # support
     sub_support = subs.add_parser("support", aliases=["snapshot"],
                                   help="System snapshot for troubleshooting — export, redact, compare")
+    sub_support.add_argument("--info", "-i", action="store_true",
+                             help="Print full account/site taxonomy tree")
     sub_support.add_argument("--save", "-s", action="store_true",
                              help="Save snapshot to timestamped JSON file")
     sub_support.add_argument("--redact", "-r", nargs="?", const="partial", choices=["partial", "full"],
@@ -437,7 +439,8 @@ async def async_main():
                                       label=getattr(args, 'label', None),
                                       analyze=getattr(args, 'analyze', False),
                                       compare_file=getattr(args, 'compare_file', None),
-                                      scope=getattr(args, 'scope', 'all'))
+                                      scope=getattr(args, 'scope', 'all'),
+                                      info=getattr(args, 'info', False))
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
