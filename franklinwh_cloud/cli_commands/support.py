@@ -1352,10 +1352,25 @@ async def run_info(client, json_output: bool = False):
                     "ptoDate": pto_str
                 }
                 
+                try:
+                    gp = await client.get_grid_profile_info()
+                    grid_profile = "Unknown"
+                    if isinstance(gp, dict):
+                        for p in gp.get("list", []):
+                            if p.get("id") == gp.get("currentId", -1):
+                                grid_profile = p.get("name", "Unknown")
+                                break
+                except Exception:
+                    grid_profile = "Unknown"
+                if grid_profile != "Unknown":
+                    gw_node["grid_profile"] = grid_profile
+                
                 items = [
                     f"Status: {status_str}",
                     f"Lifecycle: Created {create_str} | Activated {active_str}{exp_str} | PTO: {pto_str}"
                 ]
+                if grid_profile != "Unknown":
+                    items.append(f"Grid Profile: {grid_profile}")
                 
                 try:
                     pcap_res = await client.get_power_cap_config_list()

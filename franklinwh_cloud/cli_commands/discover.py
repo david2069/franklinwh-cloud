@@ -86,8 +86,10 @@ def _render_region_quirks(snap):
     if not q:
         return
     print_section("🌍", f"Region Details: {q.get('country', 'Unknown')}")
-    if q.get("grid_standard"):
-        print_kv("Grid Standard", q["grid_standard"])
+    if q.get("grid_standard") or snap.site.grid_profile:
+        std = q.get("grid_standard", "Unknown")
+        prof = snap.site.grid_profile or "Unknown Profile"
+        print_kv("Grid Standard", f"{std} (Active Profile: {prof})")
     if "v2l_available" in q:
         v2l = "Supported" if q["v2l_available"] else "Not Supported in this region"
         print_kv("V2L Support", v2l)
