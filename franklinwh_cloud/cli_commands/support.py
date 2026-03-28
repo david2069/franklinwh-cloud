@@ -1206,6 +1206,14 @@ async def run_info(client, json_output: bool = False):
     try:
         site_info_res = await client.get_site_and_device_info()
         sites_data = site_info_res.get("result", [])
+        
+        # Parallel fetch gateways for lifecycle dates
+        try:
+            gw_res = await client.get_home_gateway_list()
+            gateways = {g.get("id"): g for g in gw_res.get("result", []) if g.get("id")}
+        except Exception:
+            gateways = {}
+            
     except Exception as e:
         print_error(f"Failed to fetch site list: {e}")
         return
@@ -1217,11 +1225,11 @@ async def run_info(client, json_output: bool = False):
         return
         
     print(f"{c('cyan', email)} (UserId: {user_id})")
-    print("  │")
     
     for site_idx, site in enumerate(sites_data):
         is_last_site = site_idx == len(sites_data) - 1
-        site_prefix = "  └──" if is_last_site else "  ├──"
+        site_prefix = "└──" if is_last_site else "├──"
+        site_bar = "    " if is_last_site else "│   "
         
         site_name = site.get("siteName") or "Default Site"
         site_id = site.get("siteId") or "Unknown"
@@ -1235,8 +1243,8 @@ async def run_info(client, json_output: bool = False):
         gws = site.get("basicDeviceInfoVOList", [])
         for gw_idx, gw in enumerate(gws):
             is_last_gw = gw_idx == len(gws) - 1
-            gw_prefix = "        └──" if is_last_gw else "        ├──"
-            bar = " " if is_last_site else "│"
+            gw_prefix = "└──" if is_last_gw else "├──"
+            gw_bar = "    " if is_last_gw else "│   "
             
             gw_id = gw.get("gatewayId", "?")
             gw_name = gw.get("gatewayName", "FHP")
@@ -1246,8 +1254,7 @@ async def run_info(client, json_output: bool = False):
             if gw_addr and gw_addr != address:
                 gw_label += f" — {gw_addr}"
                 
-            print(f"  {bar}     │")
-            print(f"  {bar}     {gw_prefix} {c('green', gw_label)}")
+            print(f"{site_bar}{gw_prefix} {c('green', gw_label)}")
             
             try:
                 old_gw = client.gateway
@@ -1259,18 +1266,72 @@ async def run_info(client, json_output: bool = False):
                 apowers = rt.get("fhpSn", [])
                 solar = rt.get("solarVo", [])
                 
+                from datetime import datetime
+                
+                try:
+                    stats = await client.get_stats()
+                    run_status = stats.current.run_status_dec
+                    work_mode = stats.current.work_mode_desc
+                    status_str = f"{run_status} ({work_mode})"
+                except Exception:
+                    status_str = "Unknown"
+                    
+                try:
+                    tou_res = await client.get_tou_dispatch_detail()
+                    pto = tou_res.get("result", {}).get("ptoDate")
+                except Exception:
+                    pto = None
+                    
+                try:
+                    w_res = await client.get_warranty_info()
+                    expires = w_res.get("result", {}).get("expirationTime")
+                except Exception:
+                    expires = None
+                
+                gw_meta = gateways.get(gw_id, {})
+                active_t = gw_meta.get("activeTime")
+                create_t = gw_meta.get("createTime")
+                
+                active_str = datetime.fromtimestamp(active_t / 1000.0).strftime("%Y-%m-%d") if active_t else "N/A"
+                create_str = datetime.fromtimestamp(create_t / 1000.0).strftime("%Y-%m-%d") if create_t else "N/A"
+                pto_str = pto if pto else "Pending"
+                exp_str = f" | Expires {expires}" if expires else ""
+                
+                items = [
+                    f"Status: {status_str}",
+                    f"Lifecycle: Created {create_str} | Activated {active_str}{exp_str} | PTO: {pto_str}"
+                ]
+                
+                try:
+                    pcap_res = await client.get_power_cap_config_list()
+                    apower_configs = pcap_res.get("result", [])
+                except Exception:
+                    apower_configs = []
+
+                apower_models = {}
+                from franklinwh_cloud.const import FRANKLINWH_MODELS
+                for cfg in apower_configs:
+                    sn = cfg.get("peSn")
+                    ver = cfg.get("peHwVersion") or (cfg.get("peHwVerList") or [None])[0]
+                    if sn and ver:
+                        try:
+                            model_dict = FRANKLINWH_MODELS.get(int(ver), {})
+                            apower_models[sn] = model_dict.get("name", "aPower")
+                        except (ValueError, TypeError):
+                            pass
+                            
+                for i, ap in enumerate(apowers):
+                    model_name = apower_models.get(ap, "aPower")
+                    items.append(f"{model_name} (Serial: {ap})")
+                
+                if solar:
+                    items.append(f"Solar PV: {len(solar)} strings")
+                
                 try:
                     acc_res = await client.get_accessories(2)
                     accessories = acc_res.get("result", [])
                 except Exception:
                     accessories = []
-                
-                items = []
-                for i, ap in enumerate(apowers):
-                    items.append(f"aPower{i+1} (Serial: {ap})")
-                
-                if solar:
-                    items.append(f"Solar PV: {len(solar)} strings")
                 
                 if accessories:
                     sc_cnt = sum(1 for a in accessories if a.get("accessoryType") in (202, 204, 302))
@@ -1281,15 +1342,14 @@ async def run_info(client, json_output: bool = False):
                     if gen_cnt:
                         items.append(f"Generator × {gen_cnt}")
                 
-                bar2 = " " if is_last_gw else "│"
                 for item_idx, item in enumerate(items):
                     is_last_item = item_idx == len(items) - 1
                     item_prefix = "└──" if is_last_item else "├──"
-                    print(f"  {bar}           {bar2}     {item_prefix} {c('dim', item)}")
+                    print(f"{site_bar}{gw_bar}{item_prefix} {c('dim', item)}")
                     
                 client.gateway = old_gw
             except Exception as e:
-                print(f"  {bar}           {bar2}     └── Error fetching devices: {e}")
+                print(f"{site_bar}{gw_bar}└── Error fetching devices: {e}")
 
 # ── CLI entry point ──────────────────────────────────────────────────
 
