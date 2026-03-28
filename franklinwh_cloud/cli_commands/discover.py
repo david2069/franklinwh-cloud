@@ -158,6 +158,10 @@ def _render_batteries_detail(snap):
             print_kv("SoC", f"{unit.soc}%")
         if unit.remaining_kwh:
             print_kv("Stored Energy", f"{unit.remaining_kwh} kWh")
+        if unit.bms_state:
+            print_kv("BMS State", unit.bms_state)
+        if unit.pcs_state:
+            print_kv("PCS State", unit.pcs_state)
         if unit.fpga_ver:
             print_kv("FPGA", unit.fpga_ver)
         if unit.dcdc_ver:
@@ -288,6 +292,12 @@ def _render_accessories(snap):
             if q.get("workaround"):
                 print_kv("  ↳ Workaround", q["workaround"])
 
+    # Global accessory operational states from runtime payload
+    if acc.generator_state:
+        print_kv("Generator State", acc.generator_state)
+    if acc.v2l_state:
+        print_kv("V2L State", acc.v2l_state)
+
     sc = acc.smart_circuits
     if sc:
         print_section("🔌", "Smart Circuits Configuration")
@@ -297,7 +307,8 @@ def _render_accessories(snap):
             print_kv("Merged", c("yellow", "SC1+SC2 merged (240V)"))
         for i, name in enumerate(sc.names):
             if name:
-                print_kv(f"SC{i+1} Name", name)
+                mode_str = sc.modes[i] if i < len(sc.modes) else "Unknown"
+                print_kv(f"SC{i+1} Name", f"{name}  [Mode: {mode_str}]")
         v2l = c("green", "Available") if sc.v2l_port else c("dim", "Not available")
         print_kv("V2L Port", v2l)
         # SC quirks
@@ -308,9 +319,9 @@ def _render_accessories(snap):
     if acc.has_apbox:
         print_section("🔌", "aPBox Digital I/O")
         if acc.apbox_di:
-            print_kv("Digital Inputs", str(acc.apbox_di))
+            print_kv("Digital Inputs", ", ".join(acc.apbox_di))
         if acc.apbox_do_status:
-            print_kv("Digital Outputs", str(acc.apbox_do_status))
+            print_kv("Digital Outputs", ", ".join(acc.apbox_do_status))
         q = quirks.get("apbox")
         if q and q.get("api_opaque"):
             print_kv("  ⚠ API opaque", ", ".join(q["api_opaque"]))
