@@ -77,6 +77,7 @@ nav:
     - TOU Tariff Reference: TOU_TARIFF_REFERENCE.md
     - Scheduling Nettest: SCHEDULING.md
     - Logging Strategy: LOGGING.md
+    - Telemetry & Privacy: TELEMETRY.md
   - CLI:
     - Raw API Methods: cli-raw.md
   - Device Discovery:
