@@ -105,6 +105,10 @@ If a change requires a downstream user to rewrite their integration code, you mu
 > FranklinWH deploys severe anti-bruteforce lockouts. Simulating an `InvalidCredentialsException` against a real account during a live test will permanently brick the user's connection. 
 > All `HTTP 401` or `AccountLockedException` traces **must remain purely mocked offline**.
 
+### 🚫 STRICT BOUNDARY: No PII Exposure (AP-3)
+> **Never commit real user details.** Any captured JSON payloads, API outputs, or documentation examples must be rigorously scrubbed of all Personally Identifiable Information before being written to disk or `.md` files.
+> You must strictly adhere to `.agents/policies/pii_policy.md`. Replace real emails with `user@example.com` and real serials with `10060006AXXXXXXXXX`.
+
 ---
 
 ## Quick Start
