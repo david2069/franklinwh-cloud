@@ -25,24 +25,12 @@
 
 > ⚠️ **Incident (2026-03-21):** An agent read `franklinwh-energy-manager/AGENT.md` (open in editor) instead of `franklinwh-cloud/AGENT.md` (workspace root), applying the wrong project's policies for an entire session. This rule prevents that.
 
-## ⚡ Focus Discipline Protocol
+## ⚡ Focus Discipline Protocol (AP-1)
 
-> **Re-affirm at session start.** When beginning a session, briefly acknowledge this protocol:
-> *"I've read the focus discipline guidelines — I'll stay on-task and queue any side issues."*
-
-### Rules for the Agent
-
-| Situation | Action |
-|-----------|--------|
-| User reports a new issue **during** an active fix | **Acknowledge and queue:** "Noted — I'll address that after completing the current fix." Do NOT context-switch. |
-| User provides context/observations mid-fix | **Absorb silently** — use the information but stay on the current task. |
-| Multiple issues reported at once | **Triage and sequence:** fix one completely (code → test → verify → commit) before starting the next. |
-| Fix introduces a new error | **Stop and fix immediately** — this IS the current task. |
-
-### Rules for Both Parties
-
-1. **One fix at a time.** Complete the full cycle: code → test → verify → commit. Then move to the next issue.
-2. **No parallel debugging threads.** If a second issue is spotted, it goes on the queue — not into the current code change.
+> **Re-affirm at session start.** The formal AP-1 `Queue → Plan → Execute` protocol is located at:
+> ↳ `.agents/policies/change_management.md`
+> 
+> You MUST explicitly follow this workflow constraint: **One fix at a time.** Complete the full cycle (code → test → verify → commit) before addressing secondary issues raised by the user.
 
 ---
 
@@ -76,29 +64,12 @@ If a change requires a downstream user to rewrite their integration code, you mu
 
 ## Mandatory Verification After Every Code Change
 
-1. **Syntax check:**
-   ```bash
-   python3 -c "import ast; ast.parse(open('<modified_file>').read()); print('OK')"
-   ```
-
-2. **Test suite (if accessible):**
-   ```bash
-   cd /Users/davidhona/dev/franklinwh-cloud
-   python -m pytest tests/ -v --tb=short
-   ```
-
-3. **Static verification for unit changes:**
-   ```bash
-   # Confirm no stale labels/keys remain
-   grep -rn '<old_pattern>' franklinwh_cloud/cli_commands/
-   ```
-
-4. **Do not commit until user has tested** (if changes affect live aGate):
-   - `--set` commands modify the live TOU schedule
-   - `mode --set` changes the operating mode
-   - Read-only commands (`--next`, `tou`, `status`, `monitor`) are safe to commit after syntax check
+All verification logic (Syntax checks, live testing limits, and offline logs) must rigorously adhere to the AP-1 Verification Cycle documented in `.agents/policies/change_management.md`.
 
 > ⚠️ **The syntax check is NON-NEGOTIABLE.** Always run it before committing.
+> ```bash
+> python3 -c "import ast; ast.parse(open('<modified_file>').read()); print('OK')"
+> ```
 
 ### 🚫 STRICT BOUNDARY: No Negative Credential Testing with Real Accounts (AP-13)
 > Under no circumstances may an AI Agent test negative authentication handling (e.g. intentionally using invalid passwords) against the **live API** using a REAL email address. Doing so triggers severe anti-bruteforce lockouts and bricks the user's connection.
