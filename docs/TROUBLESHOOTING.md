@@ -393,7 +393,82 @@ graph TD
     B -->|No sharing needed| E["No --redact flag<br>(full data preserved)"]
 ```
 
+**Use when:** Public forum / GitHub issue where no PII should be visible.
+
+### Choosing the Right Level
+
+```mermaid
+graph TD
+    A[Need to share a snapshot?] --> B{Who will see it?}
+    B -->|Just me / trusted support| C["--redact partial<br>(default)"]
+    B -->|Public forum / GitHub issue| D["--redact full"]
+    B -->|No sharing needed| E["No --redact flag<br>(full data preserved)"]
+```
+
 !!! tip "Always redact before sharing"
     Even in private support channels, use at least `--redact partial`. 
     There's no good reason to share unredacted PII when the masked version
     preserves all the diagnostic value.
+
+---
+
+## 8. Interpreting and Managing Application Logs
+
+If you are a developer integrating `franklinwh-cloud` into your own application (like a Home Assistant daemon), or a user troubleshooting persistent integration crashes, understanding how to configure the library's internal Python HTTP logger is critical.
+
+### Logging Levels: Pros, Cons, and Use Cases
+
+The library supports standard Python logging levels. Selecting the appropriate level dictates whether you catch silent API errors or accidentally exhaust your hard drive.
+
+#### 1. `WARNING` / `ERROR` (The Safe Default)
+* **What it shows**: Only catastrophic failures (e.g. `FranklinWHTimeoutError`, `TokenExpiredException`) or silent API abnormalities (e.g. `aGate returned non-zero status`).
+* **Pros**: Utterly silent under standard operation. Yields a near-zero disk space footprint. Safe for production 24/7 daemon processes.
+* **Cons**: Provides absolutely zero context on *why* a timeout occurred. You won't know if the API responded with an empty payload or if the TCP connection was severed.
+* **Use Case**: Production endpoints and default UI deployments.
+
+#### 2. `INFO` (The Milestone Tracker)
+* **What it shows**: Major operational state changes. E.g., "Authenticating with franklinwh.com", "Automatically switching to Self-Consumption", "Discovering 2 aPower units."
+* **Pros**: Highly readable. Let's you audit exactly what the integration is *trying* to do over time without reading code.
+* **Cons**: Over 24 hours, `INFO` logs polling every 10 seconds will generate roughly ~5MB of text. If log rotation isn't configured, this will slowly bloat small SD cards (like a Raspberry Pi).
+* **Use Case**: Initial 24-hour validation periods after installing the library, or debugging logical loops in your own scripts (e.g. tracking *why* your script triggered a TOU update).
+
+#### 3. `DEBUG` (The Wire Tracer)
+* **What it shows**: The literal HTTP wire payloads. Every single API route requested, exact JSON dictionary dumps of TOU configurations, and internal JWT token exchange mechanisms.
+* **Pros**: The ultimate diagnostic tool for pinpointing whether an issue is localized (e.g., your script passed the wrong integer) or Cloud API-bound (e.g., the FranklinWH server returned an undocumented Error 500 format).
+* **Cons**: Massive disk consumption (100MB+ per day if polling actively). Generates completely unredacted JSON dumps containing hyper-sensitive PII.
+* **Use Case**: Strict isolation environments when building new features or debugging 400 Bad Request responses.
+
+### 🛑 PII Data and Log Sharing (Do I Send Logs?)
+**Short Answer**: No. Never publicly paste `DEBUG` or `INFO` logs without manual sanitization.
+
+Unlike the `franklinwh-cli support --redact` command (which systematically maps and censors PII), **raw Python logs have zero safety rails**. 
+If you run your application in `DEBUG` mode, your logs will natively capture and write your raw Authorization JWT tokens, email addresses, and plaintext gateway serial numbers. 
+
+If a maintainer requests log outputs to debug a library crash:
+1. Try to reproduce the issue using `franklinwh-cli <command> --json` instead to leverage built-in redaction.
+2. If raw `DEBUG` text tracebacks are absolutely required, use a text editor to Find & Replace your email, Gateway ID, and large alphanumeric tokens with `[REDACTED]` before submitting.
+
+!!! danger "Disk Exhaustion Safety"
+    Always wrap file-based logger outputs in a `RotatingFileHandler`. A continuously polling Home Assistant daemon left in `DEBUG` mode without rotation will write gigabytes of text and critically crash SD cards within days. The CLI avoids this natively by capping `--log-file` outputs at `5 MB` and maintaining only 3 historical backups. 
+
+### Dynamic Verbosity Toggling
+For developers testing applications, changing logging scope is completely dynamic during runtime. You can programmatically turn on the firehose precisely when an exception is caught, limiting disk thrashing:
+
+```python
+import logging
+import franklinwh_cloud
+
+# Standard production setup
+logger = logging.getLogger("franklinwh_cloud")
+logger.setLevel(logging.WARNING)
+
+async def routine_check():
+    try:
+        # Fails silently if successful
+        await client.get_mode()
+    except franklinwh_cloud.DeviceTimeoutException:
+        # Dynamically toggle full verbosity to capture the raw HTTP stack trace on the retry!
+        logger.setLevel(logging.DEBUG)
+        await client.get_mode()   # This retry will print the exact wire failure
+        logger.setLevel(logging.WARNING) # Toggle safely back
+```
