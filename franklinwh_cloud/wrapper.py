@@ -71,12 +71,15 @@ class FranklinWHCloud:
             # The login payload does NOT contain gateway bindings, so we must
             # execute an explicit account-level fetch using a proxy client.
             temp_client = Client(self._auth, "placeholder")
-            gateways = await temp_client.get_home_gateway_list()
+            gateways_raw = await temp_client.get_home_gateway_list()
             
-            if not gateways:
+            # Unwrap the API envelope
+            gw_list = gateways_raw.get("result", []) if isinstance(gateways_raw, dict) else gateways_raw
+            
+            if not gw_list:
                 raise ValueError("No gateways found via get_home_gateway_list(). Cannot auto-bind Client.")
             
-            target_gateway = gateways[0].get("id", "")
+            target_gateway = gw_list[0].get("id", "")
 
         self._client = Client(self._auth, target_gateway)
 

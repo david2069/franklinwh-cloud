@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-03-31
+
+### Fixed
+- **Facade Envelope Unwrap Defect** — Fixed a `KeyError: 0` in `FranklinWHCloud.select_gateway()`. The facade's internal `get_home_gateway_list()` auto-discovery proxy was failing to unwrap the `dict` API envelope before attempting to extract the `["result"]` gateway array list.
+
 ## [0.4.5] - 2026-03-31
 
 ### Added
