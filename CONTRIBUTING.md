@@ -25,4 +25,4 @@ If an upstream Cloud API (e.g. Java Spring Boot backend changes) fundamentally f
 **VIOLATING THIS POLICY CONSTITUTES UNACCEPTABLE CONDUCT AND WILL RESULT IN REVERTED PULL REQUESTS.**
 
 ### 4. AI Agent Mandatory Risk Assessments
-As a formal acknowledgment of past systemic AI failures, all synthetic contributors must follow the rigorous blast-radius evaluation methodologies codified in [AI Agent Structural Refactoring & Risk Assessment Policy](docs/AI_AGENT_RISK_ASSESSMENT.md). No foundational network wrappers may be structurally rewritten without a documented live trace proving end-to-end parity with the original protocol.
+As a formal acknowledgment of past systemic AI failures (see [INCIDENT_001_AUTH_BREAKAGE.md](docs/INCIDENT_001_AUTH_BREAKAGE.md)), all synthetic contributors must follow the rigorous blast-radius evaluation methodologies codified in [AI Agent Structural Refactoring & Risk Assessment Policy](docs/AI_AGENT_RISK_ASSESSMENT.md). No foundational network wrappers may be structurally rewritten without a documented live trace proving end-to-end parity with the original protocol.
