@@ -452,12 +452,14 @@ async def main():
     original_schedule = await client.get_tou_dispatch_detail()
     print(f"📋 Saved state — Mode: {original_mode_name} (workMode={original_mode_id})")
 
-    # ── 1b. Check battery capacity via API ──
+    # ── 1b. Check battery capacity & inverter limits via API ──
     device_info = await client.get_device_info()
     result_data = device_info.get("result", {})
     battery_count = len(result_data.get("apowerList", [])) or 1
     total_capacity_kwh = result_data.get("totalCap", 13.6)
+    nameplate_power_kw = result_data.get("totalPower", 5.0 * battery_count)
     print(f"🔋 Batteries: {battery_count} = {total_capacity_kwh:.1f} kWh")
+    print(f"⚡ Nameplate Inverter Max Power: {nameplate_power_kw:.1f} kW continuous")
 
     stats = await client.get_stats()
     current_soc = stats.current.soc
