@@ -9,7 +9,10 @@ Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
 ## Connection Preamble
 
-All recipes start with this. Copy once, paste at the top of your script:
+All recipes start with establishing an authenticated session and binding a physical aGate serial number.
+
+### Single aGate (Happy Path)
+If you only have one aGate, the `.select_gateway()` method will auto-discover it for you natively. Copy once, paste at the top of your script:
 
 ```python
 import asyncio
@@ -18,9 +21,42 @@ from franklinwh_cloud import FranklinWHCloud
 async def main():
     client = FranklinWHCloud(email="user@example.com", password="secret")
     await client.login()
-    await client.select_gateway()   # auto-selects first gateway
+    await client.select_gateway()   # Natively fetches and binds the first gateway
 
     # ... your recipe code here ...
+
+asyncio.run(main())
+```
+
+### Multi-aGate (Iterative Binding)
+If you manage multiple gateways on a single account, you MUST explicitly iterate. If you do not pass a serial to `select_gateway()`, it will always bind the first one it finds. By substituting a temporary proxy client, you can securely execute the `get_home_gateway_list()` account API before touching hardware.
+
+```python
+import asyncio
+from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.client import Client
+
+async def main():
+    fwh = FranklinWHCloud(email="user@example.com", password="secret")
+    await fwh.login()
+    
+    # 1. Instantiate a proxy client to unlock Account-level APIs
+    proxy = Client(fwh._auth, "placeholder")
+    
+    # 2. Fetch the account's entire physical inventory
+    gateways = await proxy.get_home_gateway_list()
+    
+    # 3. Iterate and bind explicitly
+    for gw in gateways:
+        serial = gw.get("id")
+        print(f"\\n--- Binding to aGate {serial} ---")
+        
+        # Bind the primary wrapper to this exact serial
+        await fwh.select_gateway(serial=serial)
+        
+        # Now hardware calls are safely routed to this target
+        stats = await fwh.get_stats()
+        print(f"Battery SoC: {stats.current.battery_pct}%")
 
 asyncio.run(main())
 ```

@@ -4,7 +4,13 @@ Complete reference for all `FranklinWHCloud` client methods — arguments, types
 
 > 🔌 **OpenAPI Specification**: Building a client in another language (Go, Rust, JS)? Check out the massive 123-endpoint [franklinwh_openapi.json](franklinwh_openapi.json) spec dynamically generated from strict mobile app intercepts to bootstrap your external clients instantly.
 
-## Connection
+## Connection & Gateway Lifecycle
+
+The FranklinWH API strictly isolates connections. You cannot pull diagnostic data or alter modes without explicitly targeting a specific aGate serial number dynamically binding the client.
+
+1. **Login Phase**: Submit credentials (`login()`). Returns JWT token.
+2. **Account Phase**: Query available account info. Serial not required here, but the active token is. 
+3. **Hardware Phase**: Bind client to a specific gateway serial to unlock deep hardware commands.
 
 ```python
 import asyncio
@@ -12,10 +18,16 @@ from franklinwh_cloud import FranklinWHCloud
 
 async def main():
     client = FranklinWHCloud(email="user@example.com", password="secret")
+    
+    # Phase 1: Authentication
     await client.login()
-    await client.select_gateway()   # auto-selects first gateway
+    
+    # Phase 2 & 3 combined: Auto-fetches gateway lists and binds the first serial globally
+    # If running a multi-aGate household, manually parse Client.get_home_gateway_list() instead!
+    await client.select_gateway()
 
-    # ... call any method below ...
+    # Hardware commands now unlocked!
+    stats = await client.get_stats()
 
 asyncio.run(main())
 ```
