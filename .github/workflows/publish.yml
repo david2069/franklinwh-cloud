@@ -36,25 +36,6 @@ jobs:
           name: dist
           path: dist/
 
-  publish-testpypi:
-    name: Publish to TestPyPI (optional)
-    needs: build
-    runs-on: ubuntu-latest
-    continue-on-error: true      # TestPyPI DNS is unreliable — don't block PyPI
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/franklinwh-cloud
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://upload.test.pypi.org/legacy/
-
   publish-pypi:
     name: Publish to PyPI
     needs: build                 # Only depends on build — not TestPyPI
