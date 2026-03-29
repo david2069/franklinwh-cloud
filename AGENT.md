@@ -100,10 +100,9 @@ If a change requires a downstream user to rewrite their integration code, you mu
 
 > ⚠️ **The syntax check is NON-NEGOTIABLE.** Always run it before committing.
 
-### 🚫 STRICT BOUNDARY: No Negative Credential Testing
-> Under no circumstances may an AI Agent test negative authentication handling (e.g. intentionally using invalid passwords against valid emails) against the **live API**. 
-> FranklinWH deploys severe anti-bruteforce lockouts. Simulating an `InvalidCredentialsException` against a real account during a live test will permanently brick the user's connection. 
-> All `HTTP 401` or `AccountLockedException` traces **must remain purely mocked offline**.
+### 🚫 STRICT BOUNDARY: No Negative Credential Testing with Real Accounts (AP-13)
+> Under no circumstances may an AI Agent test negative authentication handling (e.g. intentionally using invalid passwords) against the **live API** using a REAL email address. Doing so triggers severe anti-bruteforce lockouts and bricks the user's connection.
+> **Exception:** You MAY perform live negative authentication testing (e.g. simulating `InvalidCredentialsException`) ONLY IF you explicitly route the test through a **dummy fallback email** (e.g. `nobody@doesnotexist.invalid`). See `.agents/policies/live_test_protocol.md` for full constraints.
 
 ### 🚫 STRICT BOUNDARY: No PII Exposure (AP-3)
 > **Never commit real user details.** Any captured JSON payloads, API outputs, or documentation examples must be rigorously scrubbed of all Personally Identifiable Information before being written to disk or `.md` files.

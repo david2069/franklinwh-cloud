@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- **Urgent Testing Policy** — Injected formal policy explicitly banning *Negative Authentication Testing* (intentional deployment of invalid credentials to force `InvalidCredentialsException` and `AccountLockedException`) against the live APIs into `AGENT.md`, `tests/test_live.py`, and `CONTRIBUTING.md`. Offline mocking in `tests/test_auth.py` is now strictly enforced to prevent physical user Lockouts on FranklinWH Cloud.
+- **Urgent Testing Policy (AP-13)** — Adopted the AP-13 `live_test_protocol.md` policy. The strict ban on Negative Authentication Testing against live APIs now natively permits failure traces *only if* strictly routed through explicitly declared `DUMMY_EMAIL` payloads to preserve real user connectivity while allowing rigorous 401/403 header integration tests.
 
 ## [0.4.4] - 2026-03-30
 
