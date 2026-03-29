@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-03-30
+
+### Added
+- **AI Onboarding Workflow** — Created `onboard.md` slash-command to establish a formal Zero-Trust initialization sequence for all AI Agents, enforcing the reading of policies and inflight defects before code execution.
+- **Incident Reporting** — Authored `INCIDENT_001_AUTH_BREAKAGE.md` systematically documenting the downstream fragmentation caused by undocumented AI refactoring, and enforcing the `"explicit declaration of break change"` authorization policy in `CONTRIBUTING.md` and `AGENT.md`.
+- **Legacy Authentication Facade** — Introduced `FranklinWHCloud(email, password)` wrapper backwards-compatibility layer orchestrating `TokenFetcher` and `Client` bindings natively, preventing the need to rewrite basic automation scripts.
+- **Dual Architecture Documentation** — Formalised `README.md` and `docs/getting-started.md` structurally designating the Legacy Facade as the "preferred" quick-start method, while reserving the decoupled Token architecture for Future-Proof OAuth integrations.
+
 ## [0.4.3] - 2026-03-28
 
 ### Added
