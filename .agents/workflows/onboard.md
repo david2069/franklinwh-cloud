@@ -34,5 +34,5 @@ description: Mandatory Zero-Trust initialization sequence for all AI Agents atta
 > - **Top-Priority Inflight Items:** [Output 3 bullet points summarizing `defect_list.md` / `ISSUES.md`]
 > - **The Defacto Method:** "I clearly understand that the legacy `FranklinWHCloud(email, password)` facade is the preferred initialization mechanism for all automations."
 > - **Testing Compliance:** "I will utilize `./tests/run_and_record.sh` for all E2E validation traces."
-> - **Testing Safety:** "I acknowledge that Negative Credential Testing is strictly forbidden against live APIs and will only be executed in offline mocks."
+> - **Testing Safety (AP-13):** "I acknowledge that Negative Credential Testing against live APIs is only permitted when routing through clearly declared dummy emails, and never against real user accounts."
 > - **The Authorization Contract:** "I acknowledge the `"explicit declaration of break change"` policy and will unconditionally halt, write an Implementation Plan, and await explicit consent before altering **ANY** public-facing API signatures."
