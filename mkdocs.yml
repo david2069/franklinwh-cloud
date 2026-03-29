@@ -82,6 +82,7 @@ nav:
   - CLI:
     - Raw API Methods: cli-raw.md
   - Device Discovery:
+    - Payload Strategies (Agent Warning): DISCOVER_VS_SUPPORT.md
     - Implementation Plan: DISCOVER_IMPLEMENTATION_PLAN.md
     - Device Catalog Design: DEVICE_CATALOG_DESIGN.md
     - API Field Registry: API_FIELD_REGISTRY.md
