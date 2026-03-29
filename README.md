@@ -97,25 +97,49 @@ export FRANKLIN_GATEWAY="YOUR_GATEWAY_SERIAL"
 
 ## 🚀 Quick Start
 
-### Python API
+### Authentication Methods
+
+The `franklinwh-cloud` library supports two distinct initialization architectures.
+
+#### 1. Preferred Method (Legacy Facade)
+The easiest way to jump in and begin querying your battery. This wrapper handles standard username/password authentication, naturally locates your gateway serial, and binds the connection for you. Recommended for all standard scripts and basic automations.
 
 ```python
 import asyncio
-from franklinwh import Client, TokenFetcher
+from franklinwh_cloud import FranklinWHCloud
 
 async def main():
-    fetcher = TokenFetcher("email@example.com", "password")
-    client = Client(fetcher, "YOUR_GATEWAY_SERIAL")
+    client = FranklinWHCloud("user@email.com", "my_password")
+    await client.login()
+    await client.select_gateway()
 
-    # Get real-time stats
     stats = await client.get_stats()
     print(f"Battery: {stats.current.battery_soc}%")
     print(f"Solar: {stats.current.solar_production} kW")
     print(f"Mode: {stats.current.work_mode_desc}")
 
-    # API metrics (automatic)
-    metrics = client.get_metrics()
-    print(f"API calls: {metrics['total_api_calls']}, avg {metrics['avg_response_time_s']:.3f}s")
+asyncio.run(main())
+```
+
+#### 2. Advanced / Future-Proof Method (Decoupled Client)
+The Decoupled Client architecture separates the Authentication Engine from the Core API Dispatcher. 
+
+> **Future-Proofing**: This method should be utilized when the existing legacy authentication method is no longer supported by FranklinWH Cloud API, and new token-based mechanisms (such as API Tokens, OAuth2, or JWT) become mandatory.
+
+*This method is also recommended for long-running services (like Home Assistant) that need to securely persist JWT tokens across reboots without storing plaintext passwords on disk.*
+
+```python
+import asyncio
+from franklinwh_cloud.client import Client
+from franklinwh_cloud.auth import TokenAuth
+
+async def main():
+    # Inject a pre-authenticated OAuth/JWT token directly
+    fetcher = TokenAuth("jwt_token_string") 
+    client = Client(fetcher, "10060006A02F241XXXX")
+
+    stats = await client.get_stats()
+    print(f"Battery: {stats.current.battery_soc}%")
 
 asyncio.run(main())
 ```
