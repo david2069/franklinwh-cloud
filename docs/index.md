@@ -46,7 +46,7 @@ It fills a gap where no official developer tools exist, allowing FranklinWH syst
 - **Device Discovery** — 3-tier survey with system readiness, feature flags, accessories
 - **TOU Schedule Management** — Read, write, verify schedules with gap-fill and validation
 - **Tariff Workflow** — Search utilities, browse tariffs, apply templates
-- **Network Diagnostics** — WiFi, Ethernet, 4G config via MQTT
+- **Network Diagnostics** — WiFi, Ethernet, 4G config via `sendMqtt` REST payloads
 - **Billing & Savings** — Electricity data, charge history, benefit tracking
 - **[Hardware Quirks](REGION_QUIRKS.md)** — Living registry of region-specific API opacities and AU vs US gaps
 
@@ -107,8 +107,13 @@ graph LR
 
 > **Two distinct transport paths to the aGate:**
 >
-> - **Cloud API** — REST calls via CloudFront → FranklinWH Cloud → aGate (sendMqtt format). Used by this library and the official FranklinWH app.
+> - **Cloud API** — REST calls via CloudFront → FranklinWH Cloud → aGate (`sendMqtt` format). Used by this library and the official FranklinWH app.
 > - **Modbus TCP** — Direct LAN connection to aGate port 502. SunSpec-compliant + raw registers. Used by FEM, Home Assistant, and third-party controllers.
+
+!!! abstract "Terminology Disambiguation: `sendMqtt` vs True MQTT"
+    Throughout this documentation, you will see references to `sendMqtt` payload wrappers. Please note that the FranklinWH Cloud API executes these commands exclusively over **standard HTTPS REST endpoints** (e.g., `POST /hes-gateway/manage/sendMqtt`).
+    
+    This library **does not** establish a true, continuous MQTT TCP/WebSocket local connection to the aGate broker. The term `sendMqtt` is merely FranklinWH's internal naming convention for the HTTP-encapsulated JSON wrapper they use to tunnel polling requests from the Cloud down to the physical hardware.
 
 ## Documentation
 
