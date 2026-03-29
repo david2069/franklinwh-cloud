@@ -100,6 +100,11 @@ If a change requires a downstream user to rewrite their integration code, you mu
 
 > ⚠️ **The syntax check is NON-NEGOTIABLE.** Always run it before committing.
 
+### 🚫 STRICT BOUNDARY: No Negative Credential Testing
+> Under no circumstances may an AI Agent test negative authentication handling (e.g. intentionally using invalid passwords against valid emails) against the **live API**. 
+> FranklinWH deploys severe anti-bruteforce lockouts. Simulating an `InvalidCredentialsException` against a real account during a live test will permanently brick the user's connection. 
+> All `HTTP 401` or `AccountLockedException` traces **must remain purely mocked offline**.
+
 ---
 
 ## Quick Start

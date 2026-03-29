@@ -20,6 +20,7 @@ If an upstream Cloud API (e.g. Java Spring Boot backend changes) fundamentally f
 
 ### 3. Automated Guardrails
 * **Test Before You Rest:** Any new architecture or refactored component MUST be verified against existing backward compatibility tests (e.g., `tests/test_backward_compatibility.py`).
+* **Strict Negative Testing Ban:** **DO NOT** execute negative authentication testing (simulated bad passwords mapping to real emails) against the FranklinWH Live Cloud API. Doing so triggers anti-bruteforce measures that will instantly ban the user's primary connection. All Account/Token logic failures must be performed offline in `tests/test_auth.py`.
 * **Traceable Documentation:** If a method signature is altered with permission, it must be thoroughly recorded in the `CHANGELOG.md` under a `Changed` or `Deprecated` header, explicitly warning downstream consumers.
 
 **VIOLATING THIS POLICY CONSTITUTES UNACCEPTABLE CONDUCT AND WILL RESULT IN REVERTED PULL REQUESTS.**

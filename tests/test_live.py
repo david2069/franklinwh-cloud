@@ -11,6 +11,17 @@ Credentials are loaded from (in priority order):
 
 NOTE: All tests are READ-ONLY — no set_mode, set_tou, or other
 state-changing calls are made. Safe to run against a live system.
+
+⚠️ URGENT POLICY: NO NEGATIVE AUTHENTICATION TESTING
+This suite is strictly for Happy-Path verification. Under NO circumstances 
+should tests within this module artificially supply invalid credentials 
+(e.g., throwing a fake password against a real email) to trigger an 
+InvalidCredentialsException. FranklinWH employs strict brute-force 
+lockout mechanisms. Intentional negative traces against production 
+APIs will instantly freeze the live test account.
+
+All authentication failure traces MUST be 100% mocked offline within 
+`tests/test_auth.py`.
 """
 
 import configparser

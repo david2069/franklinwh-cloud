@@ -19,6 +19,7 @@ description: Mandatory Zero-Trust initialization sequence for all AI Agents atta
 > ## STEP 3: Understand Traceability Protocols
 > 5. Understand the Development Lifecycle: A break-fix, a new feature, or modifying existing configurations **all** require an approved implementation plan, an approved defect/feature ticket, and corresponding logging in `CHANGELOG.md`. 
 > 6. Understand Testing Impact: You must run your code via `./tests/run_and_record.sh` to establish mandatory traceability records. Raw execution of `pytest` is invalid for compliance.
+> 7. Understand Testing Safety: **No Negative Credential Testing.** Simulating `InvalidCredentials` against live APIs causes immediate user lockouts. These traces must remain strictly within offline mocks!
 > 
 > ## STEP 4: Grasping In-Flight Items
 > 7. Read `defect_list.md` and `ISSUES.md` (or `docs/DOCUMENTATION_TODO.md`) briefly using `view_file` to digest current active user constraints.
@@ -32,4 +33,5 @@ description: Mandatory Zero-Trust initialization sequence for all AI Agents atta
 > - **Top-Priority Inflight Items:** [Output 3 bullet points summarizing `defect_list.md` / `ISSUES.md`]
 > - **The Defacto Method:** "I clearly understand that the legacy `FranklinWHCloud(email, password)` facade is the preferred initialization mechanism for all automations."
 > - **Testing Compliance:** "I will utilize `./tests/run_and_record.sh` for all E2E validation traces."
+> - **Testing Safety:** "I acknowledge that Negative Credential Testing is strictly forbidden against live APIs and will only be executed in offline mocks."
 > - **The Authorization Contract:** "I acknowledge the `"explicit declaration of break change"` policy and will unconditionally halt, write an Implementation Plan, and await explicit consent before altering **ANY** public-facing API signatures."
