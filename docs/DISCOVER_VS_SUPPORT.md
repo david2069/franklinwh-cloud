@@ -53,3 +53,19 @@ Do **not** use the `support` payload to power Home Assistant sensors or user int
 | Sending a bug report to FranklinWH | `support` |
 | Tracking down an undocumented `aHub` MAC address | `support` |
 | Counting how many aPower units are connected | `discover` |
+
+---
+
+## 3. Execution Best Practices: Initialization vs Runtime
+
+Context and timing are critical. The `DeviceSnapshot` returned by `discover()` is deliberately heavy because it guarantees **atomicity** (point-in-time accuracy) and cross-references hardware integers across 15+ API endpoints. 
+
+### The Initialization Phase (Call `discover()`)
+Because physical hardware topography (number of batteries, Smart Circuit allocations) and system firmware versions **do not change during runtime**, integrations like Home Assistant plugins should strictly call `client.discover(tier=3)` **once** during their startup/initialization phase. 
+
+This single authoritative call avoids 429 HTTP Rate Limits while safely mapping the static hardware entities.
+
+### The Runtime Phase (Call `get_stats()`)
+During active runtime monitoring loops (e.g., ticking every 15 seconds to update a dashboard), **do not** call `discover()`. 
+
+Instead, polling loops should drastically reduce context and rely purely on lightweight, localized endpoints like `await client.get_stats()` or `await client.get_power_info()` to update continuous variables like battery SoC and grid import metrics.
