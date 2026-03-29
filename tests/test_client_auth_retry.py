@@ -26,7 +26,7 @@ class TestClientAuthRetry:
             token = f"token-version-{call_num}"
             return httpx.Response(200, json={
                 "code": 200,
-                "result": {"token": token, "userId": "user1", "gatewayList": []},
+                "result": {"token": token, "userId": "user1"},
                 "success": True,
             })
         
@@ -68,7 +68,7 @@ class TestClientAuthRetry:
         
         respx.post(LOGIN_URL).mock(return_value=httpx.Response(200, json={
             "code": 200,
-            "result": {"token": "dummy-token", "userId": "user1", "gatewayList": []},
+            "result": {"token": "dummy-token", "userId": "user1"},
             "success": True,
         }))
         

@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - **Urgent Testing Policy (AP-13)** — Adopted the AP-13 `live_test_protocol.md` policy. The strict ban on Negative Authentication Testing against live APIs now natively permits failure traces *only if* strictly routed through explicitly declared `DUMMY_EMAIL` payloads to preserve real user connectivity while allowing rigorous 401/403 header integration tests.
 
+### Fixed
+- **Facade Auto-Discovery Defect** — Fixed a fatal `ValueError` in `FranklinWHCloud.select_gateway()` where the wrapper hallucinated that the login `info` payload natively bundled a `gatewayList`. The facade now cleanly instantiates a temporary API proxy to explicitly call `get_home_gateway_list()` to establish its binding. Associated test mocked fixtures were also scrubbed of hallucinated gateway lists to restore parity with reality.
+
 ## [0.4.4] - 2026-03-30
 
 ### Added

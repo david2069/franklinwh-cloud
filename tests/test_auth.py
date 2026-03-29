@@ -25,7 +25,6 @@ class TestPasswordAuthLogin:
                 "result": {
                     "token": "fresh-token-123",
                     "userId": "12345",
-                    "gatewayList": [],
                 },
                 "success": True,
             })
@@ -77,7 +76,6 @@ class TestPasswordAuthGetToken:
                 "result": {
                     "token": "cached-token-xyz",
                     "userId": "12345",
-                    "gatewayList": [],
                 },
                 "success": True,
             })
@@ -105,7 +103,6 @@ class TestPasswordAuthGetToken:
                 "result": {
                     "token": f"token-{n}",
                     "userId": "12345",
-                    "gatewayList": [],
                 },
                 "success": True,
             })

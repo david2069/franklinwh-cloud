@@ -85,10 +85,11 @@ async def live_client():
     # Use gateway from config, or discover from account
     gateway_id = FRANKLIN_GATEWAY
     if not gateway_id:
-        gateway_list = info.get("gatewayList", [])
-        if not gateway_list:
+        temp = Client(fetcher, "placeholder")
+        gateways = await temp.get_home_gateway_list()
+        if not gateways:
             pytest.skip("No gateways found for this account")
-        gateway_id = gateway_list[0].get("sn", "")
+        gateway_id = gateways[0].get("id", "")
 
     client = Client(fetcher, gateway_id)
     yield client
