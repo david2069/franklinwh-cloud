@@ -7,7 +7,7 @@ def mock_password_auth():
     with patch("franklinwh_cloud.wrapper.PasswordAuth") as MockAuth:
         mock_auth_instance = MagicMock()
         mock_auth_instance.get_token = AsyncMock(return_value="mock_jwt_token")
-        mock_auth_instance.info = {"gatewayList": [{"sn": "10060006A02F241XXXX"}]}
+        mock_auth_instance.info = {}
         MockAuth.return_value = mock_auth_instance
         yield MockAuth
 
@@ -17,6 +17,7 @@ def mock_client():
         mock_client_instance = AsyncMock()
         mock_client_instance.get_stats = AsyncMock(return_value="mock_stats")
         mock_client_instance.get_mode = AsyncMock(return_value="mock_mode")
+        mock_client_instance.get_home_gateway_list = AsyncMock(return_value=[{"id": "10060006A02F241XXXX"}])
         MockClient.return_value = mock_client_instance
         yield MockClient
 
@@ -31,7 +32,7 @@ async def test_wrapper_initializes_and_proxies_to_client(mock_password_auth, moc
     
     # 3. Select Gateway (should auto-discover gateway and initialize Client)
     await client.select_gateway()
-    mock_client.assert_called_once()
+    assert mock_client.call_count == 2
     
     # 4. Proxy Calls (should route to the inner Client)
     stats = await client.get_stats()
