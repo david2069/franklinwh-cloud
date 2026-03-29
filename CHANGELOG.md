@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-03-31
+
 ### Added
 - **Urgent Testing Policy (AP-13)** — Adopted the AP-13 `live_test_protocol.md` policy. The strict ban on Negative Authentication Testing against live APIs now natively permits failure traces *only if* strictly routed through explicitly declared `DUMMY_EMAIL` payloads to preserve real user connectivity while allowing rigorous 401/403 header integration tests.
 
