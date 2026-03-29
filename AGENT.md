@@ -46,6 +46,21 @@
 
 ---
 
+## 🚫 ZERO-TOLERANCE: API Breaking Changes
+
+> **CRITICAL POLICY:** No agent is authorized to make arbitrary changes that directly break existing usage via deprecation or fundamental structural alterations.
+
+Any modification that alters existing public-facing API signatures (e.g., changing class `__init__` arguments, modifying expected method signatures, or deleting legacy structs) is **strictly forbidden** unless the user explicitly grants the authorization phrase:
+`"explicit declaration of break change"`
+
+If a change requires a downstream user to rewrite their integration code, you must:
+1. Stop immediately.
+2. Outline the exact breaking change in an Implementation Plan.
+3. Wait for the user to explicitly reply with the authorization phrase.
+4. Without the phrase, you must find a backward-compatible wrapper or fallback architecturally.
+
+---
+
 ## 🚫 Approval Requirements
 
 > **No auto-proceed without explicit user approval for plan documents.**
