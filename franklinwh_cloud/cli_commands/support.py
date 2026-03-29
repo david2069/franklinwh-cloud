@@ -395,9 +395,54 @@ async def collect_snapshot(client) -> dict:
             "grid_relay": main_sw[0] if len(main_sw) > 0 else None,
             "generator_relay": main_sw[1] if len(main_sw) > 1 else None,
             "solar_pv_relay": main_sw[2] if len(main_sw) > 2 else None,
+            "grid_relay2": stats.grid_relay2 if 'stats' in locals() else None,
+            "solar_pv_relay2": stats.pv_relay2 if 'stats' in locals() else None,
+            "black_start": stats.black_start if 'stats' in locals() else None,
+        }
+
+        # Extrapolate custom names and pure equipment listings
+        try:
+            sc_info = await client.get_smart_circuits_info()
+        except Exception:
+            sc_info = {}
+
+        try:
+            raw_equip = await client.get_accessories(0)
+            equip_list = raw_equip.get("result", []) if isinstance(raw_equip, dict) else []
+        except Exception:
+            equip_list = []
+
+        snapshot["accessories"] = {
+            "smart_circuits": {
+                "Sw1Name": sc_info.get("Sw1Name"),
+                "Sw1Mode": rt.get("Sw1Mode"),
+                "Sw1ProLoad": rt.get("Sw1ProLoad"),
+                "Sw1MsgType": rt.get("Sw1MsgType"),
+                "Sw2Name": sc_info.get("Sw2Name"),
+                "Sw2Mode": rt.get("Sw2Mode"),
+                "Sw3Name": sc_info.get("Sw3Name"),
+                "Sw3Mode": rt.get("Sw3Mode"),
+                "SwMerge": sc_info.get("SwMerge"),
+                "CarSwConsSupEnable": sc_info.get("CarSwConsSupEnable"),
+            },
+            "generator": {
+                "genStat": rt.get("genStat"),
+            },
+            "v2l": {
+                "v2lRunState": rt.get("v2lRunState"),
+            },
+            "pcs": {
+                "pe_stat": rt.get("pe_stat"),
+            },
+            "apbox": {
+                "di": rt.get("di"),
+                "doStatus": rt.get("doStatus"),
+            },
+            "hardware_registry_dump": equip_list,
         }
     except Exception as e:
         snapshot["relays"]["error"] = str(e)
+        snapshot["accessories"] = {"error": str(e)}
 
     # ── Warranty ─────────────────────────────────────────────────
     try:
