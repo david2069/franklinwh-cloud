@@ -1,6 +1,6 @@
 """Helpers for interating with the FranklinWH Python Client Library"""
 
-__version__ = "0.4.1"
+__version__ = "0.4.3"
 
 from .client import Client
 from .auth import BaseAuth, PasswordAuth, TokenAuth, TokenFetcher
