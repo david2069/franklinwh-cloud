@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Hardware Diagnostics** — Added `get_power_cap_config_list` (nameplate capacity/models) and `get_device_run_log_list` (alarm/error logs) natively to the codebase pipeline.
 - **CLI TOU Filtering** — `franklinwh-cli tou --current` strictly filters output table string representations to actively display only the currently active season blocks.
 - **Hardware Detection** — `franklinwh-cli accessories` dynamically queries `peHwVersion` per-serial from the cloud hardware dictionary to correctly print precise aPower model names (e.g. 'aPower X') implicitly.
+- **`FEAT-SUPPORT-PAYLOAD`** — Unified the `franklinwh-cli support --json` payload exporter to natively append the raw integer strings for `v2lRunState`, `genStat`, and Smart Circuit parameters (`SwMerge`, `CarSwConsSupEnable`, `Sw1Name`), along with a full mapping of `hardware_registry_dump` capturing auxiliary devices like `aHub`.
+- **Payload Architecture Documentation** — Authored `docs/DISCOVER_VS_SUPPORT.md` mapping out the rigid use-case boundaries between human-readable bindings (`discover`) versus raw firmware troubleshooting dumps (`support`), preventing UI integration anti-patterns.
 
 ### Fixed
 - **`DEF-CLI-TOU-SCOPE`** — Patched execution crash preventing the run of `tou --current` by successfully passing the unpacked `show_current` parameter downstream into the `tou.py` scope mapping.
