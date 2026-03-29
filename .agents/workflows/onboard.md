@@ -17,7 +17,7 @@ description: Mandatory Zero-Trust initialization sequence for all AI Agents atta
 > 4. Acknowledge that `FranklinWHCloud(email, password)` is the defacto initialization architecture for all scripted logins or automation tasks you write. Do not default back to `TokenFetcher` + `Client` unless specifically architecting OAuth proxies.
 > 
 > ## STEP 3: Understand Traceability Protocols
-> 5. Understand the Development Lifecycle: A break-fix, a new feature, or modifying existing configurations **all** require an approved implementation plan, an approved defect/feature ticket, and corresponding logging in `CHANGELOG.md`. 
+> 5. Understand the Development Lifecycle: Read `.agents/policies/change_management.md`. A break-fix, a new feature, or modifying existing configurations **all** require an approved implementation plan, an approved defect/feature ticket, and corresponding logging in `CHANGELOG.md`. 
 > 6. Understand Testing Impact: You must run your code via `./tests/run_and_record.sh` to establish mandatory traceability records. Raw execution of `pytest` is invalid for compliance.
 > 7. Understand Testing Safety: **No Negative Credential Testing.** Simulating `InvalidCredentials` against live APIs causes immediate user lockouts. These traces must remain strictly within offline mocks!
 > 8. Understand Data Safety: Read `.agents/policies/pii_policy.md` to strictly establish the physical redaction requirements for emails, serials, and site identifiers.
