@@ -31,6 +31,44 @@ gateway = YOUR-AGATE-SERIAL
 
 The `franklinwh-cloud` library supports two distinct initialization architectures.
 
+### Gateway Binding Lifecycle
+
+> [!IMPORTANT]
+> **API Serial Number Requirements**
+> The FranklinWH Cloud API strictly isolates commands. 
+> - **Login:** Requires Email/Password (returns JWT token).
+> - **Account APIs:** Requires JWT token (e.g., fetching the list of gateways via `get_home_gateway_list()`). 
+> - **Hardware APIs:** Requires JWT token **AND** a specific aGate Serial Number (e.g., fetching telemetry or changing operating modes).
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Facade as FranklinWHCloud
+    participant API as Cloud API
+
+    User->>Facade: FranklinWHCloud(email, password)
+    User->>Facade: await login()
+    Facade->>API: POST /api/user/login
+    API-->>Facade: Returns JWT Token
+    
+    Note over User,API: Account Phase (No Serial Required)
+    User->>Facade: await get_home_gateway_list()
+    Facade->>API: POST .../getHomeGatewayList
+    API-->>Facade: Returns [10060006A..., 10060006B...]
+    
+    Note over User,API: Hardware Phase (Serial MANDATORY)
+    loop For Each Gateway
+        User->>Facade: await select_gateway(serial)
+        Note right of Facade: Binds Client to specific Serial
+        User->>Facade: await get_stats()
+        Facade->>API: POST .../getDeviceInfo (with serial)
+        API-->>Facade: Returns Battery Stats
+    end
+```
+
+By default, calling `await client.select_gateway()` with NO arguments is a "Happy-Path" convenience method that automatically fetches your gateway list and binds the **first** gateway it finds natively. 
+If you manage multiple gateways (multi-site or multi-aGate topologies), **it is your sole responsibility** to fetch `get_home_gateway_list()` and explicitly iterate using `.select_gateway(serial)` before dispatching hardware commands.
+
 ### 1. Preferred Method (Legacy Facade)
 The simplest way to connect to your aGate. This wrapper handles standard username/password authentication, automatically locates your gateway serial, and binds the connection for you. We strongly recommend using this method for all current scripts and basic automations.
 
