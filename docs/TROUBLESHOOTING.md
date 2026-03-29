@@ -93,7 +93,7 @@ franklinwh-cli support --nettest --json
 graph LR
     A[Your machine] -->|HTTPS| B[CloudFront CDN]
     B -->|Origin| C[FranklinWH API]
-    C -->|MQTT| D[aGate device]
+    C -->|sendMqtt REST| D[aGate device]
     D -->|Local| E[aPower batteries]
 ```
 
@@ -103,7 +103,7 @@ graph LR
 | CloudFront edge | Which CDN edge are you hitting? (e.g. `SYD62-P1`) |
 | API auth | Can you authenticate and get a token? |
 | Gateway query | Can the API reach your gateway record? |
-| MQTT round-trip | Can the API send/receive from your aGate? |
+| aGate round-trip (sendMqtt) | Can the API relay REST payloads to your aGate? |
 | FEM (if present) | Can you reach your local FEM instance? |
 
 ### Interpreting Results
@@ -111,7 +111,7 @@ graph LR
 - **DNS failure** → Check your internet connection, DNS settings, or VPN
 - **CloudFront slow (>500ms)** → You may be routing through a distant edge; check VPN/proxy settings
 - **API auth slow (>2s)** → Franklin's auth service may be under load; retry later
-- **MQTT timeout** → Your aGate may be offline, rebooting, or on a weak cellular/WiFi connection
+- **sendMqtt REST timeout** → Your aGate may be offline, rebooting, or on a weak cellular/WiFi connection
 - **FEM unreachable** → Check that FEM is running and on the same network
 
 ### Scheduled Monitoring

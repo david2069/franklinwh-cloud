@@ -217,6 +217,9 @@ graph TB
     style aGate fill:#059669,color:#fff
 ```
 
+> **Terminology Disambiguation: `sendMqtt` vs True MQTT**  
+> Throughout this project, you will see references to `sendMqtt` payload wrappers. Please note that the FranklinWH Cloud API executes these commands exclusively over **standard HTTPS REST endpoints** (e.g., `POST /hes-gateway/manage/sendMqtt`). This library **does not** establish a true, continuous MQTT TCP/WebSocket local connection to the aGate broker. The term `sendMqtt` is merely FranklinWH's internal naming convention for the HTTP-encapsulated JSON wrapper they use to tunnel polling requests from the Cloud down to the physical hardware.
+
 ```
 franklinwh_cloud/
 ├── client.py            # Client class (inherits all mixins)

@@ -73,11 +73,11 @@ franklinwh-cli raw get_stats --headers
 | `get_device_info` | — | Device detail info |
 | `get_smart_circuits_info` | — | Smart circuit configuration |
 | `get_bms_info` | `serial_no` | BMS info for a specific aPower |
-| `get_network_info` | — | aGate network config (via MQTT) |
-| `get_wifi_config` | — | WiFi SSID, AP config (via MQTT) |
-| `scan_wifi_networks` | — | Scan WiFi networks (via MQTT) |
-| `get_connection_status` | — | Router/AWS connectivity (via MQTT) |
-| `get_network_switches` | — | Interface on/off: WiFi/Eth/4G (via MQTT) |
+| `get_network_info` | — | aGate network config (via `sendMqtt`) |
+| `get_wifi_config` | — | WiFi SSID, AP config (via `sendMqtt`) |
+| `scan_wifi_networks` | — | Scan WiFi networks (via `sendMqtt`) |
+| `get_connection_status` | — | Router/AWS connectivity (via `sendMqtt`) |
+| `get_network_switches` | — | Interface on/off: WiFi/Eth/4G (via `sendMqtt`) |
 
 ### Account & Site
 
