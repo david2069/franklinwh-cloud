@@ -455,9 +455,14 @@ async def main():
     # ── 1b. Check battery capacity & inverter limits via API ──
     device_info = await client.get_device_info()
     result_data = device_info.get("result", {})
+    
+    # We use hardcoded fallback values (e.g. 13.6 kWh, 5.0 kW) purely as a safety net
+    # to prevent mathematical division-by-zero crashes in the rare event of an API failure.
+    # The Cloud API should realistically never return these as null.
     battery_count = len(result_data.get("apowerList", [])) or 1
     total_capacity_kwh = result_data.get("totalCap", 13.6)
     nameplate_power_kw = result_data.get("totalPower", 5.0 * battery_count)
+    
     print(f"🔋 Batteries: {battery_count} = {total_capacity_kwh:.1f} kWh")
     print(f"⚡ Nameplate Inverter Max Power: {nameplate_power_kw:.1f} kW continuous")
 
