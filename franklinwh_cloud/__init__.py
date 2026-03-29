@@ -3,6 +3,7 @@
 __version__ = "0.4.3"
 
 from .client import Client
+from .wrapper import FranklinWHCloud
 from .auth import BaseAuth, PasswordAuth, TokenAuth, TokenFetcher
 from .models import Stats, Current, Totals, GridStatus, empty_stats
 from .exceptions import (
@@ -48,6 +49,7 @@ __all__ = [
     "TokenFetcher",
     "Totals",
     "UauthorizedRequest",
+    "FranklinWHCloud",
     "empty_stats",
 ]
 
