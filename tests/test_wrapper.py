@@ -17,7 +17,7 @@ def mock_client():
         mock_client_instance = AsyncMock()
         mock_client_instance.get_stats = AsyncMock(return_value="mock_stats")
         mock_client_instance.get_mode = AsyncMock(return_value="mock_mode")
-        mock_client_instance.get_home_gateway_list = AsyncMock(return_value=[{"id": "10060006A02F241XXXX"}])
+        mock_client_instance.get_home_gateway_list = AsyncMock(return_value={"result": [{"id": "10060006A02F241XXXX"}]})
         MockClient.return_value = mock_client_instance
         yield MockClient
 
