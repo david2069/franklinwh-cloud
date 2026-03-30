@@ -183,6 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Show HTTP response headers")
     sub_raw.add_argument("--timings", "-T", action="store_true",
                          help="Show request timing and CloudFront edge info")
+    sub_raw.add_argument("--validate-schema", action="store_true",
+                         help="Cross-reference payload against docs/franklinwh_openapi.json (Diagnostic only)")
 
     # metrics
     subs.add_parser("metrics", help="Show API call metrics from current session")
@@ -404,7 +406,8 @@ async def async_main():
                 await raw.run(client, args.method, args.values,
                               json_output=args.json,
                               show_headers=getattr(args, 'headers', False),
-                              show_timings=getattr(args, 'timings', False))
+                              show_timings=getattr(args, 'timings', False),
+                              validate_schema=getattr(args, 'validate_schema', False))
 
             case "metrics":
                 from franklinwh_cloud.cli_commands import metrics

@@ -86,7 +86,8 @@ def print_available():
 
 async def run(client, method: str, values: list[str] | None = None,
               *, json_output: bool = False,
-              show_headers: bool = False, show_timings: bool = False):
+              show_headers: bool = False, show_timings: bool = False,
+              validate_schema: bool = False):
     """Execute a raw API method call."""
 
     if method in ("help", "list", "?"):
@@ -139,6 +140,10 @@ async def run(client, method: str, values: list[str] | None = None,
         print_error(f"{method} failed: {e}")
         return
     elapsed_ms = (time.monotonic() - t0) * 1000
+
+    if validate_schema:
+        print("\n[Schema Validator] Analyzing payload against swagger spec...")
+        _validate_live_schema(client, result)
 
     # Output
     if json_output:
@@ -200,3 +205,74 @@ async def run(client, method: str, values: list[str] | None = None,
             pprint.pprint(result, indent=4, width=120, sort_dicts=False)
         else:
             print(result)
+
+
+def _validate_live_schema(client, live_payload: dict):
+    import json
+    import sys
+    from urllib.parse import urlparse
+    from pathlib import Path
+
+    et = getattr(client, "edge_tracker", None)
+    if not et or not et._last_request_url:
+        print_error("Cannot validate schema: no HTTP URL intercepted by edge_tracker.")
+        return
+        
+    url = urlparse(et._last_request_url)
+    path = url.path
+    method = (et._last_request_method or "get").lower()
+
+    spec_path = Path("docs/franklinwh_openapi.json")
+    if not spec_path.exists():
+        print_warning(f"Skipping schema drift check. Missing {spec_path} in PWD.")
+        return
+        
+    try:
+        with open(spec_path, "r", encoding="utf-8") as f:
+            spec = json.load(f)
+    except Exception as e:
+        print_error(f"Failed to load OpenAPI spec: {e}")
+        return
+        
+    defined_paths = spec.get("paths", {})
+    if path not in defined_paths or method not in defined_paths[path]:
+        print_warning(f"Undocumented endpoint signature: {method.upper()} {path} is missing from OpenAPI 3.0 spec.")
+        return
+        
+    sys.path.insert(0, str(Path.cwd()))
+    try:
+        from scripts.openapi_generator import _flatten_payload_keys, _flatten_schema_keys
+    except ImportError:
+        print_error("Cannot import openapi_generator tooling from ./scripts/openapi_generator.py for deep drift assertions.")
+        return
+        
+    try:
+        op_schema = defined_paths[path][method]["responses"]["200"]["content"]["application/json"]["schema"]
+    except KeyError:
+        print_warning(f"Warning: {method.upper()} {path} exists in openapi.json, but no 200 response JSON schema is mapped.")
+        return
+        
+    official_keys = _flatten_schema_keys(op_schema)
+    
+    # In franklinwh_cloud, Methods routinely unwrap envelopes automatically. E.g `get_agate_info` returns `result.dataList`.
+    # Therefore, reconstructing the entire envelope structure for _flatten_payload_keys requires heuristic padding.
+    # To keep simple in CLI raw, we just do a subset check: Do all the keys in the returned dict exist SOMEWHERE in the official spec?
+    
+    flattened_live = _flatten_payload_keys(live_payload)
+    
+    drifting_keys = []
+    official_flat = " ".join(official_keys).lower()
+    
+    for lk in flattened_live:
+        # Strip array syntax and perform simple existence check due to unwrapped payloads vs enveloped swagger schemas
+        lks = lk.split(".")[-1].lower()
+        if lks not in official_flat:
+            drifting_keys.append(lk)
+            
+    if drifting_keys:
+        print_warning(f"Detected {len(drifting_keys)} unmapped keys in live schema vs docs/franklinwh_openapi.json!")
+        for k in drifting_keys:
+            print(f"  ? {k}")
+    else:
+        from franklinwh_cloud.cli_output import c
+        print(f"[{c('bright_green')}✓{c('reset')}] Payload structure gracefully aligns with OpenAPI specifications.")
