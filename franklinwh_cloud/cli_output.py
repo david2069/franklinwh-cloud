@@ -65,6 +65,15 @@ def print_table(rows: list[tuple[str, str]], indent: int = 3):
         print(f"{pad}{c('dim', key):>{max_key + 6}s}  {val}")
 
 
+def _strip_nulls(obj):
+    """Recursively remove None values from dicts and lists to cleanly output JSON without 'glitches'."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [_strip_nulls(v) for v in obj]
+    return obj
+
+
 def print_json_output(data, indent: int = 2):
     """Print data as formatted JSON to stdout."""
     if hasattr(data, "__dict__"):
@@ -72,6 +81,7 @@ def print_json_output(data, indent: int = 2):
         import dataclasses
         if dataclasses.is_dataclass(data):
             data = dataclasses.asdict(data)
+    data = _strip_nulls(data)
     print(json.dumps(data, indent=indent, default=str))
 
 
