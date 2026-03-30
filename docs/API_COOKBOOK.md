@@ -1,5 +1,10 @@
 # API Cookbook
 
+> [!CAUTION]
+> **API Maintenance & Schema Drift**
+> The `franklinwh-cloud` library relies on actively mimicking the FranklinWH mobile app. The cloud servers dynamically shift the JSON payload structures returned (e.g., hiding new fields like `offGridFlag` or v2 metadata) based entirely on the `softwareversion` HTTP Request Header.
+> Whenever a new major version of the official mobile app is released, developers must update `metrics.py` to spoof the latest header (e.g. `APP2.4.1`) to unlock the new API capabilities. Tracking this specific telemetry metric is the *only* way to formally monitor schema drift. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
+
 Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
 > **Prerequisites:** See [SANDBOX_SETUP.md](SANDBOX_SETUP.md) for venv and credentials setup.
