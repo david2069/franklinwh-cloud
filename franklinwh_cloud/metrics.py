@@ -35,12 +35,13 @@ DISCLAIMER = (
 def get_default_client_headers() -> dict:
     """Return default client identification headers.
 
-    These identify us honestly as a third-party Python client,
-    not spoofing the official app. FranklinWH can use these for
-    their API analytics.
+    We spoof the 'softwareversion' to masquerade as the official mobile app
+    in order to unlock the latest JSON schema capabilities from the backend.
+    However, we still honestly identify as a third-party Python client via
+    the 'optsource' and 'optsystemversion' telemetry headers.
     """
     return {
-        "softwareversion": f"franklinwh-cloud-client/{__version__}",
+        "softwareversion": "APP2.4.1",
         "optdevice": platform.node() or "unknown",
         "optdevicename": "python",
         "optsource": "3",  # 3 = third-party
