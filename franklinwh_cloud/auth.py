@@ -56,7 +56,7 @@ class BaseAuth(ABC):
 class PasswordAuth(BaseAuth):
     """Authenticates using email and password against the Cloud API."""
     
-    def __init__(self, username: str, password: str, login_type: int = LOGIN_TYPE_USER) -> None:
+    def __init__(self, username: str, password: str, login_type: int = LOGIN_TYPE_USER, emulate_app_version: str = "APP2.4.1") -> None:
         """Initialize the PasswordAuth fetcher.
 
         Parameters
@@ -68,13 +68,14 @@ class PasswordAuth(BaseAuth):
         self.username = username
         self.password = password
         self.login_type = login_type
+        self.emulate_app_version = emulate_app_version
         
     async def get_token(self, force_refresh=False) -> str:
         """Fetch a new authentication token using the stored credentials."""
         if self.info and self.info.get("token") and not force_refresh:
             return self.info["token"]
             
-        result = await self._login(self.username, self.password, self.login_type)
+        result = await self._login(self.username, self.password, self.login_type, self.emulate_app_version)
         if not result or "token" not in result:
              raise InvalidCredentialsException("Login failed: No token returned in response")
              
@@ -82,12 +83,12 @@ class PasswordAuth(BaseAuth):
         return self.info["token"]
 
     @staticmethod
-    async def login(username: str, password: str, login_type: int = 0):
+    async def login(username: str, password: str, login_type: int = 0, emulate_app_version: str = "APP2.4.1"):
         """Log in to the FranklinWH API and retrieve an authentication token."""
-        return (await PasswordAuth._login(username, password, login_type))["token"]
+        return (await PasswordAuth._login(username, password, login_type, emulate_app_version))["token"]
 
     @staticmethod
-    async def _login(username: str, password: str, login_type: int = 0) -> dict:
+    async def _login(username: str, password: str, login_type: int = 0, emulate_app_version: str = "APP2.4.1") -> dict:
         """Log in to the FranklinWH API and retrieve account information."""
         url = DEFAULT_URL_BASE + "hes-gateway/terminal/initialize/appUserOrInstallerLogin"
         form = {
@@ -97,7 +98,7 @@ class PasswordAuth(BaseAuth):
             "type": login_type,
         }
         async with httpx.AsyncClient(http2=True) as client:
-            res = await client.post(url, data=form, timeout=30)
+            res = await client.post(url, data=form, headers={"softwareversion": emulate_app_version}, timeout=30)
         res.raise_for_status()
         js = res.json()
 
@@ -106,6 +107,10 @@ class PasswordAuth(BaseAuth):
 
         if js["code"] == 400:
             raise AccountLockedException(js["message"])
+
+        # Capture natively echoed backend version for Telemetry
+        js["result"]["_emulated_version"] = emulate_app_version
+        js["result"]["_backend_software_version"] = js["result"].get("softwareVersion") or res.headers.get("softwareversion")
 
         return js["result"]
 
