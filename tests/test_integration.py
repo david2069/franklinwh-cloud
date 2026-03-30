@@ -24,16 +24,23 @@ def load_fixture(filename: str) -> dict:
         return json.load(f)
 
 
-def assert_schema_matches(live_payload: dict, mock_payload: dict, endpoint_name: str):
+def assert_schema_matches(live_payload: dict, mock_payload: dict, endpoint_name: str, optional_keys: list[str] = None):
     """Assert that 100% of the mock schema keys physically exist in the live payload.
 
     Provides forward-compatibility (live payload can have *more* keys),
     but halts tests if the mocked fixture contains attributes the live API does not.
     """
+    if optional_keys is None:
+        optional_keys = []
+        
     mock_keys = set(_collect_keys(mock_payload))
     live_keys = set(_collect_keys(live_payload))
     
     missing_keys = mock_keys - live_keys
+    
+    # Remove any missing keys that we expect might dynamically disappear
+    missing_keys = {k for k in missing_keys if k not in optional_keys}
+    
     if missing_keys:
         raise AssertionError(
             f"Schema Drift Detected on {endpoint_name}. "
@@ -65,7 +72,10 @@ async def test_composite_info_schema_matches(live_client):  # noqa: F811
     live_payload = await live_client.get_device_composite_info()
     mock_payload = load_fixture("composite_info.json")
     
-    assert_schema_matches(live_payload, mock_payload, "get_device_composite_info()")
+    assert_schema_matches(
+        live_payload, mock_payload, "get_device_composite_info()",
+        optional_keys=["result.runtimeData.offGridFlag", "result.solarHaveVo.offGridFlag"]
+    )
 
 
 @pytest.mark.asyncio

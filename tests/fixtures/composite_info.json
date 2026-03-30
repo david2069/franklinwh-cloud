@@ -5,6 +5,7 @@
         "currentWorkMode": 1,
         "deviceStatus": 1,
         "solarHaveVo": {
+            "offGridFlag": 0,
             "offGridReason": 0
         },
         "runtimeData": {
@@ -20,25 +21,14 @@
             "mode": 10001,
             "name": "Solar Export",
             "offgridreason": 0,
-            "pro_load": [
-                1,
-                0,
-                0
-            ],
+            "offGridFlag": 0,
+            "pro_load": [1, 0, 0],
             "v2lModeEnable": 0,
             "v2lRunState": 0,
-            "fhpSn": [
-                "AP2-001"
-            ],
-            "fhpSoc": [
-                85.0
-            ],
-            "fhpPower": [
-                -2.1
-            ],
-            "bms_work": [
-                2
-            ],
+            "fhpSn": ["AP2-001"],
+            "fhpSoc": [85.0],
+            "fhpPower": [-2.1],
+            "bms_work": [2],
             "t_amb": 28.5,
             "signal": 75.0,
             "wifiSignal": -45.0,
