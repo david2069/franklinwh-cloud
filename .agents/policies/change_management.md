@@ -12,6 +12,12 @@
 3. EXECUTE — make the change, verify, commit
 ```
 
+## Anti-Arbitrary Change Mandate
+
+**Agents MUST NOT make arbitrary code or test changes that are not based on explicit requirements or concrete evidence. The user MUST be consulted before executing destructive, presumptive, or "speculative fix" modifications.** 
+
+If a test fails because of a missing key, you must verify against the source of truth (like OpenAPI captures or HAR files) rather than unilaterally deleting the key from the tests or mocks to enforce a pass. When in doubt: **STOP AND ASK THE USER FOR APPROVAL.**
+
 ## Agent Enforcement
 
 | Situation | Required Action |
