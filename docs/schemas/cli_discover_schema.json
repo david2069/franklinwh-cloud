@@ -1,0 +1,1015 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "properties": {
+    "tier": {
+      "type": "integer"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "site": {
+      "type": "object",
+      "properties": {
+        "site_id": {
+          "type": "integer"
+        },
+        "site_name": {
+          "type": "string"
+        },
+        "gateway_name": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        },
+        "country_id": {
+          "type": "integer"
+        },
+        "province": {
+          "type": "string"
+        },
+        "province_id": {
+          "type": "integer"
+        },
+        "city": {
+          "type": "string"
+        },
+        "postcode": {
+          "type": "string"
+        },
+        "latitude": {
+          "type": "number"
+        },
+        "longitude": {
+          "type": "number"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "utc_offset": {
+          "type": "number"
+        },
+        "dst_active": {
+          "type": "boolean"
+        },
+        "alpha_code": {
+          "type": "string"
+        },
+        "electric_company": {
+          "type": "string"
+        },
+        "tariff_name": {
+          "type": "string"
+        },
+        "der_schedule": {
+          "type": "string"
+        },
+        "grid_profile": {
+          "type": "string"
+        },
+        "pto_date": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "address",
+        "alpha_code",
+        "city",
+        "country",
+        "country_id",
+        "der_schedule",
+        "dst_active",
+        "electric_company",
+        "gateway_name",
+        "grid_profile",
+        "latitude",
+        "longitude",
+        "postcode",
+        "province",
+        "province_id",
+        "pto_date",
+        "site_id",
+        "site_name",
+        "tariff_name",
+        "timezone",
+        "utc_offset"
+      ]
+    },
+    "agate": {
+      "type": "object",
+      "properties": {
+        "serial": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "model_name": {
+          "type": "string"
+        },
+        "sku": {
+          "type": "string"
+        },
+        "hw_version": {
+          "type": "integer"
+        },
+        "hw_version_str": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer"
+        },
+        "protocol_ver": {
+          "type": "string"
+        },
+        "firmware": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "active_status": {
+          "type": "integer"
+        },
+        "device_time": {
+          "type": "string"
+        },
+        "device_date": {
+          "type": "string"
+        },
+        "conn_type": {
+          "type": "integer"
+        },
+        "conn_type_name": {
+          "type": "string"
+        },
+        "sim_status": {
+          "type": "integer"
+        },
+        "sim_status_name": {
+          "type": "string"
+        },
+        "wifi_signal": {
+          "type": "integer"
+        },
+        "mobile_signal": {
+          "type": "integer"
+        },
+        "ibg_version": {
+          "type": "string"
+        },
+        "sl_version": {
+          "type": "string"
+        },
+        "aws_version": {
+          "type": "string"
+        },
+        "app_version": {
+          "type": "string"
+        },
+        "meter_version": {
+          "type": "string"
+        },
+        "msa_model": {
+          "type": "null"
+        },
+        "msa_serial": {
+          "type": "null"
+        },
+        "activated": {
+          "type": "string"
+        },
+        "installed": {
+          "type": "null"
+        },
+        "created": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "activated",
+        "active_status",
+        "app_version",
+        "aws_version",
+        "conn_type",
+        "conn_type_name",
+        "created",
+        "device_date",
+        "device_time",
+        "firmware",
+        "generation",
+        "hw_version",
+        "hw_version_str",
+        "ibg_version",
+        "installed",
+        "meter_version",
+        "mobile_signal",
+        "model",
+        "model_name",
+        "msa_model",
+        "msa_serial",
+        "protocol_ver",
+        "serial",
+        "sim_status",
+        "sim_status_name",
+        "sku",
+        "sl_version",
+        "status",
+        "wifi_signal"
+      ]
+    },
+    "batteries": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "total_capacity_kwh": {
+          "type": "number"
+        },
+        "total_rated_power_kw": {
+          "type": "number"
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "serial": {
+                "type": "string"
+              },
+              "rated_power_kw": {
+                "type": "number"
+              },
+              "rated_capacity_kwh": {
+                "type": "number"
+              },
+              "remaining_kwh": {
+                "type": "number"
+              },
+              "soc": {
+                "type": "number"
+              },
+              "status": {
+                "type": "integer"
+              },
+              "pe_hw_ver": {
+                "type": "string"
+              },
+              "fpga_ver": {
+                "type": "string"
+              },
+              "dcdc_ver": {
+                "type": "string"
+              },
+              "inv_ver": {
+                "type": "string"
+              },
+              "bms_ver": {
+                "type": "string"
+              },
+              "bl_ver": {
+                "type": "string"
+              },
+              "th_ver": {
+                "type": "string"
+              },
+              "mppt_app_ver": {
+                "type": "string"
+              },
+              "bms_state": {
+                "type": "string"
+              },
+              "pcs_state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bl_ver",
+              "bms_state",
+              "bms_ver",
+              "dcdc_ver",
+              "fpga_ver",
+              "inv_ver",
+              "mppt_app_ver",
+              "pcs_state",
+              "pe_hw_ver",
+              "rated_capacity_kwh",
+              "rated_power_kw",
+              "remaining_kwh",
+              "serial",
+              "soc",
+              "status",
+              "th_ver"
+            ]
+          }
+        }
+      },
+      "required": [
+        "count",
+        "total_capacity_kwh",
+        "total_rated_power_kw",
+        "units"
+      ]
+    },
+    "flags": {
+      "type": "object",
+      "properties": {
+        "solar": {
+          "type": "boolean"
+        },
+        "solar_detail": {
+          "type": "string"
+        },
+        "tariff_configured": {
+          "type": "boolean"
+        },
+        "pcs_enabled": {
+          "type": "boolean"
+        },
+        "off_grid": {
+          "type": "boolean"
+        },
+        "off_grid_simulated": {
+          "type": "boolean"
+        },
+        "off_grid_permanent": {
+          "type": "boolean"
+        },
+        "off_grid_reason": {
+          "type": "integer"
+        },
+        "mppt_enabled": {
+          "type": "boolean"
+        },
+        "three_phase": {
+          "type": "boolean"
+        },
+        "ct_split_grid": {
+          "type": "boolean"
+        },
+        "ct_split_pv": {
+          "type": "boolean"
+        },
+        "v2l_enabled": {
+          "type": "boolean"
+        },
+        "v2l_eligible": {
+          "type": "boolean"
+        },
+        "v2l_note": {
+          "type": "string"
+        },
+        "generator_enabled": {
+          "type": "boolean"
+        },
+        "remote_solar": {
+          "type": "boolean"
+        },
+        "sgip": {
+          "type": "boolean"
+        },
+        "bb": {
+          "type": "boolean"
+        },
+        "ja12": {
+          "type": "boolean"
+        },
+        "sdcp": {
+          "type": "boolean"
+        },
+        "vpp_enrolled": {
+          "type": "boolean"
+        },
+        "nem_type": {
+          "type": "string"
+        },
+        "ahub_detected": {
+          "type": "boolean"
+        },
+        "mac1_detected": {
+          "type": "boolean"
+        },
+        "charging_power_limited": {
+          "type": "boolean"
+        },
+        "need_ct_test": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ahub_detected",
+        "bb",
+        "charging_power_limited",
+        "ct_split_grid",
+        "ct_split_pv",
+        "generator_enabled",
+        "ja12",
+        "mac1_detected",
+        "mppt_enabled",
+        "need_ct_test",
+        "nem_type",
+        "off_grid",
+        "off_grid_permanent",
+        "off_grid_reason",
+        "off_grid_simulated",
+        "pcs_enabled",
+        "remote_solar",
+        "sdcp",
+        "sgip",
+        "solar",
+        "solar_detail",
+        "tariff_configured",
+        "three_phase",
+        "v2l_eligible",
+        "v2l_enabled",
+        "v2l_note",
+        "vpp_enrolled"
+      ]
+    },
+    "accessories": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array"
+        },
+        "has_smart_circuits": {
+          "type": "boolean"
+        },
+        "has_generator": {
+          "type": "boolean"
+        },
+        "has_apbox": {
+          "type": "boolean"
+        },
+        "has_ahub": {
+          "type": "boolean"
+        },
+        "has_mac1": {
+          "type": "boolean"
+        },
+        "smart_circuits": {
+          "type": "null"
+        },
+        "apbox_di": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "apbox_do_status": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generator_state": {
+          "type": "string"
+        },
+        "v2l_state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "apbox_di",
+        "apbox_do_status",
+        "generator_state",
+        "has_ahub",
+        "has_apbox",
+        "has_generator",
+        "has_mac1",
+        "has_smart_circuits",
+        "items",
+        "smart_circuits",
+        "v2l_state"
+      ]
+    },
+    "grid": {
+      "type": "object",
+      "properties": {
+        "connected": {
+          "type": "boolean"
+        },
+        "pcs_entrance": {
+          "type": "boolean"
+        },
+        "global_discharge_max_kw": {
+          "type": "null"
+        },
+        "global_charge_max_kw": {
+          "type": "number"
+        },
+        "feed_max_kw": {
+          "type": "null"
+        },
+        "import_max_kw": {
+          "type": "null"
+        },
+        "peak_demand_max_kw": {
+          "type": "null"
+        },
+        "feed_max_flag": {
+          "type": "integer"
+        },
+        "import_max_flag": {
+          "type": "integer"
+        },
+        "bb_discharge_power": {
+          "type": "null"
+        },
+        "backup_solution": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "backup_solution",
+        "bb_discharge_power",
+        "connected",
+        "feed_max_flag",
+        "feed_max_kw",
+        "global_charge_max_kw",
+        "global_discharge_max_kw",
+        "import_max_flag",
+        "import_max_kw",
+        "pcs_entrance",
+        "peak_demand_max_kw"
+      ]
+    },
+    "warranty": {
+      "type": "object",
+      "properties": {
+        "expiry": {
+          "type": "string"
+        },
+        "throughput_mwh": {
+          "type": "number"
+        },
+        "remaining_kwh": {
+          "type": "number"
+        },
+        "installer_company": {
+          "type": "string"
+        },
+        "installer_phone": {
+          "type": "string"
+        },
+        "installer_email": {
+          "type": "string"
+        },
+        "support_phone": {
+          "type": "string"
+        },
+        "warranty_link": {
+          "type": "string"
+        },
+        "devices": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "devices",
+        "expiry",
+        "installer_company",
+        "installer_email",
+        "installer_phone",
+        "remaining_kwh",
+        "support_phone",
+        "throughput_mwh",
+        "warranty_link"
+      ]
+    },
+    "electrical": {
+      "type": "object",
+      "properties": {
+        "v_l1": {
+          "type": "null"
+        },
+        "v_l2": {
+          "type": "null"
+        },
+        "i_l1": {
+          "type": "null"
+        },
+        "i_l2": {
+          "type": "null"
+        },
+        "frequency": {
+          "type": "null"
+        },
+        "relays": {
+          "type": "object",
+          "properties": {
+            "grid_1": {
+              "type": "boolean"
+            },
+            "generator": {
+              "type": "boolean"
+            },
+            "solar_pv_1": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "generator",
+            "grid_1",
+            "solar_pv_1"
+          ]
+        },
+        "operating_mode": {
+          "type": "integer"
+        },
+        "operating_mode_name": {
+          "type": "string"
+        },
+        "run_status": {
+          "type": "integer"
+        },
+        "run_status_name": {
+          "type": "string"
+        },
+        "device_status": {
+          "type": "integer"
+        },
+        "soc": {
+          "type": "number"
+        },
+        "tou_status": {
+          "type": "integer"
+        },
+        "tou_dispatch_count": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "device_status",
+        "frequency",
+        "i_l1",
+        "i_l2",
+        "operating_mode",
+        "operating_mode_name",
+        "relays",
+        "run_status",
+        "run_status_name",
+        "soc",
+        "tou_dispatch_count",
+        "tou_status",
+        "v_l1",
+        "v_l2"
+      ]
+    },
+    "programmes": {
+      "type": "object",
+      "properties": {
+        "enrolled": {
+          "type": "boolean"
+        },
+        "program_name": {
+          "type": "null"
+        },
+        "partner_name": {
+          "type": "null"
+        },
+        "vpp_soc": {
+          "type": "number"
+        },
+        "vpp_min_soc": {
+          "type": "number"
+        },
+        "vpp_max_soc": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "enrolled",
+        "partner_name",
+        "program_name",
+        "vpp_max_soc",
+        "vpp_min_soc",
+        "vpp_soc"
+      ]
+    },
+    "region_quirks": {
+      "type": "object",
+      "properties": {
+        "country": {
+          "type": "string"
+        },
+        "grid_standard": {
+          "type": "string"
+        },
+        "v2l_available": {
+          "type": "boolean"
+        },
+        "nem_applicable": {
+          "type": "boolean"
+        },
+        "max_export_kw": {
+          "type": "number"
+        },
+        "programmes_applicable": {
+          "type": "array"
+        },
+        "api_null_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "api_null_fields",
+        "country",
+        "grid_standard",
+        "max_export_kw",
+        "nem_applicable",
+        "notes",
+        "programmes_applicable",
+        "v2l_available"
+      ]
+    },
+    "accessory_quirks": {
+      "type": "object",
+      "properties": {
+        "ahub": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "detected_via": {
+              "type": "string"
+            },
+            "api_exposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api_opaque": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "known_firmware_versions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "workaround": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "api_exposes",
+            "api_opaque",
+            "detected_via",
+            "display_name",
+            "known_firmware_versions",
+            "notes",
+            "workaround"
+          ]
+        },
+        "apbox": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "detected_via": {
+              "type": "string"
+            },
+            "api_exposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api_opaque": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "known_firmware_versions": {
+              "type": "array"
+            },
+            "workaround": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "api_exposes",
+            "api_opaque",
+            "detected_via",
+            "display_name",
+            "known_firmware_versions",
+            "notes",
+            "workaround"
+          ]
+        },
+        "mac1": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "detected_via": {
+              "type": "string"
+            },
+            "api_exposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api_opaque": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "known_firmware_versions": {
+              "type": "array"
+            },
+            "workaround": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "api_exposes",
+            "api_opaque",
+            "detected_via",
+            "display_name",
+            "known_firmware_versions",
+            "notes",
+            "workaround"
+          ]
+        },
+        "split_ct": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "detected_via": {
+              "type": "string"
+            },
+            "api_exposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api_opaque": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "known_firmware_versions": {
+              "type": "array"
+            },
+            "workaround": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "api_exposes",
+            "api_opaque",
+            "detected_via",
+            "display_name",
+            "known_firmware_versions",
+            "notes",
+            "workaround"
+          ]
+        },
+        "generator": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "detected_via": {
+              "type": "string"
+            },
+            "api_exposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api_opaque": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "known_firmware_versions": {
+              "type": "array"
+            },
+            "workaround": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "api_exposes",
+            "api_opaque",
+            "detected_via",
+            "display_name",
+            "known_firmware_versions",
+            "notes",
+            "workaround"
+          ]
+        },
+        "smart_circuits": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string"
+            },
+            "detected_via": {
+              "type": "string"
+            },
+            "api_exposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "api_opaque": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "known_firmware_versions": {
+              "type": "array"
+            },
+            "workaround": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "api_exposes",
+            "api_opaque",
+            "detected_via",
+            "display_name",
+            "known_firmware_versions",
+            "notes",
+            "workaround"
+          ]
+        }
+      },
+      "required": [
+        "ahub",
+        "apbox",
+        "generator",
+        "mac1",
+        "smart_circuits",
+        "split_ct"
+      ]
+    }
+  },
+  "required": [
+    "accessories",
+    "accessory_quirks",
+    "agate",
+    "batteries",
+    "electrical",
+    "flags",
+    "grid",
+    "programmes",
+    "region_quirks",
+    "site",
+    "tier",
+    "timestamp",
+    "warranty"
+  ]
+}

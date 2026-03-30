@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "properties": {
+    "identity": {
+      "type": "object",
+      "properties": {
+        "serial": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serial"
+      ]
+    },
+    "batteries": {
+      "type": "array"
+    },
+    "network": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "batteries",
+    "identity",
+    "network"
+  ]
+}
