@@ -93,9 +93,16 @@ def main():
     
     analyzed_hars = 0
     extracted_responses = 0
+    
+    # Load baseline app version
+    baseline_path = Path("docs/CURRENT_APP_VERSION.txt")
+    baseline_version = baseline_path.read_text().strip() if baseline_path.exists() else "APP2.4.1"
+    version_drift_detected = False
 
     for har_file in har_dir.glob("*.har"):
         analyzed_hars += 1
+        har_software_version = None
+        
         with open(har_file, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f)
@@ -107,6 +114,16 @@ def main():
         for e in entries:
             req = e.get("request", {})
             res = e.get("response", {})
+            
+            # Optionally extract software version from request headers if not found yet
+            if not har_software_version:
+                for h in req.get("headers", []):
+                    if h.get("name", "").lower() == "softwareversion":
+                        har_software_version = h.get("value")
+                        if har_software_version and har_software_version != baseline_version:
+                            logging.error(f"🚨 APP VERSION SHIFT: {har_file.name} used {har_software_version} (Baseline is {baseline_version})! Expect schema drift.")
+                            version_drift_detected = True
+                        break
             
             method = req.get("method", "").lower()
             url_str = req.get("url", "")
@@ -169,6 +186,9 @@ def main():
     logging.info(f"Processed {analyzed_hars} HAR captures.")
     
     output_dump = {}
+    if version_drift_detected:
+        output_dump["version_drift_warning"] = "At least one HAR was captured using an alternative mobile app version!"
+        
     if unmapped_operations:
         logging.warning(f"FAST: Found {len(unmapped_operations)} totally undocumented API endpoint structures!")
         output_dump["new_endpoints"] = list(unmapped_operations.keys())
