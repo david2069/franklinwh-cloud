@@ -231,6 +231,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         rate_limiter=None,
         tolerate_stale_data: bool = False,
         stale_cache_ttl: float = 300,
+        emulate_app_version: str = "APP2.4.1",
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -504,6 +505,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         """Refresh the authentication token using the TokenFetcher."""
         self.metrics.record_token_refresh()
         self.token = await self.fetcher.get_token(force_refresh=True)
+        # Telemetry: capture the backend echoed software version
+        if getattr(self.fetcher, "info", None):
+            sv = self.fetcher.info.get("_backend_software_version")
+            if sv:
+                self.metrics._latest_backend_software_version = sv
 
     def get_metrics(self) -> dict:
         """Return a snapshot of all API call metrics.
