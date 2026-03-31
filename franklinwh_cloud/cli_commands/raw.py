@@ -201,7 +201,10 @@ async def run(client, method: str, values: list[str] | None = None,
             print()
 
         # Result
-        if isinstance(result, dict):
+        import dataclasses
+        if dataclasses.is_dataclass(result):
+            pprint.pprint(dataclasses.asdict(result), indent=4, width=120, sort_dicts=False)
+        elif isinstance(result, dict):
             pprint.pprint(result, indent=4, width=120, sort_dicts=False)
         else:
             print(result)
