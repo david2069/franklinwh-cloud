@@ -19,6 +19,7 @@ We use [Scarf](https://scarf.sh/) to passively track generic package downloads (
 For deeper operational usage, we provide an **OPTIONAL** integration with [PostHog](https://posthog.com/). **This is never used without explicit user consent under any circumstances.**
 - **Base Metrics Collected**: The specific Python command invoked (e.g., `discover`, `tou --set`), execution latency, and success/failure flags. We only collect what is needed—nothing more, nothing less.
 - **Privacy Model**: 100% Opt-In. If enabled, the terminal is assigned an anonymous UUID (e.g., `c7b2...`). We never extract emails, passwords, gateway serials, or battery configurations.
+- **GeoIP Suppression**: **We actively suppress PostHog's native GeoIP logging** by hardcoding `$ip: 127.0.0.1` directly into every outbound HTTP packet payload, preventing their ingress servers from scraping your router's origin IP address to approximate your physical location.
 - **Example Use Case**: Determining if users genuinely utilize the `--extended` table views or identifying which operating modes fail most frequently.
 - **Example Data Link**: [PostHog Event Tracking Examples](https://posthog.com/docs/getting-started/send-events)
 
