@@ -3,7 +3,7 @@
 > [!CAUTION]
 > **API Maintenance & Schema Drift**
 > The `franklinwh-cloud` library relies on actively mimicking the FranklinWH mobile app. The cloud servers dynamically shift the JSON payload structures returned (e.g., hiding new fields like `offGridFlag` or v2 metadata) based entirely on the `softwareversion` HTTP Request Header.
-> Whenever a new major version of the official mobile app is released, developers must update `metrics.py` to spoof the latest header (e.g. `APP2.4.1`) to unlock the new API capabilities. Tracking this specific telemetry metric is the *only* way to formally monitor schema drift. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
+> Whenever a new major version of the official mobile app is released, you should update the `emulate_app_version` parameter (e.g., `Client(..., emulate_app_version="APP2.11.0")`) to unlock the new API capabilities. The library automatically tracks backend-enforced firmware updates natively in memory via `client.metrics._latest_backend_software_version`. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
 
 Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
@@ -16,52 +16,77 @@ Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
 All recipes start with establishing an authenticated session and binding a physical aGate serial number.
 
-### Single aGate (Happy Path)
-If you only have one aGate, the `.select_gateway()` method will auto-discover it for you natively. Copy once, paste at the top of your script:
+### Modern Transparent Auth (The Future)
+The modern `Client` boundary provides absolute control over the emulation footprint (e.g., passing a specific `emulate_app_version` API header) and decouples the authentication lifecycle from the command executor. **This is the recommended approach for all new integrations.**
 
 ```python
 import asyncio
-from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.auth import PasswordAuth
+from franklinwh_cloud.client import Client
 
 async def main():
-    client = FranklinWHCloud(email="user@example.com", password="secret")
-    await client.login()
-    await client.select_gateway()   # Natively fetches and binds the first gateway
+    # 1. Fetch token and dictate the exact mobile emulation string
+    auth = PasswordAuth("user@example.com", "secret", emulate_app_version="APP2.11.0")
+    await auth.get_token()
+
+    # 2. Bind the active session to a specific physical aGate
+    #    (Required for multi-aGate environments!)
+    gateway_serial = "10060006AXXXXXXXXX" 
+    client = Client(auth, gateway=gateway_serial, emulate_app_version="APP2.11.0")
 
     # ... your recipe code here ...
+    stats = await client.get_stats()
+    print(f"Battery SoC: {stats.current.battery_pct}%")
 
 asyncio.run(main())
 ```
 
-### Multi-aGate (Iterative Binding)
-If you manage multiple gateways on a single account, you MUST explicitly iterate. If you do not pass a serial to `select_gateway()`, it will always bind the first one it finds. By substituting a temporary proxy client, you can securely execute the `get_home_gateway_list()` account API before touching hardware.
+### Legacy Wrapper (Single aGate Happy Path)
+If you have an older script or only manage a single aGate on your account, the legacy `FranklinWHCloud` orchestrator will automatically guess your credentials and auto-discover the serial number for you.
 
 ```python
 import asyncio
 from franklinwh_cloud import FranklinWHCloud
+
+async def main():
+    # Will automatically fetch CLI or .ini credentials if omitted
+    client = FranklinWHCloud(email="user@example.com", password="secret")
+    await client.login()
+    await client.select_gateway()   # Natively fetches and binds the first gateway it finds
+
+    # ... your recipe code here ...
+    stats = await client.get_stats()
+    print(f"Battery SoC: {stats.current.battery_pct}%")
+
+asyncio.run(main())
+```
+
+### Multi-aGate Discovery (Account-Level APIs)
+If you manage multiple gateways on a single account and don't know their serial numbers natively, you MUST iteratively discover them before pushing commands. By substituting a temporary proxy client, you can securely execute the `get_home_gateway_list()` account API before touching hardware.
+
+```python
+import asyncio
+from franklinwh_cloud.auth import PasswordAuth
 from franklinwh_cloud.client import Client
 
 async def main():
-    fwh = FranklinWHCloud(email="user@example.com", password="secret")
-    await fwh.login()
+    auth = PasswordAuth("user@example.com", "secret")
     
     # 1. Instantiate a proxy client to unlock Account-level APIs
-    proxy = Client(fwh._auth, "placeholder")
+    proxy = Client(auth, "placeholder")
+    gateways_raw = await proxy.get_home_gateway_list()
     
-    # 2. Fetch the account's entire physical inventory
-    gateways = await proxy.get_home_gateway_list()
-    
-    # 3. Iterate and bind explicitly
-    for gw in gateways:
+    # 2. Iterate and bind explicitly
+    for gw in gateways_raw.get("result", []):
         serial = gw.get("id")
         print(f"\\n--- Binding to aGate {serial} ---")
         
-        # Bind the primary wrapper to this exact serial
-        await fwh.select_gateway(serial=serial)
+        # 3. Create a dedicated client purely for this physical aGate 
+        agate_client = Client(auth, gateway=serial)
         
         # Now hardware calls are safely routed to this target
-        stats = await fwh.get_stats()
-        print(f"Battery SoC: {stats.current.battery_pct}%")
+        stats = await agate_client.get_stats()
+        print(f"[{serial}] Battery SoC: {stats.current.battery_pct}%")
 
 asyncio.run(main())
 ```
