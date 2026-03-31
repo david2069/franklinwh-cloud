@@ -169,6 +169,9 @@ class StatsMixin:
                 grid_freq, grid_set_freq,
                 grid_line_vol,
                 gen_vol,
+                switch_1_state=smart_circuits[0] if len(smart_circuits) > 0 else 0,
+                switch_2_state=smart_circuits[1] if len(smart_circuits) > 1 else 0,
+                switch_3_state=smart_circuits[2] if len(smart_circuits) > 2 else 0,
             ),
             Totals(
                 runtimedata_v2.get("kwh_fhp_chg", 0.0),
