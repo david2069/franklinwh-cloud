@@ -19,17 +19,18 @@ from franklinwh_cloud.metrics import __version__
 logger = logging.getLogger(__name__)
 
 # Replace with your actual PostHog Project API Key when ready
+# Default placeholder; override by passing api_key to the dispatcher
 POSTHOG_API_KEY = "phc_your_actual_project_id_here"
 POSTHOG_URL = "https://us.i.posthog.com/capture/"
 
 
-def _send_telemetry_sync(event_name: str, distinct_id: str, properties: dict) -> None:
+def _send_telemetry_sync(event_name: str, distinct_id: str, properties: dict, api_key: str = None) -> None:
     """Synchronous worker that executes the physical HTTP POST."""
     if not distinct_id:
         return
         
     payload = {
-        "api_key": POSTHOG_API_KEY,
+        "api_key": api_key or POSTHOG_API_KEY,
         "event": event_name,
         "properties": {
             "distinct_id": distinct_id,
@@ -57,7 +58,7 @@ def _send_telemetry_sync(event_name: str, distinct_id: str, properties: dict) ->
         logger.debug(f"Telemetry dispatch swallowed exception: {e}")
 
 
-def dispatch_cli_event(command: str, is_opted_in: bool, execution_uuid: str) -> None:
+def dispatch_cli_event(command: str, is_opted_in: bool, execution_uuid: str, api_key: str = None) -> None:
     """Hook for the CLI to schedule a telemetry task globally.
     
     Spawns a highly isolated daemon worker thread. This ensures the 
@@ -70,7 +71,7 @@ def dispatch_cli_event(command: str, is_opted_in: bool, execution_uuid: str) -> 
     # Fire and forget on a daemon thread so it never prevents the app from exiting
     worker = threading.Thread(
         target=_send_telemetry_sync,
-        args=("cli_command_executed", execution_uuid, {"command": command}),
+        args=("cli_command_executed", execution_uuid, {"command": command}, api_key),
         daemon=True
     )
     worker.start()

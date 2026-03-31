@@ -292,6 +292,7 @@ async def async_main():
     # Look for telemetry config
     telemetry_enabled = False
     telemetry_uuid = "anonymous"
+    telemetry_api_key = None
     ini_paths = [args.config] if args.config else ["franklinwh.ini", "franklinwh/franklinwh.ini"]
     for ini_path in ini_paths:
         if ini_path and os.path.exists(ini_path):
@@ -301,11 +302,12 @@ async def async_main():
                 if config.getboolean("telemetry", "enabled", fallback=False):
                     telemetry_enabled = True
                     telemetry_uuid = config.get("telemetry", "uuid", fallback="anonymous")
+                    telemetry_api_key = config.get("telemetry", "api_key", fallback=None)
             except Exception:
                 pass
                 
     from franklinwh_cloud.telemetry import dispatch_cli_event
-    dispatch_cli_event(args.command, telemetry_enabled, telemetry_uuid)
+    dispatch_cli_event(args.command, telemetry_enabled, telemetry_uuid, telemetry_api_key)
 
     # Output config
     if args.no_color:

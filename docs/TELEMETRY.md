@@ -69,6 +69,24 @@ flowchart TD
 
 If you are building a custom CLI wrapper (e.g., `franklinwh_cli.py`) or a Home Assistant component using `franklinwh-cloud`, you **MUST** properly comply with all consent requirements. **You must formally request opt-in consent from your users via a UI toggle or explicitly written configuration file.**
 
+### Step 1: Register for PostHog (Bring Your Own Key)
+We **do not** register or host a central PostHog organizational dashboard for external users. If you want to use this tracking pipeline to monitor your own tool's usage, you must register your own free account:
+
+1. Go to [https://posthog.com/signup](https://posthog.com/signup) and create a free account.
+2. Once logged in, navigate to **Project Settings**.
+3. Locate your **Project API Key** (it will begin with `phc_...`).
+4. Inject that key securely into your `.env` or `franklinwh.ini` file.
+
+### Step 2: Configure `franklinwh.ini`
+Your users (or yourself) must explicitly opt-in by creating a `[telemetry]` block that stores your new API key:
+
+```ini
+[telemetry]
+enabled = true
+uuid = my-anonymous-user-1234
+api_key = phc_your_actual_project_id_here
+```
+
 **Plain English translation:** When your code calls our tracking function, it doesn't wait around for the internet to connect or the data to send. It simply hands the data off to a background worker and instantly moves on. This guarantees your app never slows down, freezes, or lags just because it's trying to send a metric.
 
 *(Technical detail: The dispatcher uses a highly isolated zero-dependency **synchronous daemon thread** running built-in `urllib` to ensure your main script/CLI tears down instantly without waiting for HTTP connections, mathematically guaranteeing zero application lag.)*
