@@ -92,6 +92,9 @@ class Current:
     active_tou_start: str = ""
     active_tou_end: str = ""
     active_tou_remaining: str = ""
+    switch_1_state: int = 0
+    switch_2_state: int = 0
+    switch_3_state: int = 0
 
 
 @dataclass
