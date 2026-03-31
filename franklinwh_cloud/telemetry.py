@@ -53,9 +53,9 @@ def _send_telemetry_sync(event_name: str, distinct_id: str, properties: dict, ap
         # 1-second timeout to guarantee it never stalls the background thread forever
         with urllib.request.urlopen(req, timeout=1.0) as response:
             if response.status >= 400:
-                logger.debug(f"Telemetry failed to dispatch (HTTP {response.status})")
+                logger.warning(f"Telemetry failed to dispatch (HTTP {response.status}). Check your PostHog API Key.")
     except Exception as e:
-        logger.debug(f"Telemetry dispatch swallowed exception: {e}")
+        logger.warning(f"Telemetry dispatch swallowed exception: {e}. Check your network or API Key.")
 
 
 def dispatch_cli_event(command: str, is_opted_in: bool, execution_uuid: str, api_key: str = None) -> None:
