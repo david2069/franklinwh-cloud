@@ -33,6 +33,7 @@ def _send_telemetry_sync(event_name: str, distinct_id: str, properties: dict, ap
         "api_key": api_key or POSTHOG_API_KEY,
         "event": event_name,
         "properties": {
+            "$ip": "127.0.0.1", # Explicitly block PostHog GeoIP tracking
             "distinct_id": distinct_id,
             "franklin_version": __version__,
             "python_version": platform.python_version(),
