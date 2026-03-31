@@ -291,6 +291,44 @@ class DevicesMixin:
         wire_payload = self._build_payload(310, payload)
         return await self._mqtt_send(wire_payload)
 
+    
+    async def set_smart_switch_state(self, circuit: int, state):
+        """Configure a Smart Circuit's operating mode (ON, OFF, or Schedule).
+        
+        Parameters
+        ----------
+        circuit : int
+            Circuit number (1, 2, or 3)
+        state : bool or str or int
+            True/"ON"/1 to turn on (Manual)
+            False/"OFF"/0 to turn off (Manual)
+            "Schedule"/2 to set to Schedule mode
+        """
+        if circuit not in (1, 2, 3):
+            raise ValueError("Circuit must be 1, 2, or 3")
+            
+        mode_val = 0
+        if isinstance(state, bool):
+            mode_val = 1 if state else 0
+        elif isinstance(state, str):
+            state_up = state.upper()
+            if state_up == "ON":
+                mode_val = 1
+            elif state_up == "OFF":
+                mode_val = 0
+            elif state_up == "SCHEDULE":
+                mode_val = 2
+            else:
+                raise ValueError("State string must be 'ON', 'OFF', or 'SCHEDULE'")
+        elif isinstance(state, int) and state in (0, 1, 2):
+            mode_val = state
+        else:
+            raise ValueError("Invalid state. Must be bool, 'ON', 'OFF', 'SCHEDULE', or 0/1/2")
+            
+        payload = {f"Sw{circuit}Mode": mode_val}
+        wire_payload = self._build_payload(310, payload)
+        return await self._mqtt_send(wire_payload)
+
     async def set_smart_circuit_soc_cutoff(self, circuit: int, enable: bool, soc: int = 0):
         """Configure the off-grid SOC Auto Cut-off threshold.
         
