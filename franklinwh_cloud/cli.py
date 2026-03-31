@@ -210,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Detailed Smart Circuit configuration and control")
     sub_sc.add_argument("--on", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 ON")
     sub_sc.add_argument("--off", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 OFF")
+    sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT", help="Set Circuit 1/2/3 to Schedule mode")
     sub_sc.add_argument("--cutoff", type=int, metavar="CIRCUIT", help="Enable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--disable-cutoff", type=int, metavar="CIRCUIT", help="Disable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")

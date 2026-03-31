@@ -435,7 +435,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
 
-            json_resp = resp.json()
+            try:
+                json_resp = resp.json()
+            except Exception as e:
+                print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
+                raise
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -483,7 +487,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
                 
-            json_resp = resp.json()
+            try:
+                json_resp = resp.json()
+            except Exception as e:
+                print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
+                raise
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
