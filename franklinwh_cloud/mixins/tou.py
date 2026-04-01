@@ -182,7 +182,7 @@ class TouMixin:
         API constructs/processes the TOU schedule and to display TOU status in
         dashboards and automations.
         """
-        logger.info(f"get_tou_info: option = {option}")
+        logger.debug(f"get_tou_info: option = {option}")
         res = await self.get_tou_dispatch_detail()
         if option == 0:
             return res["result"]
@@ -258,8 +258,8 @@ class TouMixin:
                     next_block, touDispatchList, now, prefix="next"
                 ))
 
-            logger.info(f"get_tou_info: returning current={current_block is not None}, "
-                        f"next={next_block is not None}")
+            logger.debug(f"get_tou_info: returning current={current_block is not None}, "
+                         f"next={next_block is not None}")
             return results
 
         logger.warning("get_tou_info: no matching season found for current month")

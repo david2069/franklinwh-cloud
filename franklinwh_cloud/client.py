@@ -435,11 +435,15 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
 
-            try:
-                json_resp = resp.json()
-            except Exception as e:
-                print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
-                raise
+            if not resp.text.strip():
+                # Some API endpoints (e.g. smart circuit toggles) return 200 with an empty body
+                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
+            else:
+                try:
+                    json_resp = resp.json()
+                except Exception as e:
+                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
+                    raise
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -487,11 +491,14 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
                 
-            try:
-                json_resp = resp.json()
-            except Exception as e:
-                print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
-                raise
+            if not resp.text.strip():
+                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
+            else:
+                try:
+                    json_resp = resp.json()
+                except Exception as e:
+                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
+                    raise
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 

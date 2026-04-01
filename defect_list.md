@@ -21,8 +21,6 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 |----|------|-------------|----------|
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
-| FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) to validate real API behaviour against mocked unit tests | 2026-03-26 |
-| FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator that validates requests against an OpenAPI spec before returning synthetic responses | 2026-03-26 |
 
 ---
 
@@ -30,6 +28,10 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
+| DEF-TOU-LOG-NOISE | Mixins | `get_tou_info()` emitted INFO-level logs on every poll cycle, flooding HA system logs | Unreleased | `pending` |
+| DEF-GRID-PROFILE-DYNAMIC-ID | Mixins | `get_grid_profile_info(2)` hardcoded `systemId=0` returning empty payloads; CLI crashed with `UnboundLocalError` due to string `requestType` | Unreleased | `pending` |
+| FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) with JSON schema validation against `franklinwh_openapi.json` | Unreleased | `pending` |
+| FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator (`emulator/`) intercepting requests and returning synthetic responses for offline structural testing | Unreleased | `pending` |
 | DEF-STATS-DOUBLE-SLASH | Mixins | `get_power_details` and `get_power_by_day` prepend `/hes-gateway/` to `self.url_base` causing 404 from CloudFront due to double slash `//` | 2026-03-26 | `pending` |
 | DEF-CLIENT-URL-BASE | Client / API Core | 34 methods used hardcoded `DEFAULT_URL_BASE` instead of `self.url_base`; base URL not configurable | 2026-03-21 | `2b55919` |
 | DEF-AUTH-LOGIN-TYPE | Client / API Core | `_login()` hardcoded `type: 1` (installer) — should be `type: 0` (user) for homeowner accounts | 2026-03-21 | `cba2b6d` |
@@ -42,4 +44,4 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | FEAT-CLI-DISCOVER-VERBOSE | CLI Commands | Enhanced `discover` with 3 verbosity tiers, feature flags, Hybrid A+B JSON catalog | 2026-03-23 | `multiple` |
 | DEF-CLIENT-TIMEOUT | Client / API Core | `httpx.TimeoutException` propagated raw; now caught in `__post`/`__get` → `ApiTimeoutError` with friendly CLI message | 2026-03-25 | `f38d456` |
 | FEAT-AUTH-CLI-OPTION | CLI Commands | `franklinwh-cli --installer` flag passes `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-25 | `f38d456` |
-| DEF-CLI-TOU-PRICE | CLI Commands | `franklinwh-cli tou` and `--price` do not display actual pricing rates; should default to zero if none | 2026-03-27 |
+| DEF-CLI-TOU-PRICE | CLI Commands | `franklinwh-cli tou` and `--price` do not display actual pricing rates; should default to zero if none | 2026-03-27 | |

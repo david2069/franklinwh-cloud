@@ -158,27 +158,35 @@ class DevicesMixin:
 
         # Type 2 — send first (must be sequential, not concurrent)
         data2 = None
-        try:
-            payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
-            wire2 = self._build_payload(211, payload2)
-            raw2 = (await self._mqtt_send(wire2))["result"]["dataArea"]
-            if raw2:
-                data2 = json.loads(raw2)
-                logger.debug(f"get_bms_info: type2 raw payload: {raw2}")
-        except Exception as e:
-            logger.warning(f"get_bms_info: type2 failed: {e}")
+        for attempt in range(3):
+            try:
+                payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
+                wire2 = self._build_payload(211, payload2)
+                raw2 = (await self._mqtt_send(wire2))["result"]["dataArea"]
+                if raw2:
+                    data2 = json.loads(raw2)
+                    logger.debug(f"get_bms_info: type2 raw payload: {raw2}")
+                break  # Success
+            except Exception as e:
+                logger.warning(f"get_bms_info: type2 attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(1)
 
         # Type 3 — send second
         data3 = None
-        try:
-            payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
-            wire3 = self._build_payload(211, payload3)
-            raw3 = (await self._mqtt_send(wire3))["result"]["dataArea"]
-            if raw3:
-                data3 = json.loads(raw3)
-                logger.debug(f"get_bms_info: type3 raw payload: {raw3}")
-        except Exception as e:
-            logger.warning(f"get_bms_info: type3 failed: {e}")
+        for attempt in range(3):
+            try:
+                payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
+                wire3 = self._build_payload(211, payload3)
+                raw3 = (await self._mqtt_send(wire3))["result"]["dataArea"]
+                if raw3:
+                    data3 = json.loads(raw3)
+                    logger.debug(f"get_bms_info: type3 raw payload: {raw3}")
+                break  # Success
+            except Exception as e:
+                logger.warning(f"get_bms_info: type3 attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(1)
 
         # Log response status
         got2 = data2 is not None
@@ -273,6 +281,26 @@ class DevicesMixin:
             circuits[i] = SmartCircuitDetail.from_api_payload(raw_data, i)
         return circuits
 
+    async def _update_smart_circuit_config(self, circuit: int, updates: dict):
+        """Helper to perform a read-modify-write 311 cycle for a specific circuit."""
+        payload = await self.get_smart_circuits_info()
+        payload["opt"] = 1
+        payload.pop("modeChoose", None)
+        payload.pop("result", None)
+
+        for i in range(1, 4):
+            if f"Sw{i}MsgType" in payload:
+                payload[f"Sw{i}MsgType"] = 0
+
+        payload[f"Sw{circuit}MsgType"] = 1
+        for k, v in updates.items():
+            payload[k] = v
+
+        wire_payload = self._build_payload(311, payload)
+        import json
+        data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        return json.loads(data)
+
     async def set_smart_circuit_state(self, circuit: int, turn_on: bool):
         """Toggle a Smart Circuit on or off.
         
@@ -286,10 +314,12 @@ class DevicesMixin:
         if circuit not in (1, 2, 3):
             raise ValueError("Circuit must be 1, 2, or 3")
         
-        # FranklinWH accepts partial updates via MQTT
-        payload = {f"Sw{circuit}Mode": 1 if turn_on else 0}
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        mode_val = 1 if turn_on else 0
+        updates = {
+            f"Sw{circuit}Mode": mode_val,
+            f"Sw{circuit}ProLoad": mode_val ^ 1
+        }
+        return await self._update_smart_circuit_config(circuit, updates)
 
     
     async def set_smart_switch_state(self, circuit: int, state):
@@ -325,9 +355,11 @@ class DevicesMixin:
         else:
             raise ValueError("Invalid state. Must be bool, 'ON', 'OFF', 'SCHEDULE', or 0/1/2")
             
-        payload = {f"Sw{circuit}Mode": mode_val}
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        updates = {
+            f"Sw{circuit}Mode": mode_val,
+            f"Sw{circuit}ProLoad": mode_val ^ 1
+        }
+        return await self._update_smart_circuit_config(circuit, updates)
 
     async def set_smart_circuit_soc_cutoff(self, circuit: int, enable: bool, soc: int = 0):
         """Configure the off-grid SOC Auto Cut-off threshold.
@@ -344,12 +376,11 @@ class DevicesMixin:
         if circuit not in (1, 2, 3):
             raise ValueError("Circuit must be 1, 2, or 3")
         
-        payload = {
+        updates = {
             f"Sw{circuit}AtuoEn": 1 if enable else 0,
             f"Sw{circuit}SocLowSet": int(soc)
         }
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        return await self._update_smart_circuit_config(circuit, updates)
 
     async def set_smart_circuit_load_limit(self, circuit: int, max_amps: int):
         """Configure the maximum amperage draw for a Smart Circuit.
@@ -365,9 +396,8 @@ class DevicesMixin:
         if circuit not in (1, 2, 3):
             raise ValueError("Circuit must be 1, 2, or 3")
             
-        payload = {f"Sw{circuit}LoadLimit": int(max_amps)}
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        updates = {f"Sw{circuit}LoadLimit": int(max_amps)}
+        return await self._update_smart_circuit_config(circuit, updates)
 
     async def get_device_info(self):
         """Get detailed device info for the current gateway.

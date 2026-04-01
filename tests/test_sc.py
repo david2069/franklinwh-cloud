@@ -19,7 +19,10 @@ async def test_set_smart_circuit_state(mock_send, mock_client):
     await mock_client.set_smart_circuit_state(1, True)
     
     encoded_payload = json.loads(mock_send.call_args[0][0])
-    assert 310 == encoded_payload["cmdType"]
+    # _update_smart_circuit_config performs a read (311 opt=0) then write (311 opt=1).
+    # The first _mqtt_send is the read for get_smart_circuits_info, the second is the write.
+    # mock_send.call_args captures the last call — the write (cmdType=311).
+    assert 311 == encoded_payload["cmdType"]
     assert "Sw1Mode" in str(encoded_payload["dataArea"])
 
 @pytest.mark.asyncio
