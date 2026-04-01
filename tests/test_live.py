@@ -25,11 +25,28 @@ to safely absorb rate-limit bans without locking your gateway automation.
 
 import configparser
 import os
+import json
 import pytest
+from pathlib import Path
+import jsonschema
 
 from franklinwh_cloud.client import Client, Stats
 from franklinwh_cloud.auth import PasswordAuth
 from franklinwh_cloud.models import GridStatus
+
+
+def _assert_live_schema(path: str, method: str, raw_payload: dict):
+    """Fallback validator: check if the captured raw payload matches the formal Spec."""
+    spec_path = Path("docs/franklinwh_openapi.json")
+    if not spec_path.exists():
+        return
+    spec = json.loads(spec_path.read_text())
+    try:
+        schema = spec["paths"][path][method.lower()]["responses"]["200"]["content"]["application/json"]["schema"]
+    except KeyError:
+        return  # End point not in spec yet
+    jsonschema.validate(instance=raw_payload, schema=schema)
+
 
 
 # Skip entire module if credentials not available

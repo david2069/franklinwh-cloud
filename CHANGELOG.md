@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Emulator Foundation (`FEAT-TEST-API-PROXY`)** — Created top-level `emulator/` directory with a fully decoupled FastAPI proxy server (`emulator/main.py`) that intercepts `franklinwh-cloud` library requests and returns synthetic responses. Includes request-logging middleware simulating `@NotNull` Java Spring Boot constraints. Documented in `emulator/README.md` with instructions for routing `franklinwh-cli` against `localhost:8080` for offline structural failure experiments.
+- **`emulator` dependency group** — Added `fastapi[standard]>=0.110.0` and `uvicorn` as an isolated optional dependency group in `pyproject.toml` (`pip install -e ".[emulator]"`), keeping emulator deps fully decoupled from the core library and test suite.
+- **Live JSON schema validation (`FEAT-TEST-INTEGRATION`)** — Added `_assert_live_schema(path, method, payload)` helper to `tests/test_live.py`. Dynamically loads `docs/franklinwh_openapi.json` and validates live API payloads against the formal spec using `jsonschema`, providing automatic detection of undocumented upstream API mutations.
+
+### Fixed
+- **`DEF-GRID-PROFILE-DYNAMIC-ID`** — `get_grid_profile_info(requestType=2)` was hardcoding `systemId=0`, returning empty `{}` payloads from the API. The method now auto-fetches the active profile `currentId` from `requestType=1` when `systemId` is not supplied. Also fixed `UnboundLocalError` caused by the CLI passing `requestType` as a string — now cast to `int` before branching logic.
+- **`DEF-TOU-LOG-NOISE`** — `get_tou_info()` was emitting two `logger.info()` calls on every poll cycle (`option = {option}` and `returning current=..., next=...`). Both downgraded to `logger.debug()` to eliminate INFO-level spam in Home Assistant system logs.
+
 ## [0.4.6] - 2026-03-31
 
 ### Fixed
