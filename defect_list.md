@@ -13,7 +13,20 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
-| FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. | 2026-03-26 |
+| FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. **⏸ ON HOLD — client impact assessment required.** | 2026-03-26 |
+
+> **Design Notes (FEAT-MODE-DYNAMIC-LIST — ON HOLD)**
+>
+> The mobile app pattern: on startup it fetches the gateway's active mode list dynamically via `get_gateway_tou_list`, then only presents modes that are supported by that specific hardware configuration (e.g. AU grid may not expose `peak`, commercial gateways may expose additional modes).
+>
+> **Breaking change risk:** Downstream clients (HA integrator, automations) that call `set_mode("peak")` or compare against hardcoded `OPERATING_MODES` keys will break silently if the gateway returns a different mode name than expected.
+>
+> **Open design questions before execution:**
+> 1. **Graceful degradation**: If a client requests a mode not in the gateway's dynamic list, should we: (a) raise `InvalidModeException`, (b) silently no-op with a warning, or (c) attempt the set and let the API reject it?
+> 2. **Mode name normalisation**: The gateway returns display strings (e.g. `"Time of Use"`, `"Self-Consumption"`). Do we expose these raw, or map them to the existing canonical slug keys (`tou`, `self_consumption`)?
+> 3. **Caching**: The mode list rarely changes (hardware config). Should it be fetched once on `Client.__init__`, or lazily on first `get_mode()`/`set_mode()` call?
+> 4. **Emulator support**: The emulator needs a `get_gateway_tou_list` synthetic endpoint before live testing can safely proceed.
+
 
 ### S4 — Low
 

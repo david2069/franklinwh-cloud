@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - **`DEF-GRID-PROFILE-DYNAMIC-ID`** — `get_grid_profile_info(requestType=2)` was hardcoding `systemId=0`, returning empty `{}` payloads from the API. The method now auto-fetches the active profile `currentId` from `requestType=1` when `systemId` is not supplied. Also fixed `UnboundLocalError` caused by the CLI passing `requestType` as a string — now cast to `int` before branching logic.
 - **`DEF-TOU-LOG-NOISE`** — `get_tou_info()` was emitting two `logger.info()` calls on every poll cycle (`option = {option}` and `returning current=..., next=...`). Both downgraded to `logger.debug()` to eliminate INFO-level spam in Home Assistant system logs.
+- **`DEF-DYNAMIC-MODE-REVERT`** — Reverted unauthorised `FEAT-MODE-DYNAMIC-LIST` partial implementation. `get_operating_mode_name()` was silently calling `get_gateway_tou_list()` on every `get_stats()` poll and returning dealer-customised strings (e.g. `"peak"`) which broke downstream clients comparing against canonical mode names like `"Time of Use"`. Reverted to stable `OPERATING_MODES` dict lookup. `FEAT-MODE-DYNAMIC-LIST` remains ON HOLD pending approved design — see `defect_list.md`.
 
 ## [0.4.6] - 2026-03-31
 
