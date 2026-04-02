@@ -485,10 +485,14 @@ class ModesMixin:
         return results
 
     async def get_operating_mode_name(self, work_mode: int) -> str:
-        """Get the dynamic gateway-specific name for a working mode.
+        """Get the canonical name for a working mode.
 
-        Lazy-loads the mode mapping via get_gateway_tou_list and caches
-        it for the lifetime of the Client instance.
+        Returns the hardcoded canonical name from OPERATING_MODES to
+        guarantee a stable, client-safe value regardless of dealer
+        customisation on the gateway side.
+
+        Dynamic mode name fetching (FEAT-MODE-DYNAMIC-LIST) is ON HOLD
+        pending a design decision on graceful degradation — see defect_list.md.
 
         Parameters
         ----------
@@ -498,22 +502,8 @@ class ModesMixin:
         Returns
         -------
         str
-            The specific customized name set by the dealer/installer
-            (e.g., 'peak', 'Self-Consumption'). Falls back to the standard
-            hardcoded name if the API call fails or mode is not found.
+            Canonical mode name e.g. "Time of Use", "Self-Consumption",
+            "Emergency Backup". Falls back to "Mode {N}" for unknown IDs.
         """
-        if getattr(self, "_dynamic_modes_cache", None) is None:
-            self._dynamic_modes_cache = {}
-            try:
-                res = await self.get_gateway_tou_list()
-                if res and res.get("code") == 200:
-                    tou_list = res.get("result", {}).get("list", [])
-                    for mode_entry in tou_list:
-                        w_id = mode_entry.get("workMode")
-                        name = mode_entry.get("name")
-                        if w_id is not None and name:
-                            self._dynamic_modes_cache[w_id] = name
-            except Exception as exc:
-                logger.warning(f"get_operating_mode_name: failed to fetch dynamic modes: {exc}")
+        return OPERATING_MODES.get(work_mode, f"Mode {work_mode}")
 
-        return self._dynamic_modes_cache.get(work_mode, OPERATING_MODES.get(work_mode, f"Mode {work_mode}"))
