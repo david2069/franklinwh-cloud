@@ -23,6 +23,8 @@ class GridStatus(Enum):
     NORMAL = 0
     DOWN = 1
     OFF = 2
+    OFF_GRID = 2  # Alias for OFF — fixes GridStatus.OFF_GRID references in downstream consumers
+
 
 
 @dataclass
