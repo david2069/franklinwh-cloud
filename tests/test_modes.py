@@ -90,36 +90,25 @@ class TestRunStatus:
         assert RUN_STATUS[6] == "Off-Grid Charging"
         assert RUN_STATUS[7] == "Off-Grid Discharging"
 
-class TestDynamicModeName:
-    """Test the dynamic mode name caching (FEAT-MODE-DYNAMIC-LIST)."""
+class TestCanonicalModeName:
+    """Test that get_operating_mode_name returns stable canonical names.
 
-    @respx.mock
-    async def test_lazy_loading_and_caching(self, minimal_client):
-        minimal_client.session = httpx.AsyncClient()
-        # We mock get_gateway_tou_list payload
-        route = respx.post(
-            "https://energy.franklinwh.com/hes-gateway/terminal/tou/getGatewayTouListV2"
-        ).mock(return_value=httpx.Response(200, json={
-            "code": 200,
-            "result": {
-                "list": [
-                    {"workMode": 1, "name": "peak"},
-                    {"workMode": 2, "name": "Self-Consumption"},
-                    {"workMode": 3, "name": "Emergency Backup"}
-                ]
-            }
-        }))
+    FEAT-MODE-DYNAMIC-LIST is ON HOLD — dynamic gateway name fetching
+    is NOT active. work_mode_desc must always return canonical strings.
+    """
 
-        # First call should hit the mocked API
-        name1 = await minimal_client.get_operating_mode_name(1)
-        assert name1 == "peak"
-        assert route.call_count == 1
+    async def test_returns_canonical_names(self, minimal_client):
+        assert await minimal_client.get_operating_mode_name(1) == "Time of Use"
+        assert await minimal_client.get_operating_mode_name(2) == "Self-Consumption"
+        assert await minimal_client.get_operating_mode_name(3) == "Emergency Backup"
 
-        # Second call should use cache, preventing another API call
-        name2 = await minimal_client.get_operating_mode_name(2)
-        assert name2 == "Self-Consumption"
-        assert route.call_count == 1  # Still 1!
+    async def test_fallback_for_unknown_mode(self, minimal_client):
+        assert await minimal_client.get_operating_mode_name(99) == "Mode 99"
 
-        # Fallback for unknown modes should use hardcoded names
-        name99 = await minimal_client.get_operating_mode_name(99)
-        assert name99 == "Mode 99"
+    async def test_no_api_call_made(self, minimal_client):
+        """Canonical lookup must never hit the network."""
+        import respx, httpx
+        with respx.mock:
+            await minimal_client.get_operating_mode_name(1)
+            await minimal_client.get_operating_mode_name(2)
+            # If any HTTP calls were fired, respx would raise ConnectionError
