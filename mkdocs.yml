@@ -74,6 +74,7 @@ nav:
     - API Reference: API_REFERENCE.md
     - API Endpoint Mapping: API_ENDPOINTS_MAPPING.md
     - MQTT Command Catalog: MQTT_CMD_CATALOG.md
+    - Operating Modes Guide: OPERATING_MODES_GUIDE.md
     - TOU Schedule Guide: TOU_SCHEDULE_GUIDE.md
     - TOU Tariff Reference: TOU_TARIFF_REFERENCE.md
     - Scheduling Nettest: SCHEDULING.md
