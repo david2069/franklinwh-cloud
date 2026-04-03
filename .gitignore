@@ -41,3 +41,6 @@ test_library.py
 *.textClipping
 *.har
 site/
+
+# Internal AI Research (Not Published)
+internal_research/
