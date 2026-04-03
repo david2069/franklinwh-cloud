@@ -6,6 +6,7 @@ import logging
 import warnings
 
 from franklinwh_cloud.exceptions import BadRequestParsingError, DeviceTimeoutException
+from franklinwh_cloud.models import MqttCmd
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -161,7 +162,7 @@ class DevicesMixin:
         for attempt in range(3):
             try:
                 payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
-                wire2 = self._build_payload(211, payload2)
+                wire2 = self._build_payload(MqttCmd.POWER_AND_RELAYS, payload2)  # cmdType 211
                 raw2 = (await self._mqtt_send(wire2))["result"]["dataArea"]
                 if raw2:
                     data2 = json.loads(raw2)
@@ -177,7 +178,7 @@ class DevicesMixin:
         for attempt in range(3):
             try:
                 payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
-                wire3 = self._build_payload(211, payload3)
+                wire3 = self._build_payload(MqttCmd.POWER_AND_RELAYS, payload3)  # cmdType 211
                 raw3 = (await self._mqtt_send(wire3))["result"]["dataArea"]
                 if raw3:
                     data3 = json.loads(raw3)
@@ -250,7 +251,7 @@ class DevicesMixin:
             if dataArea is None:
                 BadRequestParsingError("Missing payload")
 
-        wire_payload = self._build_payload(327, dataArea)
+        wire_payload = self._build_payload(MqttCmd.AESTHETICS, dataArea)  # cmdType 327
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
@@ -261,7 +262,7 @@ class DevicesMixin:
         """
         payload = {"opt": 0}
         logger.info(f"get_smart_circuits_info: cmdType: 311 Type 2 on aGate {self.gateway}")
-        wire_payload = self._build_payload(311, payload)
+        wire_payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, payload)  # cmdType 311
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
@@ -296,7 +297,7 @@ class DevicesMixin:
         for k, v in updates.items():
             payload[k] = v
 
-        wire_payload = self._build_payload(311, payload)
+        wire_payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, payload)  # cmdType 311
         import json
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
@@ -435,12 +436,12 @@ class DevicesMixin:
 
         match requestType:
             case "1":
-                requestCode = 317
+                requestCode = MqttCmd.NETWORK_INTERFACES  # cmdType 317
                 dataArea = {"opt": 0, "paraType": 6}
             case "2":
-                requestCode = 339
+                requestCode = MqttCmd.CLOUD_CONNECTIVITY  # cmdType 339
             case "3":
-                requestCode = 337
+                requestCode = MqttCmd.WIFI_CONFIG  # cmdType 337
             case _:
                 raise BadRequestParsingError(f"Missing requestType value or unknown: {requestType}")
 
@@ -459,7 +460,7 @@ class DevicesMixin:
             Electricity metrics: voltages, currents, frequencies, relay states, modes
         """
         dataArea = {"type": 1}
-        wire_payload = self._build_payload(211, dataArea)
+        wire_payload = self._build_payload(MqttCmd.POWER_AND_RELAYS, dataArea)  # cmdType 211
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
@@ -472,7 +473,7 @@ class DevicesMixin:
             0 = raw, 1 = Smart Circuits, 2 = V2L, 3 = Generator
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(353, dataArea)
+        wire_payload = self._build_payload(MqttCmd.ACCESSORY_LOADS, dataArea)  # cmdType 353
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         raw_data = json.loads(data)
         result = {}
@@ -575,7 +576,7 @@ class DevicesMixin:
             - awsStatus: AWS connection status (1 = connected)
         """
         dataArea = {"optType": 0, "paraType": 6}
-        wire_payload = self._build_payload(317, dataArea)
+        wire_payload = self._build_payload(MqttCmd.NETWORK_INTERFACES, dataArea)  # cmdType 317
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         parsed = _parse_mqtt_json(raw, 317)
 
@@ -642,7 +643,7 @@ class DevicesMixin:
             - wifi_safety: security mode (1 = WPA/WPA2)
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(337, dataArea)
+        wire_payload = self._build_payload(MqttCmd.WIFI_CONFIG, dataArea)  # cmdType 337
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         parsed = _parse_mqtt_json(raw, 337)
 
@@ -677,7 +678,7 @@ class DevicesMixin:
         cloud. The aGate must be online (even via 4G) for this to work.
         """
         dataArea = {"wifi_ScanTime": 0}
-        wire_payload = self._build_payload(335, dataArea)
+        wire_payload = self._build_payload(MqttCmd.WIFI_SCAN, dataArea)  # cmdType 335
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 335)
 
@@ -729,7 +730,7 @@ class DevicesMixin:
             - awsStatus: 0 = offline, 1 = connected to AWS cloud
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(339, dataArea)
+        wire_payload = self._build_payload(MqttCmd.CLOUD_CONNECTIVITY, dataArea)  # cmdType 339
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 339)
 
@@ -748,7 +749,7 @@ class DevicesMixin:
             - 4GNetSwitch: Cellular 4G interface
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(341, dataArea)
+        wire_payload = self._build_payload(MqttCmd.NETWORK_SWITCHES, dataArea)  # cmdType 341
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 341)
 
