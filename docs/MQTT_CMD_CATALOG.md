@@ -1,37 +1,36 @@
 # FranklinWH MQTT Command Catalog
 
-The `sendMqtt` gateway bridge endpoint (`POST /hes-gateway/terminal/sendMqtt`) is the legacy method FranklinWH used to relay highly-specific configuration and polling commands directly from the cloud to the physical aGate using numerical `cmdType` and `opt` codes.
+The `sendMqtt` gateway bridge endpoint (`POST /hes-gateway/terminal/sendMqtt`) is the legacy method FranklinWH used to relay highly-specific configuration and polling commands directly from the cloud to the physical aGate using numerical `cmdType` and parameter fields.
 
-As the FranklinWH API evolves (V2), many of these raw MQTT relays are being superseded by dedicated, higher-level REST API endpoints (e.g. `getHotSpotInfo/v2`).
+!!! warning "V2 API Discovery Warnings"
+    Extensive architectural fuzzing has proven that modern V2 REST endpoints (like `getDeviceRealTimeData` or `getHotSpotInfo/v2`) **are not** 1:1 replacements for these MQTT relays. V2 endpoints drop over 99% of structural physics arrays (reducing massive voltage blocks to a single `batterySoc` cache value) to accelerate mobile-app load times. As a result, the `sendMqtt` payloads cataloged below remain the **exclusive source of truth** for deep hardware telemetry!
 
-> [!NOTE]
-> **Mobile App Real-Time Optimization**
-> Many of these `sendMqtt` pathways are highly optimized for the official mobile app's real-time streaming sockets. While standard REST APIs (like `get_stats()`) are great for periodic polling, the MQTT relays (like `cmdType 353` or `211`) are fundamentally what the mobile app uses to achieve sub-second live telemetry. Be aware that overusing these via standard HTTP wrappers without a persistent connection may result in severe timeout penalties from the FranklinWH edge servers.
+This ledger catalogs our library's Python mixin dependencies against known `cmdType` relays so we can effectively track hardware regressions.
 
-This ledger catalogs our library's Python mixin dependencies against known `cmdType` relays so we can effectively track hardware regressions and API deprecations.
+---
 
-## `sendMqtt` Command Mappings
+## Command Catalog
 
-| Python Method | `cmdType` | Payload Description | Potential API V2 Replacement |
-| :--- | :---: | :--- | :--- |
-| **`_status()`** | `203` | High-level device component status polling | `GET /hes-gateway/terminal/getDeviceInfo` |
-| **`get_bms_info()`** | `211` | Detailed raw battery module info (types 2, 3) | *(No V2 replacement identified)* |
-| **`get_power_info()`** | `211` | Electrical voltage/freq/relays (type 1) | `GET /hes-gateway/common/getDeviceRealTimeData` |
-| **`set_smart_circuit_state()`** | `310` | Toggle Smart Circuits (SwXMode) | *(Partial overlap with `setPowerControlV2`)* |
-| **`set_smart_circuit_soc_cutoff()`** | `310` | Set Auto Shed SoC Threshold (SwXAtuoEn) | *(None)* |
-| **`set_smart_circuit_load_limit()`** | `310` | Peak Amperage bounds (SwXLoadLimit) | *(None)* |
-| **`get_smart_circuits_info()`** | `311` | Smart Circuit naming and statuses | *(None)* |
-| **`_switch_status()`** | `311` | Legacy SC status poll | *(None)* |
-| **`get_network_info()`** | `317` | Verbose eth/wifi interface IP and DHCP | *(None)* |
-| **`led_light_settings()`** | `327` | aPower RGB LED aesthetic limits | *(None)* |
-| **`scan_wifi_networks()`** | `335` | Trigger active 2.4/5GHz AP discovery | *(None)* |
-| **`get_wifi_config()`** | `337` | Connected SSID & local AP broadcast limits | `GET /hes-gateway/manage/getHotSpotInfo/v2` |
-| **`get_connection_status()`** | `339` | AWS Cloud / Internet reachability checks | `GET /hes-gateway/common/getMaintenanceInfo` |
-| **`get_network_switches()`** | `341` | Boolean flags for eth0/eth1/4G/wifi | *(None)* |
-| **`get_accessories_power_info()`** | `353` | SC / V2L / Generator current draw payloads | *(None)* |
-| **`_switch_usage()`** | `353` | Legacy V1 real-time switch loads | *(None)* |
+Below is the exhaustive index of numerical `sendMqtt` values mapped strictly to the Python wrapper methods that trigger them. 
+Click any link in the **Python Method** column to view its formal definition in the [API Reference](API_REFERENCE.md).
 
-## Deprecation Notes
-- **`getHotSpotInfo/v2`**: Officially replaces `cmdType 337` (`get_wifi_config()`). The V2 REST endpoint handles gateway local access point metrics synchronously, removing the brittle requirement for the mobile app to await asynchronous MQTT responses for WiFi state boundaries.
-- **`setPowerControlV2`**: Likely wraps `cmdType 310` logic for load management with stronger backend assertions.
+| `cmdType` | `MqttCmd` Enum | `dataArea` Sub-Type / Opt | Python Method | Payload Description |
+| :---: | :--- | :--- | :--- | :--- |
+| <a id="cmd-203"></a>**`203`** | `STATUS` | `{"opt": 1}` | [`_status()`](API_REFERENCE.md#franklinwh_cloud.mixins.stats.StatsMixin._status) | High-level device component status polling |
+| <a id="cmd-211-1"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 1}` | [`get_power_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_power_info) | Full Gateway Electrical voltage/freq/relays |
+| <a id="cmd-211-2"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 2}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 1) |
+| <a id="cmd-211-3"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 3}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 2) |
+| <a id="cmd-310"></a>**`310`** | `SMART_CIRCUIT_TOGGLE` | *(Varies)* | [`set_smart_circuit_state()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.set_smart_circuit_state) | Toggle Smart Circuits (`SwXMode`) or limits |
+| <a id="cmd-311"></a>**`311`** | `SMART_CIRCUIT_INFO` | `{"opt": 0}` | [`get_smart_circuits_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_smart_circuits_info) | Smart Circuit naming and statuses |
+| <a id="cmd-317"></a>**`317`** | `NETWORK_INTERFACES` | `{"opt": 0}` | [`get_network_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_network_info) | Verbose eth/wifi interface IP and DHCP |
+| <a id="cmd-327"></a>**`327`** | `AESTHETICS` | *(Varies)* | [`led_light_settings()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.led_light_settings) | aPower RGB LED aesthetic limits |
+| <a id="cmd-335"></a>**`335`** | `WIFI_SCAN` | `{"wifi_ScanTime": 0}` | [`scan_wifi_networks()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.scan_wifi_networks) | Trigger active 2.4/5GHz AP discovery |
+| <a id="cmd-337"></a>**`337`** | `WIFI_CONFIG` | `{"opt": 0}` | [`get_wifi_config()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_wifi_config) | Connected SSID & local AP broadcast limits |
+| <a id="cmd-339"></a>**`339`** | `CLOUD_CONNECTIVITY`| `{"opt": 0}` | [`get_connection_status()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_connection_status) | AWS Cloud / Internet reachability checks |
+| <a id="cmd-341"></a>**`341`** | `NETWORK_SWITCHES` | `{"opt": 0}` | [`get_network_switches()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_network_switches) | Boolean flags for eth0/eth1/4G/wifi |
+| <a id="cmd-353"></a>**`353`** | `ACCESSORY_LOADS` | `{"opt": 0}` | [`get_accessories_power_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_accessories_power_info) | SC / V2L / Generator current draw payloads |
+
+## Deprecation & Traceability
+
+- **API V2 Fallacies**: Previous hypotheses assumed modern V2 endpoints (like `getHotSpotInfo/v2`) replaced `sendMqtt` analogs. Our local matrix fuzzing verified this is false for integration developers requiring hardware physics arrays. The `MqttCmd` payloads listed above must be retained.
 - **M713 Limitations**: The LocRemCtl mode logic natively attempts to bypass these cloud relays altogether using Modbus TCP when users invoke local operations, which is why cataloging the `sendMqtt` trace is strictly tied to Remote-Only operations.

@@ -22,6 +22,11 @@ This library was created to enable homeowners and developers to:
 - **Integrate** with home automation platforms (Home Assistant, etc.)
 - **Learn** about energy storage system APIs and solar battery management
 
+!!! tip "The Ultimate Goal"
+    This library exists inherently to encourage the development of an **official public API library**. If this project is not officially endorsed, we hope it is at least acknowledged by FranklinWH Engineering.
+
+    The ultimate goal of this open-source effort is to demonstrate the massive community demand for FranklinWH to publish an official API with modern endpoints for customer and verified partner usage, secured by modern authentication (OAuth/Tokens), reliable rate-limiting, and robust orchestration mechanics for proxy/gateway integration.
+
 It fills a gap where no official developer tools exist, allowing FranklinWH system owners to access data about their own equipment.
 
 !!! warning "Important Disclaimer"

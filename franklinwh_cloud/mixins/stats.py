@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, empty_stats
+from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, empty_stats, MqttCmd
 from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
 
 logger = logging.getLogger("franklinwh_cloud")
@@ -15,19 +15,19 @@ class StatsMixin:
 
     async def _status(self):
         """Send a 203 — high-level device status query."""
-        payload = self._build_payload(203, {"opt": 1, "refreshData": 1})
+        payload = self._build_payload(MqttCmd.STATUS, {"opt": 1, "refreshData": 1})  # cmdType 203
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 
     async def _switch_status(self):
         """Send a 311 — more specific switch command."""
-        payload = self._build_payload(311, {"opt": 0, "order": self.gateway})
+        payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, {"opt": 0, "order": self.gateway})  # cmdType 311
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 
     async def _switch_usage(self):
         """Send a 353 — real-time smart-circuit load information."""
-        payload = self._build_payload(353, {"opt": 0, "order": self.gateway})
+        payload = self._build_payload(MqttCmd.ACCESSORY_LOADS, {"opt": 0, "order": self.gateway})  # cmdType 353
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 

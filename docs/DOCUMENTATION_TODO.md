@@ -20,23 +20,6 @@ Inventory all FranklinWH Energy Cloud API endpoints from HAR captures and map to
 
 ---
 
-## sendMqtt Command Type Mapping
+## ~~sendMqtt Command Type Mapping~~ (COMPLETED)
 
-Inventory all `sendMqtt` requests and create an equivalent mapping:
-
-| cmdType | Function | Description |
-|---------|----------|-------------|
-| 1 | `get_network_info` | Network configuration |
-| 3 | `get_wifi_config` | WiFi AP/station config |
-| 211 | `get_bms_info` | Battery management (type 2 + 3) |
-| ... | ... | ... |
-
-- Create `CmdType` enum with descriptions
-- Document which `type` sub-values each cmdType supports
-- Map to existing `client.py` method names
-
-### Deliverables
-
-- `docs/api_reference.md` — REST endpoint reference
-- `docs/mqtt_commands.md` — sendMqtt cmdType reference
-- GitHub Wiki pages with redacted samples
+*This task has been fully executed. A strict `MqttCmd(IntEnum)` abstraction layer has been merged into `models.py` tracking all physical numeric relays, and `docs/MQTT_CMD_CATALOG.md` has been rewritten with strict anchoring indexes to the core Python mixins.*

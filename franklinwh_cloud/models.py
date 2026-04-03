@@ -4,7 +4,26 @@ Contains dataclasses and enums used across the client and mixin modules.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntEnum
+
+
+class MqttCmd(IntEnum):
+    """Legacy Gateway MQTT Relay codes (cmdType).
+    
+    Used exclusively by the `sendMqtt` REST endpoints to tunnel 
+    hardware-specific commands to the aGate.
+    """
+    STATUS = 203                # cmdType 203: High-level device component polling
+    POWER_AND_RELAYS = 211      # cmdType 211: Electrical voltage/freq/relays (type 1) or BMS (type 2,3)
+    SMART_CIRCUIT_TOGGLE = 310  # cmdType 310: Toggle smart circuits, auto-shed limits
+    SMART_CIRCUIT_INFO = 311    # cmdType 311: Smart circuit names & statuses
+    NETWORK_INTERFACES = 317    # cmdType 317: Verbose eth/wifi interface IP and DHCP
+    AESTHETICS = 327            # cmdType 327: aPower RGB LEDs
+    WIFI_SCAN = 335             # cmdType 335: Trigger active 2.4/5GHz AP discovery
+    WIFI_CONFIG = 337           # cmdType 337: Connected SSID & local AP limits
+    CLOUD_CONNECTIVITY = 339    # cmdType 339: AWS Cloud/Internet reachability 
+    NETWORK_SWITCHES = 341      # cmdType 341: Boolean toggles for eth0/eth1/4G/wifi
+    ACCESSORY_LOADS = 353       # cmdType 353: SC/V2L/Generator current draw
 
 
 class GridStatus(Enum):
