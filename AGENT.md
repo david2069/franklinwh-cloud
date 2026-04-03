@@ -32,6 +32,16 @@
 > 
 > You MUST explicitly follow this workflow constraint: **One fix at a time.** Complete the full cycle (code → test → verify → commit) before addressing secondary issues raised by the user.
 
+## 🔒 Protocol Governance & Agent Directives (STRICT)
+
+**ZERO-REGRESSION COMPLIANCE:** Every agent operating in this repository is strictly bound by the following objective operational directives. Violating these is a breach of the user's trust and infrastructure stability.
+
+1. **NO UNAUTHORIZED ARCHITECTURE CHANGES**: Agents are **never** to make design, structural, or architectural changes without explicit user approval following an Objective Impact Assessment.
+2. **NO FUNCTIONAL MUTATIONS WITHOUT APPROVAL**: All significant code changes that impact function, logic, or performance strictly require prior approval.
+3. **NO UNAUTHORIZED DELETIONS**: Source code, logic blocks, or variables are **not to be removed** without explicit approval.
+4. **MANDATORY TRACEABILITY**: All changes, additions, or modifications must be 1:1 traceable to an approved `implementation_plan.md`, `task.md`, `todo.md`, or `defect.md` ledger.
+5. **SYNCHRONIZED CHANGELOGS**: The `CHANGELOG.md` must strictly reflect changes as per the approved commit payloads, which must be sequentially traceable back to the corresponding Implementation or Defect MD file.
+
 ---
 
 ## 🚫 ZERO-TOLERANCE: API Breaking Changes
