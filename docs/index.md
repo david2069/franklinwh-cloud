@@ -8,7 +8,7 @@ Unofficial Python library and CLI for the **FranklinWH** energy management syste
 
 This library provides a Python interface to the **FranklinWH Cloud API** — an undocumented, proprietary service that was designed and optimised exclusively for:
 
-- **FranklinWH Official Mobile App** — available via the [Apple App Store](https://apps.apple.com/app/franklinwh/id1581685498) and [Google Play Store](https://play.google.com/store/apps/details?id=com.franklinwh.app)
+- **FranklinWH Official Mobile App** — available via the Apple App Store ([US](https://apps.apple.com/us/app/franklinwh/id1581685498) | [AU](https://apps.apple.com/au/app/franklinwh/id1581685498) | [CA](https://apps.apple.com/ca/app/franklinwh/id1581685498)) and Google Play Store ([US](https://play.google.com/store/apps/details?id=com.franklinwh.app&gl=US) | [AU](https://play.google.com/store/apps/details?id=com.franklinwh.app&gl=AU) | [CA](https://play.google.com/store/apps/details?id=com.franklinwh.app&gl=CA))
 - **FranklinWH Energy Website** — an internal platform for authorised FranklinWH employees, contractors, and certified installers and their affiliates
 
 The Cloud API was **not designed for third-party developer use**. It has no public documentation, no official SDK, no versioning guarantees, and no SLA. It may change, be rate-limited, or be discontinued at any time without notice.
