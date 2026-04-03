@@ -26,6 +26,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 > 2. **Mode name normalisation**: The gateway returns display strings (e.g. `"Time of Use"`, `"Self-Consumption"`). Do we expose these raw, or map them to the existing canonical slug keys (`tou`, `self_consumption`)?
 > 3. **Caching**: The mode list rarely changes (hardware config). Should it be fetched once on `Client.__init__`, or lazily on first `get_mode()`/`set_mode()` call?
 > 4. **Emulator support**: The emulator needs a `get_gateway_tou_list` synthetic endpoint before live testing can safely proceed.
+> 5. **Documentation**: [COMPLETED] Downstream UI constraint handling and fallback states are now fully specified in `docs/OPERATING_MODES_GUIDE.md`.
 
 
 ### S4 — Low
