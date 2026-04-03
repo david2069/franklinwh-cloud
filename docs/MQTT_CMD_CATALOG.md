@@ -4,6 +4,10 @@ The `sendMqtt` gateway bridge endpoint (`POST /hes-gateway/terminal/sendMqtt`) i
 
 As the FranklinWH API evolves (V2), many of these raw MQTT relays are being superseded by dedicated, higher-level REST API endpoints (e.g. `getHotSpotInfo/v2`).
 
+> [!NOTE]
+> **Mobile App Real-Time Optimization**
+> Many of these `sendMqtt` pathways are highly optimized for the official mobile app's real-time streaming sockets. While standard REST APIs (like `get_stats()`) are great for periodic polling, the MQTT relays (like `cmdType 353` or `211`) are fundamentally what the mobile app uses to achieve sub-second live telemetry. Be aware that overusing these via standard HTTP wrappers without a persistent connection may result in severe timeout penalties from the FranklinWH edge servers.
+
 This ledger catalogs our library's Python mixin dependencies against known `cmdType` relays so we can effectively track hardware regressions and API deprecations.
 
 ## `sendMqtt` Command Mappings
