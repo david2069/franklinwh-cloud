@@ -98,9 +98,17 @@ class StatsMixin:
         if not power_info:
             power_info = {}
 
-        grid_relay1 = power_info.get("gridRelayStat", 0)
-        oil_relay = power_info.get("oilRelayStat", 0)
-        solar_relay1 = power_info.get("solarRelayStat", 0)
+        grid_relay1 = power_info.get("gridRelayStat")
+        oil_relay = power_info.get("oilRelayStat")
+        solar_relay1 = power_info.get("solarRelayStat")
+        
+        if grid_relay1 is None:
+            main_sw = runtimedata_v2.get("main_sw", [])
+            # FW convention: main_sw is [Grid, Generator, Solar/load]
+            grid_relay1 = main_sw[0] if len(main_sw) > 0 else 0
+            oil_relay = main_sw[1] if len(main_sw) > 1 else 0
+            solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
+
         grid_relay2 = power_info.get("gridRelay2", 0)
         black_start_relay = power_info.get("blackStartRelay", 0)
         pv_relay2 = power_info.get("pvRelay2", 0)
