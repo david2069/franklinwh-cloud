@@ -288,33 +288,6 @@ async def run(client, *, json_output: bool = False):
         if version_info.get("protocol_version"):
             print_kv("Protocol", version_info["protocol_version"])
 
-    # ── 5b. Relay States ─────────────────────────────────────────────
-    # Use runtimeData from the composite info call above (section 5)
-
-    if not json_output and "error" not in gateway_info:
-        try:
-            rt = data.get("runtimeData", {})
-            main_sw = rt.get("main_sw", [])
-            if main_sw:
-                relay_defs = [
-                    ("Solar PV Relay", 0),
-                    ("Generator Relay", 1),
-                    ("Grid Relay", 2),
-                ]
-                print_section("🔧", "Relay States")
-                for name, idx in relay_defs:
-                    if idx < len(main_sw):
-                        val = main_sw[idx]
-                        state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
-                        print_kv(name, state)
-
-
-            else:
-                print_section("🔧", "Relay States")
-                print_kv("Status", c("dim", "No relay data in runtimeData"))
-        except Exception:
-            pass  # relay display is best-effort
-
     # ── 5c. Solar Port Configuration ─────────────────────────────────
 
     if not json_output and "error" not in gateway_info:
@@ -482,22 +455,29 @@ async def run(client, *, json_output: bool = False):
             print_kv("Mode", power_info["operating_mode"])
             print_kv("Run Status", power_info["run_status"])
             
-            # Print extended relays from stats
-            ext_relays = []
-            if hasattr(cur, 'grid_relay2') and cur.grid_relay2 is not None:
-                ext_relays.append(("Grid Relay 2", cur.grid_relay2))
-            if hasattr(cur, 'black_start_relay') and cur.black_start_relay is not None:
-                ext_relays.append(("Black Start Relay", cur.black_start_relay))
-            if hasattr(cur, 'pv_relay2') and cur.pv_relay2 is not None:
-                ext_relays.append(("PV Relay 2", cur.pv_relay2))
-            if hasattr(cur, 'bfpv_apbox_relay') and cur.bfpv_apbox_relay is not None:
-                ext_relays.append(("BFPV/aPBox Relay", cur.bfpv_apbox_relay))
+            print_section("🔧", "System Relays")
+            
+            # The firmware encodes stats relays as 1: CLOSED (engaged), 0: OPEN (fault/disconnected)
+            def fmt_relay(val):
+                return c("green", "● CLOSED") if val else c("dim", "○ OPEN")
                 
-            if ext_relays:
-                print()
-                for label, val in ext_relays:
-                    state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
-                    print_kv(label, state)
+            # Core primary relays
+            if hasattr(cur, 'grid_relay1') and cur.grid_relay1 is not None:
+                print_kv("Grid Relay", fmt_relay(cur.grid_relay1))
+            if hasattr(cur, 'generator_relay') and cur.generator_relay is not None:
+                print_kv("Generator Relay", fmt_relay(cur.generator_relay))
+            if hasattr(cur, 'solar_relay1') and cur.solar_relay1 is not None:
+                print_kv("Solar PV Relay", fmt_relay(cur.solar_relay1))
+                
+            # Extended backup/secondary relays (if populated)
+            if hasattr(cur, 'grid_relay2') and cur.grid_relay2 is not None:
+                print_kv("Grid Relay 2", fmt_relay(cur.grid_relay2))
+            if hasattr(cur, 'black_start_relay') and cur.black_start_relay is not None:
+                print_kv("Black Start Relay", fmt_relay(cur.black_start_relay))
+            if hasattr(cur, 'pv_relay2') and cur.pv_relay2 is not None:
+                print_kv("PV Relay 2", fmt_relay(cur.pv_relay2))
+            if hasattr(cur, 'bfpv_apbox_relay') and cur.bfpv_apbox_relay is not None:
+                print_kv("BFPV/aPBox Relay", fmt_relay(cur.bfpv_apbox_relay))
 
     # ── 7. API Health ────────────────────────────────────────────────
 
