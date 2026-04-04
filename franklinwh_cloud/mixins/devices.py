@@ -831,3 +831,87 @@ class DevicesMixin:
         data = await self._get(url, params=None)
         return data
 
+    async def get_connectivity_overview(self, deep_scan: bool = False):
+        """Unified overview of the gateway's network connectivity.
+        
+        Fetches primary and backup connection statuses, mapped network types,
+        and optionally verifies SPAN panel integration and local Modbus availability.
+        
+        Parameters
+        ----------
+        deep_scan : bool
+            Determine if secondary requests (SPAN / Modbus ping) should be executed.
+            Default is False to reduce polling overhead.
+            
+        Returns
+        -------
+        dict
+            Connectivity overview dictionary containing cloud_connected, primary, primary_ip, and backups.
+        """
+        import asyncio
+        import socket
+        from franklinwh_cloud.const.devices import NETWORK_TYPES
+        
+        # Parallel fetch critical configuration
+        net_info, conn_status, net_switches = await asyncio.gather(
+            self.get_network_info(),
+            self.get_connection_status(),
+            self.get_network_switches()
+        )
+        
+        primary_id = net_info.get("currentNetType")
+        primary_name = NETWORK_TYPES.get(primary_id, f"Unknown ({primary_id})")
+        
+        # Resolve primary IP address based on active connection
+        primary_ip = None
+        if primary_id == 1:
+            primary_ip = net_info.get("eth0", {}).get("ip")
+        elif primary_id == 2:
+            primary_ip = net_info.get("eth1", {}).get("ip")
+        elif primary_id == 3:
+            primary_ip = net_info.get("wifi", {}).get("ip")
+            
+        # Discover backup connections powered on by the hardware switches
+        backups = []
+        if net_switches.get("ethernet0NetSwitch") == 1 and primary_id != 1:
+            backups.append(NETWORK_TYPES.get(1))
+        if net_switches.get("ethernet1NetSwitch") == 1 and primary_id != 2:
+            backups.append(NETWORK_TYPES.get(2))
+        if net_switches.get("wifiNetSwitch") == 1 and primary_id != 3:
+            backups.append(NETWORK_TYPES.get(3))
+        if net_switches.get("4GNetSwitch") == 1 and primary_id != 4:
+            backups.append(NETWORK_TYPES.get(4))
+            
+        overview = {
+            "cloud_connected": bool(conn_status.get("awsStatus")),
+            "router_connected": bool(conn_status.get("routerStatus")),
+            "internet_connected": bool(conn_status.get("netStatus")),
+            "primary": primary_name,
+            "primary_ip": primary_ip,
+            "backups": backups
+        }
+        
+        if deep_scan:
+            # Check SPAN flag
+            try:
+                span = await self.get_span_setting()
+                overview["span_connected"] = bool(span.get("spanFlag"))
+            except Exception:
+                overview["span_connected"] = False
+                
+            # Ping Modbus TCP port 502
+            modbus_open = False
+            if primary_ip and primary_ip != "0.0.0.0":
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1.5)
+                    result = sock.connect_ex((primary_ip, 502))
+                    if result == 0:
+                        modbus_open = True
+                    sock.close()
+                except Exception:
+                    pass
+            overview["modbus_tcp_502_open"] = modbus_open
+            
+        return overview
+

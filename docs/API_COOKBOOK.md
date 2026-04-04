@@ -12,6 +12,19 @@ Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
 ---
 
+## 🚫 API Anti-Patterns & Polling Best Practices
+
+Before building automated dashboards or backend integrators (like the FranklinWH Energy Manager), you **must** separate your polling loops into two distinct pipelines. 
+
+**What NOT To Do:**
+Do **not** poll static hardware data (`get_connectivity_overview`, `get_device_info`, `get_smart_circuits_info`, `get_power_cap_config_list`) at the same frequency as power telemetry! Tying static fetches to your 5-10 second telemetry tick will aggressively throttle the aGate's internal MQTT relay, flood AWS with useless calls, and instantly cause `DeviceTimeoutException` API crashes. 
+
+**What To Do (The Best Practice Architecture):**
+1. **The Fast Loop (`get_stats`)**: Poll `get_stats()` rapidly (e.g., every 5-15 seconds) for real-time power flow, SoC levels, and grid states. This endpoint is highly optimized for frequency.
+2. **The Slow Loop (Static/Network Data)**: Poll endpoints like `get_connectivity_overview()` or `get_device_info()` **once on application startup**, and then refresh them on a slow, lazy timer (e.g., every 5 to 15 minutes), or exclusively when a user clicks a manual "Refresh" button in the UI.
+
+---
+
 ## Connection Preamble
 
 All recipes start with establishing an authenticated session and binding a physical aGate serial number.
@@ -297,6 +310,31 @@ print(answer)
 ```
 
 > ⚠️ Some AI commands may only execute on the mobile app.
+
+### Monitoring Network Connectivity
+
+Instead of relying solely on tracking `network_connection` via `get_stats()`, you can pull a definitive snapshot of the active connections and their IPs using `get_connectivity_overview()`.
+
+> [!TIP]
+> **Best Practice for API Clients / UI Dashboards:**
+> To minimize polling overhead on the hardware, call the default (essential) view periodically (e.g. every 5 minutes / on startup). Only pass `deep_scan=True` if you explicitly need to re-verify the SPAN integration or ping the local Modbus TCP `502` port.
+
+```python
+# 1. Essential View (Fast, lightweight polling for UIs)
+# Fetches active/backup links, AWS cloud connection, and router status.
+net = await client.get_connectivity_overview()
+
+print(f"Cloud Connected: {net['cloud_connected']}")
+print(f"Primary Link:    {net['primary']} ({net['primary_ip']})")
+print(f"Backup Links:    {', '.join(net['backups'])}")
+
+# 2. Deep Diagnostic View (Slower, use only when necessary)
+# Pings Modbus 502 on the local IP and checks external SPAN flags.
+deep_net = await client.get_connectivity_overview(deep_scan=True)
+
+if deep_net["modbus_tcp_502_open"]:
+    print("Modbus polling is available locally!")
+```
 
 ### Historical Energy Data
 
