@@ -416,6 +416,7 @@ class ClientMetrics:
     # Retry & auth
     retry_count: int = 0
     token_refresh_count: int = 0
+    last_token_refresh_at: float = 0.0
     login_count: int = 0
 
     # Rate limiting
@@ -446,6 +447,7 @@ class ClientMetrics:
     def record_token_refresh(self) -> None:
         """Record a token refresh."""
         self.token_refresh_count += 1
+        self.last_token_refresh_at = time.time()
 
     def record_login(self) -> None:
         """Record a login attempt."""
@@ -484,6 +486,7 @@ class ClientMetrics:
             "errors_by_type": dict(self.errors_by_type),
             "retry_count": self.retry_count,
             "token_refresh_count": self.token_refresh_count,
+            "last_token_refresh_s_ago": round(time.time() - self.last_token_refresh_at, 1) if self.last_token_refresh_at > 0 else None,
             "login_count": self.login_count,
             "total_rate_limits": self.total_rate_limits,
             "total_throttle_waits": self.total_throttle_waits,
