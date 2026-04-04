@@ -24,6 +24,9 @@ def main():
     # Safe lists
     ignore_emails = ["david2069@users.noreply.github.com", "user@example.com", "user@email.com", "nobody@example.invalid", "cli@test.com", "ini@test.com", "env@test.com", "your@email.com", "john.doe@anymail.com", "installer@company.com", "[REDACTED]", "david[redacted]", "franklinwh-cloud.git@v0.3.0", "a@b.com", "nobody@doesnotexist.invalid"]
     ignore_dirs = [".git", "node_modules", "venv", ".pytest_cache", ".cursor", "__pycache__", "site", ".gemini", "hars", "dist", ".github", "franklinwh_cloud.egg-info", "franklinwh_cloud_client.egg-info"]
+    
+    # Sensitive structured data keys that MUST have [REDACTED] or be empty
+    sensitive_keys = ["installercompanyphone", "installercompanyemail", "installername", "firstname", "completeaddress", "postcode"]
 
     found = 0
     count = 0
@@ -75,6 +78,18 @@ def main():
                                 if "X" not in serial.upper() and serial != "10060006A00000000000":
                                     print(f"PII Leak [Raw Serial {serial}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
                                     found += 1
+                                    
+                            # Check dynamic sensitive dictionary keys
+                            for sk in sensitive_keys:
+                                if sk in line_lower:
+                                    if "redacted" not in line_lower and "null" not in line_lower and "none" not in line_lower:
+                                        # To avoid false positive on documentation table headers:
+                                        if "| `" + sk + "` |" not in line and "| " + sk + " |" not in line:
+                                            # If it's a JSON line but empty string like "firstName": "", it's safe
+                                            if not re.search(r'[\'"]' + sk + r'[\'"]\s*:\s*[\'"][\'"]', line_lower):
+                                                print(f"PII Leak [Unredacted sensitive key '{sk}']: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                                                found += 1
+                                                
                 except UnicodeDecodeError:
                     pass
                 count += 1
