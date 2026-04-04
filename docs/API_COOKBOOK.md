@@ -51,6 +51,13 @@ This doubles or triples the API footprint per refresh tick.
 
 As the Integrator/App Developer, it is **your responsibility** to inform your users of the performance hit. Your application should proactively warn users: *"Because you have a Generator installed your telemetry requires multiple API cycles; you may experience higher latency or aggressive rate limiting if poll rates are set too aggressively."* Do not attempt to force the library to mask upstream latency.
 
+### Infinite Session Persistence (Transparent Auto-Renewal)
+Users of the official FranklinWH Mobile App often experience "Idle Timeouts" or "Session Expired — Please log back in" prompts. The official app pushes the burden of session management onto the user.
+
+By design, the `franklinwh-cloud` library entirely subverts this. The library embeds an `instrumented_retry` loop at the core HTTP boundaries. If the cloud servers invalidate the JWT token (HTTP 401 or Code `10009`), the library will **silently catch the rejection, automatically negotiate a new token via the `TokenFetcher`, and replay the original API request identically.** 
+
+Downstream clients (like Home Assistant) therefore benefit from infinite session persistence and will **never** receive an expired session exception unless the underlying master credentials have been permanently revoked.
+
 ---
 
 ## Connection Preamble
