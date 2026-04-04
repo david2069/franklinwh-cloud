@@ -17,11 +17,22 @@ Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 Before building automated dashboards or backend integrators (like the FranklinWH Energy Manager), you **must** separate your polling loops into two distinct pipelines. 
 
 **What NOT To Do:**
-Do **not** poll static hardware data (`get_connectivity_overview`, `get_device_info`, `get_smart_circuits_info`, `get_power_cap_config_list`) at the same frequency as power telemetry! Tying static fetches to your 5-10 second telemetry tick will aggressively throttle the aGate's internal MQTT relay, flood AWS with useless calls, and instantly cause `DeviceTimeoutException` API crashes. 
+Do **not** poll static hardware data or compliance rules (`get_connectivity_overview`, `get_device_info`, `getComplianceDetailById`, `get_smart_circuits_info`) at the same frequency as power telemetry! Tying static fetches to your 5-10 second telemetry tick will aggressively throttle the aGate's internal MQTT relay, flood AWS with useless calls, and instantly cause `DeviceTimeoutException` API crashes.
 
 **What To Do (The Best Practice Architecture):**
 1. **The Fast Loop (`get_stats`)**: Poll `get_stats()` rapidly (e.g., every 5-15 seconds) for real-time power flow, SoC levels, and grid states. This endpoint is highly optimized for frequency.
-2. **The Slow Loop (Static/Network Data)**: Poll endpoints like `get_connectivity_overview()` or `get_device_info()` **once on application startup**, and then refresh them on a slow, lazy timer (e.g., every 5 to 15 minutes), or exclusively when a user clicks a manual "Refresh" button in the UI.
+2. **The Slow Loop (Static/Network Data)**: Poll static/config endpoints **once on application startup**, and then refresh them on a slow, lazy timer (e.g., every 15-60 minutes), or exclusively when a user clicks a manual "Refresh" button.
+
+### Legacy Field Aliases (Relays)
+The cloud API often exposes duplicated attributes via different payload structures. Specifically for hardware relays, the legacy `gridRelayStat`, `oilRelayStat`, and `solarRelayStat` (from `get_power_info`) perfectly duplicate the array `main_sw` (from `get_device_composite_info` `runtimeData`).
+* `gridRelayStat` == `main_sw[0]`
+* `oilRelayStat` == `main_sw[1]` (Generator)
+* `solarRelayStat` == `main_sw[2]`
+**Recommendation:** Always consume the curated `client.get_stats()` → `Stats.current` object, which evaluates and normalizes these aliases automatically beneath the hood without making excessive API calls.
+
+### Native Library Cache & Metrics
+The `franklinwh-cloud` library ships with a built-in `ClientMetrics` tracker (via `client.metrics`) and a `StaleDataCache` to actively combat excessive polling. 
+If your integrator tool (like an Admin Console) shows thousands of hits to static endpoints over just a few hours, it means your architecture is circumventing the internal cache boundaries! Always check `client.metrics.snapshot()` to audit your background thread discipline.
 
 ---
 
