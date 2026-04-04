@@ -21,7 +21,7 @@ john.doe@anymail.com (UserId: 99999)
         │     │     ├── Solar PV: 6.6kW
         │     │     └── Smart Circuit × 2
         │     │
-        │     └── FHP2 (aGate: 10060006A02F24170092)
+        │     └── FHP2 (aGate: 10060006AXXXXXXXXX)
         │           └── aPower1 (Serial: ...)
         │
         └── Group: (ungrouped)
