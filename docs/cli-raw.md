@@ -73,6 +73,7 @@ franklinwh-cli raw get_stats --headers
 | `get_device_info` | — | Device detail info |
 | `get_smart_circuits_info` | — | Smart circuit configuration |
 | `get_bms_info` | `serial_no` | BMS info for a specific aPower |
+| `get_connectivity_overview` | — | Unified view of primary/backup connections |
 | `get_network_info` | — | aGate network config (via `sendMqtt`) |
 | `get_wifi_config` | — | WiFi SSID, AP config (via `sendMqtt`) |
 | `scan_wifi_networks` | — | Scan WiFi networks (via `sendMqtt`) |
