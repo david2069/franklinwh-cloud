@@ -289,9 +289,9 @@ class DiscoverMixin:
                 snap.electrical.i_l1 = runtime.get("gridA1", runtime.get("i_l1"))
                 snap.electrical.i_l2 = runtime.get("gridA2", runtime.get("i_l2"))
                 snap.electrical.frequency = runtime.get("gridFreq", runtime.get("frequency"))
-                # Relays — main_sw: [Grid 1, Generator, Solar PV 1]
+                # Relays — main_sw: [Solar PV 1, Generator, Grid 1]
                 main_sw = runtime.get("main_sw", [])
-                relay_names = ["grid_1", "generator", "solar_pv_1"]
+                relay_names = ["solar_pv_1", "generator", "grid_1"]
                 for i in range(len(relay_names)):
                     val = main_sw[i] if i < len(main_sw) else 0
                     snap.electrical.relays[relay_names[i]] = bool(val)

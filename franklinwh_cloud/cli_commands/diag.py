@@ -297,9 +297,9 @@ async def run(client, *, json_output: bool = False):
             main_sw = rt.get("main_sw", [])
             if main_sw:
                 relay_defs = [
-                    ("Grid Relay", 0),
+                    ("Solar PV Relay", 0),
                     ("Generator Relay", 1),
-                    ("Solar PV Relay", 2),
+                    ("Grid Relay", 2),
                 ]
                 print_section("🔧", "Relay States")
                 for name, idx in relay_defs:
