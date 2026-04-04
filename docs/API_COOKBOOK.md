@@ -58,6 +58,17 @@ By design, the `franklinwh-cloud` library entirely subverts this. The library em
 
 Downstream clients (like Home Assistant) therefore benefit from infinite session persistence and will **never** receive an expired session exception unless the underlying master credentials have been permanently revoked.
 
+If your integration requires auditing these transparent rotations natively (e.g., to draw a "Session Uptime" metric on a dashboard), you can easily poll the built-in tracking metric:
+
+```python
+# Returns elapsed seconds since the last silent JWT refresh, 
+# or None if the original token is still valid.
+s_ago = client.get_metrics().get("last_token_refresh_s_ago")
+
+if s_ago is not None:
+    print(f"Library transparently negotiated a fresh token {s_ago} seconds ago.")
+```
+
 ---
 
 ## Connection Preamble
