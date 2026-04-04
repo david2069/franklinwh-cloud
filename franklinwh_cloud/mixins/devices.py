@@ -853,10 +853,11 @@ class DevicesMixin:
         from franklinwh_cloud.const.devices import NETWORK_TYPES
         
         # Parallel fetch critical configuration
-        net_info, conn_status, net_switches = await asyncio.gather(
+        net_info, conn_status, net_switches, stats = await asyncio.gather(
             self.get_network_info(),
             self.get_connection_status(),
-            self.get_network_switches()
+            self.get_network_switches(),
+            self.get_stats()
         )
         
         primary_id = net_info.get("currentNetType")
@@ -898,7 +899,11 @@ class DevicesMixin:
                 "ip": primary_ip,
                 "gateway": primary_gateway
             },
-            "backups": backups
+            "backups": backups,
+            "signals": {
+                "wifi_signal": stats.current.wifi_signal,
+                "mobile_signal": stats.current.mobile_signal
+            }
         }
         
         if deep_scan:

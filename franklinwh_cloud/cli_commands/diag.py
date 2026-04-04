@@ -435,6 +435,12 @@ async def run(client, *, json_output: bool = False):
                 b_names = [b.get("name") for b in backups]
                 print_kv("Backup Links", ", ".join(b_names))
             
+            sig = conn_overview.get("signals", {})
+            if "wifi_signal" in sig:
+                print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%")
+            if "mobile_signal" in sig:
+                print_kv("4G/Mobile Signal", f"{sig.get('mobile_signal')}%")
+            
             span = conn_overview.get("span_connected", False)
             span_text = c("green", "● Active") if span else c("dim", "○ Inactive")
             print_kv("SPAN Panel", span_text)
