@@ -308,17 +308,7 @@ async def run(client, *, json_output: bool = False):
                         state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
                         print_kv(name, state)
 
-                # Additional relays from runtimeData (if present)
-                for key, label in [
-                    ("gridRelay2", "Grid Relay 2"),
-                    ("blackStartRelay", "Black Start Relay"),
-                    ("pvRelay2", "PV Relay 2"),
-                    ("BFPVApboxRelay", "BFPV/aPBox Relay"),
-                ]:
-                    val = rt.get(key)
-                    if val is not None:
-                        state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
-                        print_kv(label, state)
+
             else:
                 print_section("🔧", "Relay States")
                 print_kv("Status", c("dim", "No relay data in runtimeData"))
@@ -491,6 +481,23 @@ async def run(client, *, json_output: bool = False):
             print_kv("Home", f'{power_info["home_load_kw"]:.1f} kW')
             print_kv("Mode", power_info["operating_mode"])
             print_kv("Run Status", power_info["run_status"])
+            
+            # Print extended relays from stats
+            ext_relays = []
+            if hasattr(cur, 'grid_relay2') and cur.grid_relay2 is not None:
+                ext_relays.append(("Grid Relay 2", cur.grid_relay2))
+            if hasattr(cur, 'black_start_relay') and cur.black_start_relay is not None:
+                ext_relays.append(("Black Start Relay", cur.black_start_relay))
+            if hasattr(cur, 'pv_relay2') and cur.pv_relay2 is not None:
+                ext_relays.append(("PV Relay 2", cur.pv_relay2))
+            if hasattr(cur, 'bfpv_apbox_relay') and cur.bfpv_apbox_relay is not None:
+                ext_relays.append(("BFPV/aPBox Relay", cur.bfpv_apbox_relay))
+                
+            if ext_relays:
+                print()
+                for label, val in ext_relays:
+                    state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
+                    print_kv(label, state)
 
     # ── 7. API Health ────────────────────────────────────────────────
 
