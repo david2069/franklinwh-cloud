@@ -864,30 +864,40 @@ class DevicesMixin:
         
         # Resolve primary IP address based on active connection
         primary_ip = None
+        primary_gateway = None
         if primary_id == 1:
-            primary_ip = net_info.get("eth0", {}).get("ip")
+            cfg = net_info.get("eth0", {})
         elif primary_id == 2:
-            primary_ip = net_info.get("eth1", {}).get("ip")
+            cfg = net_info.get("eth1", {})
         elif primary_id == 3:
-            primary_ip = net_info.get("wifi", {}).get("ip")
+            cfg = net_info.get("wifi", {})
+        else:
+            cfg = {}
+            
+        primary_ip = cfg.get("ip")
+        primary_gateway = cfg.get("gateway")
             
         # Discover backup connections powered on by the hardware switches
         backups = []
         if net_switches.get("ethernet0NetSwitch") == 1 and primary_id != 1:
-            backups.append(NETWORK_TYPES.get(1))
+            backups.append({"id": 1, "name": NETWORK_TYPES.get(1)})
         if net_switches.get("ethernet1NetSwitch") == 1 and primary_id != 2:
-            backups.append(NETWORK_TYPES.get(2))
+            backups.append({"id": 2, "name": NETWORK_TYPES.get(2)})
         if net_switches.get("wifiNetSwitch") == 1 and primary_id != 3:
-            backups.append(NETWORK_TYPES.get(3))
+            backups.append({"id": 3, "name": NETWORK_TYPES.get(3)})
         if net_switches.get("4GNetSwitch") == 1 and primary_id != 4:
-            backups.append(NETWORK_TYPES.get(4))
+            backups.append({"id": 4, "name": NETWORK_TYPES.get(4)})
             
         overview = {
             "cloud_connected": bool(conn_status.get("awsStatus")),
             "router_connected": bool(conn_status.get("routerStatus")),
             "internet_connected": bool(conn_status.get("netStatus")),
-            "primary": primary_name,
-            "primary_ip": primary_ip,
+            "primary": {
+                "id": primary_id,
+                "name": primary_name,
+                "ip": primary_ip,
+                "gateway": primary_gateway
+            },
             "backups": backups
         }
         

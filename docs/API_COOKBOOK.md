@@ -324,9 +324,13 @@ Instead of relying solely on tracking `network_connection` via `get_stats()`, yo
 # Fetches active/backup links, AWS cloud connection, and router status.
 net = await client.get_connectivity_overview()
 
+primary = net["primary"]
 print(f"Cloud Connected: {net['cloud_connected']}")
-print(f"Primary Link:    {net['primary']} ({net['primary_ip']})")
-print(f"Backup Links:    {', '.join(net['backups'])}")
+print(f"Primary Link:    {primary['name']} (ID: {primary['id']})")
+print(f"Gateway & IP:    IP: {primary['ip']}, Gateway: {primary['gateway']}")
+
+for backup in net["backups"]:
+    print(f"Backup Link:     {backup['name']} (ID: {backup['id']})")
 
 # 2. Deep Diagnostic View (Slower, use only when necessary)
 # Pings Modbus 502 on the local IP and checks external SPAN flags.

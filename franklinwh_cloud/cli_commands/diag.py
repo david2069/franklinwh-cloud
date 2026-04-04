@@ -409,6 +409,40 @@ async def run(client, *, json_output: bool = False):
                 dns = op.get("dns", "—")
                 print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi} dBm  DNS: {dns}')
 
+    # ── 5e. Connectivity Overview (Deep Scan) ────────────────────────
+
+    conn_overview = {}
+    try:
+        conn_overview = await client.get_connectivity_overview(deep_scan=True)
+        checks_passed += 1
+    except Exception as e:
+        conn_overview["error"] = str(e)
+        checks_warned += 1
+
+    results["connectivity_overview"] = conn_overview
+
+    if not json_output:
+        print_section("🌐", "Connectivity Overview")
+        if "error" in conn_overview:
+            print_kv("Status", c("yellow", f'⚠ {conn_overview["error"]}'))
+        else:
+            primary = conn_overview.get("primary", {})
+            print_kv("Primary Link", primary.get("name"))
+            print_kv("Gateway & IP", f"{primary.get('ip') or '—'}  (Gateway: {primary.get('gateway') or '—'})")
+            
+            backups = conn_overview.get("backups", [])
+            if backups:
+                b_names = [b.get("name") for b in backups]
+                print_kv("Backup Links", ", ".join(b_names))
+            
+            span = conn_overview.get("span_connected", False)
+            span_text = c("green", "● Active") if span else c("dim", "○ Inactive")
+            print_kv("SPAN Panel", span_text)
+
+            modbus = conn_overview.get("modbus_tcp_502_open", False)
+            modbus_text = c("green", "● Open") if modbus else c("red", "○ Closed/Blocked")
+            print_kv("Local Modbus (502)", modbus_text)
+
     # ── 6. Power Snapshot ────────────────────────────────────────────
 
     power_info = {}
