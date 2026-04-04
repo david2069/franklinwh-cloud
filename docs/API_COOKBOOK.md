@@ -36,6 +36,23 @@ If your integrator tool (like an Admin Console) shows thousands of hits to stati
 
 ---
 
+## 🏛️ Roles & Responsibilities: Integrator vs Library
+
+When integrating this library into an end-user application (like Home Assistant), you must maintain a strict conceptual boundary between what the library does and what your application is responsible for.
+
+### The Facade Pattern
+The `franklinwh-cloud` library is a rigid facade. Its only job is to abstract away the undocumented, unstable, and volatile FranklinWH cloud endpoints so you never have to care if they rename an internal variable tomorrow. The library guarantees that `stats.current.grid_relay` will always be available, regardless of how many endpoints it had to secretly query to construct that value.
+
+### Accessory Impact & Upstream Limitations
+The FranklinWH Cloud API is heavily un-optimized for systems with optional accessories. If an aGate has a Generator mapped or V2L enabled, the cloud backend *physically requires* the library to query secondary, non-cached endpoints (like `cmdType 211`) to assemble a complete telemetry snapshot. 
+
+This doubles or triples the API footprint per refresh tick. 
+**This is an upstream cloud limitation, not a library deficiency.**
+
+As the Integrator/App Developer, it is **your responsibility** to inform your users of the performance hit. Your application should proactively warn users: *"Because you have a Generator installed your telemetry requires multiple API cycles; you may experience higher latency or aggressive rate limiting if poll rates are set too aggressively."* Do not attempt to force the library to mask upstream latency.
+
+---
+
 ## Connection Preamble
 
 All recipes start with establishing an authenticated session and binding a physical aGate serial number.
