@@ -80,12 +80,7 @@ class StatsMixin:
             sw_data = await self._switch_usage()
         else:
             sw_data = None
-        if (v2lRunState or 0) >= 1 or (genEnable or 0) >= 1:
-            power_info = await self.get_power_info()
-        else:
-            power_info = None
 
-        unreadMsgCount = 0
         alarmsCount = 0
 
         if not sw_data:
@@ -95,32 +90,31 @@ class StatsMixin:
         sw2_pwr = sw_data.get("SW2ExpPower", 0.0)
         car_sw_pwr = sw_data.get("CarSWPower", 0.0)
 
-        if not power_info:
-            power_info = {}
+        # Primary relays — always from runtimeData.main_sw[]
+        # FW convention: main_sw is [Grid, Generator, Solar/load]
+        # get_power_info() (cmdType 211) is NOT called here — it duplicates these fields
+        # under different names and adds unnecessary MQTT overhead on every poll.
+        # Call get_power_info() explicitly when electrical metrics or extended relays
+        # (gridRelay2, blackStartRelay, pvRelay2, BFPVApboxRelay) are required.
+        main_sw = runtimedata_v2.get("main_sw", [])
+        grid_relay1  = main_sw[0] if len(main_sw) > 0 else 0
+        oil_relay    = main_sw[1] if len(main_sw) > 1 else 0
+        solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
 
-        grid_relay1 = power_info.get("gridRelayStat")
-        oil_relay = power_info.get("oilRelayStat")
-        solar_relay1 = power_info.get("solarRelayStat")
-        
-        if grid_relay1 is None:
-            main_sw = runtimedata_v2.get("main_sw", [])
-            # FW convention: main_sw is [Grid, Generator, Solar/load]
-            grid_relay1 = main_sw[0] if len(main_sw) > 0 else 0
-            oil_relay = main_sw[1] if len(main_sw) > 1 else 0
-            solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
-
-        grid_relay2 = power_info.get("gridRelay2", 0)
-        black_start_relay = power_info.get("blackStartRelay", 0)
-        pv_relay2 = power_info.get("pvRelay2", 0)
-        bfpv_apbox_relay = power_info.get("BFPVApboxRelay", 0)
-        grid_vol1 = power_info.get("gridVol1", 0.0)
-        grid_vol2 = power_info.get("gridVol2", 0.0)
-        grid_cur1 = power_info.get("gridCur1", 0.0)
-        grid_cur2 = power_info.get("gridCur2", 0.0)
-        grid_freq = power_info.get("gridFreq", 0.0)
-        grid_set_freq = power_info.get("gridSetFreq", 0.0)
-        grid_line_vol = power_info.get("gridLineVol", 0.0)
-        gen_vol = power_info.get("genVol", 0.0)
+        # Extended relays and electrical metrics require an explicit get_power_info() call.
+        # They are not populated here to avoid the extra MQTT round-trip on every poll.
+        grid_relay2 = 0
+        black_start_relay = 0
+        pv_relay2 = 0
+        bfpv_apbox_relay = 0
+        grid_vol1 = 0.0
+        grid_vol2 = 0.0
+        grid_cur1 = 0.0
+        grid_cur2 = 0.0
+        grid_freq = 0.0
+        grid_set_freq = 0.0
+        grid_line_vol = 0.0
+        gen_vol = 0.0
 
         return Stats(
             Current(

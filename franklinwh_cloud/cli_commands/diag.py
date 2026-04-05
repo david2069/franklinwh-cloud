@@ -391,19 +391,32 @@ async def run(client, *, json_output: bool = False):
         else:
             primary = conn_overview.get("primary", {})
             print_kv("Primary Link", primary.get("name"))
-            print_kv("Gateway & IP", f"{primary.get('ip') or '—'}  (Gateway: {primary.get('gateway') or '—'})")
-            
+            print_kv("Device IP", primary.get("ip") or "—")
+            print_kv("Network Gateway", primary.get("gateway") or "—")
+
             backups = conn_overview.get("backups", [])
-            if backups:
-                b_names = [b.get("name") for b in backups]
-                print_kv("Backup Links", ", ".join(b_names))
-            
+            viable_backups = [
+                b for b in backups
+                if b.get("ip") not in (None, "", "0.0.0.0")
+                or b.get("id") == 4  # 4G: viability checked separately via signal
+            ]
+            # Drop 4G if signal is genuinely too weak to be viable
             sig = conn_overview.get("signals", {})
+            mobile_pct = sig.get("mobile_signal", 0)
+            viable_backups = [
+                b for b in viable_backups
+                if not (b.get("id") == 4 and mobile_pct < 20)
+            ]
+            if viable_backups:
+                print_kv("Backup Links", ", ".join(b.get("name") for b in viable_backups))
+            else:
+                print_kv("Backup Links", c("dim", "None viable"))
+
             if "wifi_signal" in sig:
                 print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%")
             if "mobile_signal" in sig:
                 print_kv("4G/Mobile Signal", f"{sig.get('mobile_signal')}%")
-            
+
             span = conn_overview.get("span_connected", False)
             span_text = c("green", "● Active") if span else c("dim", "○ Inactive")
             print_kv("SPAN Panel", span_text)
@@ -456,28 +469,32 @@ async def run(client, *, json_output: bool = False):
             print_kv("Run Status", power_info["run_status"])
             
             print_section("🔧", "System Relays")
-            
-            # The firmware encodes stats relays as 1: CLOSED (engaged), 0: OPEN (fault/disconnected)
+
+            # The firmware encodes relays as 1: CLOSED (engaged), 0: OPEN
             def fmt_relay(val):
                 return c("green", "● CLOSED") if val else c("dim", "○ OPEN")
-                
-            # Core primary relays
-            if hasattr(cur, 'grid_relay1') and cur.grid_relay1 is not None:
-                print_kv("Grid Relay", fmt_relay(cur.grid_relay1))
-            if hasattr(cur, 'generator_relay') and cur.generator_relay is not None:
-                print_kv("Generator Relay", fmt_relay(cur.generator_relay))
-            if hasattr(cur, 'solar_relay1') and cur.solar_relay1 is not None:
-                print_kv("Solar PV Relay", fmt_relay(cur.solar_relay1))
-                
-            # Extended backup/secondary relays (if populated)
-            if hasattr(cur, 'grid_relay2') and cur.grid_relay2 is not None:
-                print_kv("Grid Relay 2", fmt_relay(cur.grid_relay2))
-            if hasattr(cur, 'black_start_relay') and cur.black_start_relay is not None:
-                print_kv("Black Start Relay", fmt_relay(cur.black_start_relay))
-            if hasattr(cur, 'pv_relay2') and cur.pv_relay2 is not None:
-                print_kv("PV Relay 2", fmt_relay(cur.pv_relay2))
-            if hasattr(cur, 'bfpv_apbox_relay') and cur.bfpv_apbox_relay is not None:
-                print_kv("BFPV/aPBox Relay", fmt_relay(cur.bfpv_apbox_relay))
+
+            # Primary relays — sourced from runtimeData.main_sw[] via get_stats()
+            # main_sw order: [0]=Grid, [1]=Generator, [2]=Solar
+            print_kv("Grid Relay", fmt_relay(cur.grid_relay1))
+            print_kv("Generator Relay", fmt_relay(cur.generator_relay))
+            print_kv("Solar PV Relay", fmt_relay(cur.solar_relay1))
+
+            # Extended relays — require an explicit get_power_info() (cmdType 211) call.
+            # Fetched here once since diag is a one-shot command, not a polling loop.
+            try:
+                pwr = await client.get_power_info()
+                ext_relay_defs = [
+                    ("Grid Relay 2",      pwr.get("gridRelay2")),
+                    ("Black Start Relay", pwr.get("blackStartRelay")),
+                    ("PV Relay 2",        pwr.get("pvRelay2")),
+                    ("BFPV/aPBox Relay",  pwr.get("BFPVApboxRelay")),
+                ]
+                for label, val in ext_relay_defs:
+                    if val is not None:
+                        print_kv(label, fmt_relay(val))
+            except Exception:
+                pass  # Extended relay data is best-effort in diag
 
     # ── 7. API Health ────────────────────────────────────────────────
 
