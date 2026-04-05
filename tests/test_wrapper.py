@@ -47,7 +47,7 @@ async def test_wrapper_initializes_and_proxies_to_client(mock_password_auth, moc
 async def test_wrapper_explicit_gateway(mock_password_auth, mock_client):
     client = FranklinWHCloud("user@example.com", "secret")
     await client.select_gateway(serial="SPECIFIC_SERIAL")
-    mock_client.assert_called_once_with(mock_password_auth.return_value, "SPECIFIC_SERIAL")
+    mock_client.assert_called_once_with(mock_password_auth.return_value, "SPECIFIC_SERIAL", cache=None)
 
 @pytest.mark.asyncio
 async def test_proxy_without_init_raises_runtime_error():
