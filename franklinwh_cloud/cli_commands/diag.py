@@ -400,12 +400,12 @@ async def run(client, *, json_output: bool = False):
                 if b.get("ip") not in (None, "", "0.0.0.0")
                 or b.get("id") == 4  # 4G: viability checked separately via signal
             ]
-            # Drop 4G if signal is genuinely too weak to be viable
+            # Drop 4G only if there is genuinely no signal at all
             sig = conn_overview.get("signals", {})
             mobile_pct = sig.get("mobile_signal", 0)
             viable_backups = [
                 b for b in viable_backups
-                if not (b.get("id") == 4 and mobile_pct < 20)
+                if not (b.get("id") == 4 and not mobile_pct)
             ]
             if viable_backups:
                 print_kv("Backup Links", ", ".join(b.get("name") for b in viable_backups))
