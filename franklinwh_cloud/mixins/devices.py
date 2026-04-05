@@ -879,15 +879,20 @@ class DevicesMixin:
         primary_gateway = cfg.get("gateway")
             
         # Discover backup connections powered on by the hardware switches
+        # Map NETWORK_TYPES id → net_info interface key for IP lookup
         backups = []
         if net_switches.get("ethernet0NetSwitch") == 1 and primary_id != 1:
-            backups.append({"id": 1, "name": NETWORK_TYPES.get(1)})
+            ip = net_info.get("eth0", {}).get("ip")
+            backups.append({"id": 1, "name": NETWORK_TYPES.get(1), "ip": ip})
         if net_switches.get("ethernet1NetSwitch") == 1 and primary_id != 2:
-            backups.append({"id": 2, "name": NETWORK_TYPES.get(2)})
+            ip = net_info.get("eth1", {}).get("ip")
+            backups.append({"id": 2, "name": NETWORK_TYPES.get(2), "ip": ip})
         if net_switches.get("wifiNetSwitch") == 1 and primary_id != 3:
-            backups.append({"id": 3, "name": NETWORK_TYPES.get(3)})
+            ip = net_info.get("wifi", {}).get("ip")
+            backups.append({"id": 3, "name": NETWORK_TYPES.get(3), "ip": ip})
         if net_switches.get("4GNetSwitch") == 1 and primary_id != 4:
-            backups.append({"id": 4, "name": NETWORK_TYPES.get(4)})
+            rssi = net_info.get("operator", {}).get("rssi")
+            backups.append({"id": 4, "name": NETWORK_TYPES.get(4), "rssi": rssi})
             
         overview = {
             "cloud_connected": bool(conn_status.get("awsStatus")),
