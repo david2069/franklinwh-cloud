@@ -409,30 +409,53 @@ class DiscoverMixin:
             try:
                 sc_info = await self.get_smart_circuits_info()
                 if isinstance(sc_info, dict):
-                    names = []
-                    modes = []
-                    for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
-                        name = sc_info.get(key, "") or ""
-                        names.append(name.strip() if name else "")
-                        m = sc_info.get(mode_key, 0)
-                        modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
+                    sw_merged = sc_info.get("SwMerge", 0) == 1
+
+                    if sw_merged:
+                        # US V2 V2L merge topology: physical SC1+SC2 → logical SC1 (240V),
+                        # physical SC3 → logical SC2. The firmware always returns all 3 Sw
+                        # slots; only Sw1 and Sw3 are meaningful to consumers when merged.
+                        # We preserve user-set names (Sw1Name, Sw3Name) — renaming is not
+                        # supported and would discard user intent. The merged=True flag on
+                        # SmartCircuitConfig signals to consumers that circuit[0] is the
+                        # merged 240V pair and circuit[1] is the standalone circuit.
+                        names = [
+                            (sc_info.get("Sw1Name", "") or "").strip(),
+                            (sc_info.get("Sw3Name", "") or "").strip(),
+                        ]
+                        modes = [
+                            SMART_CIRCUIT_MODE.get(sc_info.get("Sw1Mode", 0), str(sc_info.get("Sw1Mode", 0))),
+                            SMART_CIRCUIT_MODE.get(sc_info.get("Sw3Mode", 0), str(sc_info.get("Sw3Mode", 0))),
+                        ]
+                        count = 2  # logical — always 2 when merged regardless of hw
+                    else:
+                        # Standard topology: Sw1, Sw2, [Sw3] — firmware always returns all
+                        # 3 slots; trim to actual hardware circuit count from catalog.
+                        names = []
+                        modes = []
+                        for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
+                            name = sc_info.get(key, "") or ""
+                            names.append(name.strip() if name else "")
+                            m = sc_info.get(mode_key, 0)
+                            modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
+                        # Determine hardware circuit count from catalog
+                        # AU SC (302) = 2 circuits, US V1 SC (202) = 2, US V2 SC (204) = 3
+                        count = 2  # default
+                        for acc_id, acc_info in catalog.get("accessories", {}).items():
+                            if (acc_info.get("type") == "smart_circuits"
+                                    and acc_info.get("country_id") == snap.site.country_id):
+                                count = acc_info.get("circuit_count", 2)
+                                break
+                        # Trim to actual hardware count (firmware always returns 3 slots)
+                        names = names[:count]
+                        modes = modes[:count]
+
                     # Determine SC version from aGate generation
                     sc_version = 2 if snap.agate.generation == 2 else 1
-                    # Determine circuit count from catalog (hardware truth)
-                    # AU SC (302) = 2 circuits, US V1 SC (202) = 2, US V2 SC (204) = 3
-                    count = 2  # default
-                    for acc_id, acc_info in catalog.get("accessories", {}).items():
-                        if (acc_info.get("type") == "smart_circuits"
-                                and acc_info.get("country_id") == snap.site.country_id):
-                            count = acc_info.get("circuit_count", 2)
-                            break
-                    # Trim arrays to actual circuit count
-                    names = names[:count]
-                    modes = modes[:count]
                     snap.accessories.smart_circuits = SmartCircuitConfig(
                         count=count,
                         version=sc_version,
-                        merged=sc_info.get("SwMerge", 0) == 1,
+                        merged=sw_merged,
                         names=names,
                         modes=modes,
                         v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
@@ -440,6 +463,7 @@ class DiscoverMixin:
                     )
             except Exception as e:
                 logger.warning(f"discover: get_smart_circuits_info failed: {e}")
+
 
         # 9. Grid profile
         try:
