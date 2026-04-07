@@ -29,6 +29,7 @@ SAMPLE_RUNTIME = {
     "name": "Solar Export",
     "offgridreason": 0,
     "offGridFlag": 0,
+    "main_sw": [1, 0, 1],       # ground truth: [Grid=1(OPEN), Generator=0(CLOSED), Solar=1(OPEN)]
     "pro_load": [1, 0, 0],
     "v2lModeEnable": 0,
     "v2lRunState": 0,
@@ -161,6 +162,37 @@ class TestGetStatsResponseParsing:
         assert stats.totals.grid_export == 5.4
         assert stats.totals.solar == 22.7
         assert stats.totals.home_use == 18.3
+
+    @respx.mock
+    async def test_parses_relay_states(self, mock_client):
+        """Relay index order and raw firmware values must be pinned.
+
+        Ground truth (confirmed live against AU aGate, 2026-04-07):
+          main_sw = [Grid, Generator, Solar]  — encoding: 1=OPEN, 0=CLOSED
+          main_sw[0] -> grid_relay1
+          main_sw[1] -> generator_relay
+          main_sw[2] -> solar_relay1
+
+        Raw firmware values must pass through unchanged; the display layer
+        (fmt_relay) handles the 1=OPEN / 0=CLOSED inversion, not get_stats().
+        """
+        runtime = {
+            **SAMPLE_RUNTIME,
+            "main_sw": [1, 0, 1],   # Grid=OPEN(1), Generator=CLOSED(0), Solar=OPEN(1)
+            "pro_load": [0, 0, 0],
+        }
+        respx.get(
+            "https://energy.franklinwh.com/hes-gateway/terminal/getDeviceCompositeInfo"
+        ).mock(return_value=httpx.Response(200, json={
+            "code": 200,
+            "result": {"currentWorkMode": 2, "runtimeData": runtime},
+        }))
+
+        stats = await mock_client.get_stats()
+        # Index order: [0]=Grid, [1]=Generator, [2]=Solar
+        assert stats.current.grid_relay1 == 1,       "main_sw[0] must map to grid_relay1"
+        assert stats.current.generator_relay == 0,   "main_sw[1] must map to generator_relay"
+        assert stats.current.solar_relay1 == 1,      "main_sw[2] must map to solar_relay1"
 
     @respx.mock
     async def test_empty_result_returns_empty_stats(self, mock_client):
