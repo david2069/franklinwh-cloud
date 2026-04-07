@@ -43,6 +43,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
 | DEF-TOU-LOG-NOISE | Mixins | `get_tou_info()` emitted INFO-level logs on every poll cycle, flooding HA system logs | Unreleased | `pending` |
+| DEF-RELAY-INV | CLI / Mixin | Relay states inverted in `diag` and `discover`: firmware encodes `1=OPEN`, code displayed `1` as CLOSED. Fixed `fmt_relay`, `main_sw` index comment, `bool(val)→not bool(val)` storage, `stats.grid_relay2` attr path, and `ON/OFF→OPEN/CLOSED` labels. | Unreleased | `pending` |
 | DEF-GRID-PROFILE-DYNAMIC-ID | Mixins | `get_grid_profile_info(2)` hardcoded `systemId=0` returning empty payloads; CLI crashed with `UnboundLocalError` due to string `requestType` | Unreleased | `pending` |
 | FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) with JSON schema validation against `franklinwh_openapi.json` | Unreleased | `pending` |
 | FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator (`emulator/`) intercepting requests and returning synthetic responses for offline structural testing | Unreleased | `pending` |

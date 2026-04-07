@@ -470,9 +470,9 @@ async def run(client, *, json_output: bool = False):
             
             print_section("🔧", "System Relays")
 
-            # The firmware encodes relays as 1: CLOSED (engaged), 0: OPEN
+            # Firmware relay encoding: 1 = OPEN, 0 = CLOSED
             def fmt_relay(val):
-                return c("green", "● CLOSED") if val else c("dim", "○ OPEN")
+                return c("dim", "○ OPEN") if val else c("green", "● CLOSED")
 
             # Primary relays — sourced from runtimeData.main_sw[] via get_stats()
             # main_sw order: [0]=Grid, [1]=Generator, [2]=Solar
