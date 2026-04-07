@@ -289,12 +289,12 @@ class DiscoverMixin:
                 snap.electrical.i_l1 = runtime.get("gridA1", runtime.get("i_l1"))
                 snap.electrical.i_l2 = runtime.get("gridA2", runtime.get("i_l2"))
                 snap.electrical.frequency = runtime.get("gridFreq", runtime.get("frequency"))
-                # Relays — main_sw: [Solar PV 1, Generator, Grid 1]
+                # Relays — main_sw: [Grid 1, Generator, Solar PV 1] — encoding: 1=OPEN, 0=CLOSED
                 main_sw = runtime.get("main_sw", [])
-                relay_names = ["solar_pv_1", "generator", "grid_1"]
+                relay_names = ["grid_1", "generator", "solar_pv_1"]
                 for i in range(len(relay_names)):
                     val = main_sw[i] if i < len(main_sw) else 0
-                    snap.electrical.relays[relay_names[i]] = bool(val)
+                    snap.electrical.relays[relay_names[i]] = not bool(val)  # 1=OPEN → store False
                 # aPBox digital I/O
                 di = runtime.get("di")
                 do_st = runtime.get("doStatus")
@@ -517,11 +517,11 @@ class DiscoverMixin:
         # 12. Extended relays from get_stats (powerInfo)
         try:
             stats = await self.get_stats()
-            if hasattr(stats, 'grid_relay2'):
-                snap.electrical.relays["grid_2"] = bool(stats.grid_relay2)
-                snap.electrical.relays["black_start"] = bool(stats.black_start_relay)
-                snap.electrical.relays["solar_pv_2"] = bool(stats.pv_relay2)
-                snap.electrical.relays["apbox"] = bool(stats.bfpv_apbox_relay)
+            if hasattr(stats.current, 'grid_relay2'):
+                snap.electrical.relays["grid_2"] = not bool(stats.current.grid_relay2)
+                snap.electrical.relays["black_start"] = not bool(stats.current.black_start_relay)
+                snap.electrical.relays["solar_pv_2"] = not bool(stats.current.pv_relay2)
+                snap.electrical.relays["apbox"] = not bool(stats.current.bfpv_apbox_relay)
         except Exception as e:
             logger.warning(f"discover: get_stats (extended relays) failed: {e}")
 

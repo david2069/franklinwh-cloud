@@ -452,7 +452,7 @@ def _render_electrical(snap):
             if key == "v2l" and not (snap.flags.v2l_enabled or snap.flags.v2l_eligible):
                 continue
             label = relay_labels.get(key, key)
-            icon = c("green", "ON") if state else c("dim", "OFF")
+            icon = c("green", "● CLOSED") if state else c("dim", "○ OPEN")
             print_kv(label, icon)
 
 
