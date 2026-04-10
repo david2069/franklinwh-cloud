@@ -98,6 +98,7 @@ class TestGetStatsResponseParsing:
             c.rate_limiter = None
             c.stale_cache = None
             c.edge_tracker = None
+            c._not_grid_tied = False   # default: grid-tied (set by Client.__init__ in production)
             yield c
 
     @respx.mock
@@ -258,6 +259,7 @@ class TestGetStatsConditionalCalls:
             c.rate_limiter = None
             c.stale_cache = None
             c.edge_tracker = None
+            c._not_grid_tied = False   # default: grid-tied (set by Client.__init__ in production)
             yield c
 
     @respx.mock

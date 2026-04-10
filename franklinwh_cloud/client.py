@@ -233,6 +233,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         stale_cache_ttl: float = 300,
         emulate_app_version: str = "APP2.4.1",
         cache: dict | None = None,
+        not_grid_tied: bool = False,
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -298,10 +299,12 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         self._canary_tripped = False
         self._emulate_app_version = emulate_app_version  # outbound softwareversion header value
 
-        # Startup-cached site property: True = this site has no utility connection (permanent island).
-        # Populated lazily on first get_stats() call via get_entrance_info(). Never changes within
-        # a power-up cycle. Saves a get_entrance_info() call on every subsequent poll.
-        self._not_grid_tied: bool | None = None
+        # Static site topology — set by the integrator at construction time from DB or config.
+        # True = this site has no utility connection (permanent island, e.g. off-grid solar).
+        # Default False (grid-tied) covers the vast majority of FranklinWH installations.
+        # FHAI reads this from its static_site_data DB table on startup — no API call needed.
+        # get_entrance_info() is never called by the library for this purpose.
+        self._not_grid_tied: bool = not_grid_tied
 
 
         # Method-level TTL cache — opt-in, zero overhead when disabled

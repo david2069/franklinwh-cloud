@@ -72,39 +72,49 @@ gaps without the downstream consumer (FHAI, monitor) seeing an error.
 
 ---
 
-## 2. Grid Topology Cache (`_not_grid_tied`)
+## 2. Grid Topology (`not_grid_tied` constructor param)
 
-**File:** `franklinwh_cloud/client.py`, populated in `franklinwh_cloud/mixins/stats.py`
-**Attribute:** `client._not_grid_tied: bool | None`
+**File:** `franklinwh_cloud/client.py`
+**Attribute:** `client._not_grid_tied: bool`
 
-### What it caches
-Whether the site has **no utility grid connection** — determined once from
-`get_entrance_info()` → `gridFlag`. `False` = grid-tied (normal), `True` = off-grid.
+### What it stores
+Whether the site has **no utility grid connection** (`True` = permanent island,
+`False` = grid-tied). Defaults to `False`, which is correct for the vast majority
+of FranklinWH installations.
 
-### When it is populated
-Lazily, on the **first call to `get_stats()`** after client creation.
-`get_entrance_info()` is called once, the result stored, and never re-fetched.
+### Who sets it and when
+**The integrator** — at `Client` construction time, from its own DB or config:
 
-### TTL
-**Lifetime of the `Client` instance** (power-up cycle of the consuming application).
-This is intentional — a site does not switch between grid-tied and off-grid while
-the software is running. If somehow it did (unprecedented), restart the client.
-
-### Why this is correct
-A permanently off-grid site (solar + battery, no utility) can never become
-grid-tied without physical hardware installation. The `NOT_GRID_TIED` state is
-a static **site property**, not a dynamic **runtime reading**.
-
-### Hot path benefit
-Without this cache, every `get_stats()` call on a `NOT_GRID_TIED` site would
-call `get_entrance_info()` — a separate MQTT round-trip on every 5–15s poll.
-With the cache: **zero extra calls after the first poll, forever**.
-
-### Visibility
-Not surfaced in any CLI output yet. Access directly:
 ```python
-print(f"NOT_GRID_TIED cached: {getattr(client, '_not_grid_tied', None)}")
+# FHAI startup: read from DB, pass in — no API call needed
+not_grid_tied = db.get_static("not_grid_tied", gateway_serial) or False
+client = Client(auth, gateway, not_grid_tied=not_grid_tied)
+
+# If not in DB yet (first run), fetch from API and persist
+if not db.has("not_grid_tied", gateway_serial):
+    entrance = await tmp_client.get_entrance_info()
+    not_grid_tied = not bool(entrance["result"]["gridFlag"])
+    db.set_static("not_grid_tied", gateway_serial, not_grid_tied)
+    client = Client(auth, gateway, not_grid_tied=not_grid_tied)
 ```
+
+### Why the library does NOT call `get_entrance_info()` for this
+- `NOT_GRID_TIED` is **extremely rare** — the vast majority of sites are grid-tied
+- Calling `get_entrance_info()` on every client startup taxes all users for a rare case
+- The integrator already does a startup snapshot of static data (battery capacity,
+  serials, etc.) — `gridFlag` is one more field in that same snapshot
+- Persisting to DB means **zero API calls on subsequent restarts**
+
+### `get_stats()` reads it directly — no API call, no async
+```python
+# stats.py — just reads the bool, no lazy-populate, no get_entrance_info()
+if self._not_grid_tied:
+    grid_connection_state = GridConnectionState.NOT_GRID_TIED
+```
+
+### Off-grid sites
+Operators of permanently-off-grid sites explicitly pass `not_grid_tied=True`.
+This is the correct layer for this decision — the operator knows their own site.
 
 ---
 
