@@ -2,8 +2,14 @@
 
 > [!CAUTION]
 > **API Maintenance & Schema Drift**
-> The `franklinwh-cloud` library relies on actively mimicking the FranklinWH mobile app. The cloud servers dynamically shift the JSON payload structures returned (e.g., hiding new fields like `offGridFlag` or v2 metadata) based entirely on the `softwareversion` HTTP Request Header.
-> Whenever a new major version of the official mobile app is released, you should update the `emulate_app_version` parameter (e.g., `Client(..., emulate_app_version="APP2.11.0")`) to unlock the new API capabilities. The library automatically tracks backend-enforced firmware updates natively in memory via `client.metrics._latest_backend_software_version`. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
+> The `franklinwh-cloud` library identifies itself to the FranklinWH Cloud API using a `softwareversion` request header (default: `APP2.4.1`). This value is sent with every request for the lifetime of the session.
+>
+> **What this header does:** It identifies the client as a known app version. Testing across versions `APP1.0.0` through `APP99.0.0` showed **identical responses** on all tested endpoints — the header does not appear to gate specific fields or alter payload structures in the current API. Its primary observed role is authentication token negotiation and likely server-side telemetry/analytics.
+>
+> **Schema drift detection:** The library runs a built-in canary trap (`Client._check_canary_trap`) that scans every response for a `softwareVersion` field and fires a warning + disk dump if a version newer than the certified baseline (`APP2.11.0`) is detected. This is the real mechanism for detecting upstream API changes. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
+>
+> To override the header for a single diagnostic call: `franklinwh-cli fetch --app-version APP2.11.0 ...`
+> To set it globally: pass `emulate_app_version="APP2.11.0"` to `Client(...)` or `PasswordAuth(...)`.
 
 Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 

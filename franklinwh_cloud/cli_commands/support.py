@@ -378,7 +378,7 @@ async def collect_snapshot(client) -> dict:
             "battery_kw": cur.battery_use,
             "battery_soc": cur.battery_soc,
             "grid_kw": cur.grid_use,
-            "grid_status": cur.grid_status.name,
+            "grid_status": "Outage" if cur.grid_outage else "Connected",
             "home_load_kw": cur.home_load,
             "operating_mode": cur.work_mode_desc,
             "run_status": cur.run_status_dec,

@@ -188,11 +188,11 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
 
                         # Table header
                         if has_soc:
-                            print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
-                            print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
+                            print(f"  {'START':<10}{'END':<10}{'NAME':<15}{'DISPATCH':<24}{'WAVE':<15}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
+                            print(f"  {'─'*9} {'─'*9} {'─'*14} {'─'*23} {'─'*14} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
                         else:
-                            print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'BUY':<7}{'SELL'}")
-                            print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*6} {'─'*6}")
+                            print(f"  {'START':<10}{'END':<10}{'NAME':<15}{'DISPATCH':<24}{'WAVE':<15}{'BUY':<7}{'SELL'}")
+                            print(f"  {'─'*9} {'─'*9} {'─'*14} {'─'*23} {'─'*14} {'─'*6} {'─'*6}")
 
                         for block in periods:
                             start = block.get("startHourTime", "?")
@@ -231,7 +231,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                             buy_str = f"${w_buy or 0.0:.2f}"
                             sell_str = f"${w_sell or 0.0:.2f}"
 
-                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{soc_cols}{buy_str:<7}{sell_str}")
+                            print(f"  {start:<10}{end:<10}{name:<15}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<15}{soc_cols}{buy_str:<7}{sell_str}")
 
                         total_blocks += len(periods)
                         print()
@@ -347,7 +347,7 @@ def _extract_rates(day_type: dict) -> list:
     tiers = [
         ("On-Peak", "eleticRatePeak", "eleticSellPeak"),
         ("Sharp Peak", "eleticRateSharp", "eleticSellSharp"),
-        ("Shoulder", "eleticRateShoulder", "eleticSellShoulder"),
+        ("Mid-Peak", "eleticRateShoulder", "eleticSellShoulder"),
         ("Off-Peak", "eleticRateValley", "eleticSellValley"),
         ("Super Off-Peak", "eleticRateSuperOffPeak", "eleticSellSuperOffPeak"),
     ]

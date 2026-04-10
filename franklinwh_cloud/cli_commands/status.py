@@ -55,8 +55,9 @@ async def run(client, *, json_output: bool = False):
     print_section("📊", "Power Flow")
     print_kv("Solar", f"{cur.solar_production:>8.1f} kW")
     print_kv("Battery", f"{cur.battery_use:>8.1f} kW  (SoC: {c('bold', f'{cur.battery_soc:.0f}%')})")
-    grid_color = "green" if cur.grid_status.name == "NORMAL" else "red"
-    print_kv("Grid", f"{cur.grid_use:>8.1f} kW  ({c(grid_color, cur.grid_status.name)})")
+    grid_color = "red" if cur.grid_outage else "green"
+    grid_label = "Outage" if cur.grid_outage else "Connected"
+    print_kv("Grid", f"{cur.grid_use:>8.1f} kW  ({c(grid_color, grid_label)})")
     print_kv("Home Load", f"{cur.home_load:>8.1f} kW")
     if cur.generator_production:
         print_kv("Generator", f"{cur.generator_production:>8.1f} kW")

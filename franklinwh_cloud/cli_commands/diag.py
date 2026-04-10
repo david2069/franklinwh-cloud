@@ -440,7 +440,7 @@ async def run(client, *, json_output: bool = False):
             "battery_kw": cur.battery_use,
             "battery_soc": cur.battery_soc,
             "grid_kw": cur.grid_use,
-            "grid_status": cur.grid_status.name,
+            "grid_status": "Outage" if cur.grid_outage else "Connected",
             "home_load_kw": cur.home_load,
             "operating_mode": cur.work_mode_desc,
             "run_status": cur.run_status_dec,
@@ -462,7 +462,7 @@ async def run(client, *, json_output: bool = False):
             print_kv("API Response", f'{power_info["api_response_s"]:.3f}s')
             print_kv("Solar", f'{power_info["solar_kw"]:.1f} kW')
             print_kv("Battery", f'{power_info["battery_kw"]:.1f} kW  (SoC: {power_info["battery_soc"]:.0f}%)')
-            grid_color = "green" if power_info["grid_status"] == "NORMAL" else "red"
+            grid_color = "red" if power_info["grid_status"] == "Outage" else "green"
             print_kv("Grid", f'{power_info["grid_kw"]:.1f} kW  ({c(grid_color, power_info["grid_status"])})')
             print_kv("Home", f'{power_info["home_load_kw"]:.1f} kW')
             print_kv("Mode", power_info["operating_mode"])

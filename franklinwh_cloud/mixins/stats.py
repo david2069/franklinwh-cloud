@@ -31,12 +31,20 @@ class StatsMixin:
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 
-    async def get_stats(self) -> Stats:
+    async def get_stats(self, *, include_electrical: bool = False) -> Stats:
         """Get current statistics for the FranklinWH gateway.
 
         This includes instantaneous measurements for current power
         (solar, battery, grid, home load) as well as totals for today
         (in local time). Returns empty_stats() if the API call fails.
+
+        Parameters
+        ----------
+        include_electrical : bool, optional
+            When True, also calls get_power_info() (cmdType 211) to populate
+            voltage, current, frequency, and extended relay fields in Current.
+            This adds one extra MQTT round-trip. Use on a slow cadence (e.g.
+            every 5th poll) rather than on every tick. Default False.
 
         Returns
         -------
@@ -61,15 +69,13 @@ class StatsMixin:
         offGridFlag = solarHaveVo.get("offGridFlag", runtimedata_v2.get("offGridFlag", 0))
         offgridreason = runtimedata_v2.get("offgridreason", solarHaveVo.get("offGridReason", 0))
         offGridReason = solarHaveVo.get("offGridReason", runtimedata_v2.get("offgridreason", 0))
-        offgridState = 1 if offGridFlag else 0
-        logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}, offgridState={offgridState}")
-        grid_status: GridStatus = GridStatus.NORMAL
-        if "offgridreason" in runtimedata_v2 or "offGridReason" in solarHaveVo:
-            reason_val = int(offgridreason) if offgridreason is not None else 0
-            if reason_val > 0:
-                grid_status = GridStatus(min(2, int(reason_val)))
-            else:
-                grid_status = GridStatus.NORMAL
+        logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}")
+        # grid_outage: True only when firmware reports an active grid loss event.
+        # NOTE: permanently-islanded systems show offGridFlag=0/offgridreason=0 (no outage
+        # ever detected) — grid_outage will correctly be False for them.
+        # Use discover() or get_grid_status() for the full three-state picture.
+        reason_val = int(offgridreason) if offgridreason else 0
+        grid_outage: bool = bool(offGridFlag) or reason_val > 0
 
         v2lModeEnable = runtimedata_v2.get("v2lModeEnable", 0) or 0
         v2lRunState = runtimedata_v2.get("v2lRunState", 0) or 0
@@ -101,8 +107,9 @@ class StatsMixin:
         oil_relay    = main_sw[1] if len(main_sw) > 1 else 0
         solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
 
-        # Extended relays and electrical metrics require an explicit get_power_info() call.
-        # They are not populated here to avoid the extra MQTT round-trip on every poll.
+        # Extended relays and electrical metrics from get_power_info() (cmdType 211).
+        # Only populated when include_electrical=True to avoid an extra MQTT round-trip
+        # on every poll. Callers should use this on a slow cadence (e.g. every 5th poll).
         grid_relay2 = 0
         black_start_relay = 0
         pv_relay2 = 0
@@ -116,6 +123,27 @@ class StatsMixin:
         grid_line_vol = 0.0
         gen_vol = 0.0
 
+        if include_electrical:
+            try:
+                pi = await self.get_power_info()
+                # gridLineVol is a raw integer in tenths of a volt (e.g. 2440 = 244.0V)
+                raw_line = pi.get("gridLineVol", 0)
+                grid_line_vol = round(float(raw_line) / 10, 1) if raw_line else 0.0
+                grid_vol1      = float(pi.get("gridVol1", 0.0) or 0.0)
+                grid_vol2      = float(pi.get("gridVol2", 0.0) or 0.0)
+                grid_cur1      = float(pi.get("gridCurr1", 0.0) or 0.0)
+                grid_cur2      = float(pi.get("gridCurr2", 0.0) or 0.0)
+                grid_freq      = float(pi.get("gridFreq", 0.0) or 0.0)
+                grid_set_freq  = float(pi.get("dspSetFreq", 0.0) or 0.0)
+                gen_vol        = float(pi.get("genVoltage", 0.0) or 0.0)
+                # Extended relays — raw firmware values (1=OPEN, 0=CLOSED)
+                grid_relay2       = int(pi.get("gridRelay2", 0) or 0)
+                black_start_relay = int(pi.get("blackStartRelay", 0) or 0)
+                pv_relay2         = int(pi.get("pvRelay2", 0) or 0)
+                bfpv_apbox_relay  = int(pi.get("BFPVApboxRelay", 0) or 0)
+            except Exception as e:
+                logger.warning(f"get_stats: get_power_info() failed, electrical fields zeroed: {e}")
+
         return Stats(
             Current(
                 runtimedata_v2.get("p_sun", 0.0),
@@ -125,7 +153,7 @@ class StatsMixin:
                 runtimedata_v2.get("p_load", 0.0),
                 runtimedata_v2.get("soc", 0.0),
                 sw1_pwr, sw2_pwr, car_sw_pwr,
-                grid_status,
+                grid_outage,
                 workMode,
                 workMode_desc,
                 data_v2.get("deviceStatus", 0),
