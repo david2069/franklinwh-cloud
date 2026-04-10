@@ -72,11 +72,16 @@ class StatsMixin:
         logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}")
 
         # Grid connection state — four-state enum, no ambiguity.
-        # Live-confirmed encoding (2026-04-10): main_sw[0]=1=CLOSED=connected, 0=OPEN=disconnected.
-        # offgridreason=1 is present during SIMULATED_OFF_GRID (NOT a reliable outage indicator).
-        # Only offGridFlag is firmware-authoritative for real outages.
+        # Live-confirmed encoding (2026-04-10):
+        #   main_sw[0]=1=CLOSED=connected, 0=OPEN=disconnected
+        #   offgridreason=1 during SIMULATED_OFF_GRID (set before main_sw updates — API lag)
+        #   offGridFlag=1 = firmware-authoritative actual outage
+        #
+        # Dual-gate: trigger get_grid_status() when EITHER signal is present, because the
+        # API may report offgridreason before updating main_sw (observed live 2026-04-10).
         main_sw_early = runtimedata_v2.get("main_sw", [])
-        grid_relay_raw = main_sw_early[0] if main_sw_early else 1  # default 1=CLOSED (assume connected)
+        grid_relay_raw = main_sw_early[0] if main_sw_early else 1  # 1=CLOSED=connected default
+        offgridreason_val = offgridreason if offgridreason is not None else 0
 
         # Step 1: lazy-populate NOT_GRID_TIED startup cache (one extra API call, once ever)
         if not hasattr(self, '_not_grid_tied') or self._not_grid_tied is None:
@@ -93,17 +98,22 @@ class StatsMixin:
         # Step 2: derive state
         if self._not_grid_tied:
             grid_connection_state = GridConnectionState.NOT_GRID_TIED
-        elif grid_relay_raw == 0:  # relay OPEN — exceptional state
-            # Gate: only call get_grid_status() when relay is open (rare on healthy systems)
+        elif bool(offGridFlag):
+            # Firmware-authoritative: grid was lost (offGridFlag set by aGate, not user)
+            grid_connection_state = GridConnectionState.OUTAGE
+        elif grid_relay_raw == 0 or offgridreason_val:
+            # Dual-gate: relay OPEN OR offgridreason set (handles API reporting lag where
+            # offgridreason=1 arrives before main_sw updates — confirmed live 2026-04-10)
             try:
                 gs = await self.get_grid_status()
                 gs_result = gs.get("result", gs) if isinstance(gs, dict) else {}
                 if gs_result.get("offgridState", 0) == 1:
                     grid_connection_state = GridConnectionState.SIMULATED_OFF_GRID
                 else:
+                    # Relay open but not user-simulated — treat as outage
                     grid_connection_state = GridConnectionState.OUTAGE
             except Exception as e:
-                logger.warning(f"get_stats: get_grid_status() failed during open-relay gate: {e}")
+                logger.warning(f"get_stats: get_grid_status() failed during gate check: {e}")
                 grid_connection_state = GridConnectionState.OUTAGE  # safe fallback
         else:
             grid_connection_state = GridConnectionState.CONNECTED

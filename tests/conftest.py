@@ -9,6 +9,14 @@ import pathlib
 import pytest
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "destructive: marks tests that make state-changing calls to live hardware (opt-in, requires explicit user confirmation at runtime)",
+    )
+
+
+
 FIXTURES_DIR = pathlib.Path(__file__).parent / "fixtures"
 
 
