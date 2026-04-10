@@ -5,7 +5,7 @@ __version__ = "0.4.7"
 from .client import Client
 from .wrapper import FranklinWHCloud
 from .auth import BaseAuth, PasswordAuth, TokenAuth, TokenFetcher
-from .models import Stats, Current, Totals, GridStatus, empty_stats
+from .models import Stats, Current, Totals, GridStatus, GridConnectionState, empty_stats
 from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
@@ -42,6 +42,7 @@ __all__ = [
     "DeviceTimeoutException",
     "GatewayOfflineException",
     "GridStatus",
+    "GridConnectionState",
     "InvalidCredentialsException",
     "InvalidOperatingMode",
     "InvalidOperatingModeOption",

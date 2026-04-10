@@ -26,6 +26,21 @@ class MqttCmd(IntEnum):
     ACCESSORY_LOADS = 353       # cmdType 353: SC/V2L/Generator current draw
 
 
+class GridConnectionState(str, Enum):
+    """Grid connection state — four unambiguous states covering all topologies.
+
+    Confirmed live (2026-04-10):
+      main_sw[0]=1 → relay CLOSED → CONNECTED
+      main_sw[0]=0 → relay OPEN  → SIMULATED_OFF_GRID or OUTAGE
+      offgridState=1 from selectOffgrid → SIMULATED_OFF_GRID
+      gridFlag=False from get_entrance_info() → NOT_GRID_TIED (startup-cached)
+    """
+    CONNECTED          = "Connected"          # grid-tied, relay CLOSED
+    OUTAGE             = "Outage"             # firmware-detected grid loss
+    NOT_GRID_TIED      = "NotGridTied"        # permanent island (no utility service)
+    SIMULATED_OFF_GRID = "SimulatedOffGrid"   # user-initiated; relay OPEN, offgridState=1
+
+
 class GridStatus(Enum):
     """Represents the status of the grid connection for the FranklinWH gateway.
 
@@ -59,7 +74,7 @@ class Current:
     switch_1_load: float
     switch_2_load: float
     v2l_use: float
-    grid_outage: bool
+    grid_connection_state: GridConnectionState
     work_mode: int
     work_mode_desc: str
     device_status: int
@@ -162,7 +177,7 @@ def empty_stats() -> Stats:
         Current(
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0,   # solar, generator, battery, grid, home, soc
             0.0, 0.0, 0.0,                     # sw1, sw2, v2l
-            False,                              # grid_outage
+            GridConnectionState.CONNECTED,          # grid_connection_state
             0, "", 0, 0, "", 0, "",             # work_mode through run_status_dec
             "", "", "", "",                     # apower fields
             0.0,                                # agate_ambient_temparture
