@@ -298,6 +298,12 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         self._canary_tripped = False
         self._emulate_app_version = emulate_app_version  # outbound softwareversion header value
 
+        # Startup-cached site property: True = this site has no utility connection (permanent island).
+        # Populated lazily on first get_stats() call via get_entrance_info(). Never changes within
+        # a power-up cycle. Saves a get_entrance_info() call on every subsequent poll.
+        self._not_grid_tied: bool | None = None
+
+
         # Method-level TTL cache — opt-in, zero overhead when disabled
         if cache is not None:
             from franklinwh_cloud.cache import MethodCache

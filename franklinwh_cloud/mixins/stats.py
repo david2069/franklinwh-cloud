@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, empty_stats, MqttCmd
+from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, GridConnectionState, empty_stats, MqttCmd
 from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
 
 logger = logging.getLogger("franklinwh_cloud")
@@ -70,12 +70,43 @@ class StatsMixin:
         offgridreason = runtimedata_v2.get("offgridreason", solarHaveVo.get("offGridReason", 0))
         offGridReason = solarHaveVo.get("offGridReason", runtimedata_v2.get("offgridreason", 0))
         logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}")
-        # grid_outage: True only when firmware reports an active grid loss event.
-        # NOTE: permanently-islanded systems show offGridFlag=0/offgridreason=0 (no outage
-        # ever detected) — grid_outage will correctly be False for them.
-        # Use discover() or get_grid_status() for the full three-state picture.
-        reason_val = int(offgridreason) if offgridreason else 0
-        grid_outage: bool = bool(offGridFlag) or reason_val > 0
+
+        # Grid connection state — four-state enum, no ambiguity.
+        # Live-confirmed encoding (2026-04-10): main_sw[0]=1=CLOSED=connected, 0=OPEN=disconnected.
+        # offgridreason=1 is present during SIMULATED_OFF_GRID (NOT a reliable outage indicator).
+        # Only offGridFlag is firmware-authoritative for real outages.
+        main_sw_early = runtimedata_v2.get("main_sw", [])
+        grid_relay_raw = main_sw_early[0] if main_sw_early else 1  # default 1=CLOSED (assume connected)
+
+        # Step 1: lazy-populate NOT_GRID_TIED startup cache (one extra API call, once ever)
+        if not hasattr(self, '_not_grid_tied') or self._not_grid_tied is None:
+            try:
+                entrance = await self.get_entrance_info()
+                entrance_result = entrance.get("result", {})
+                grid_flag = entrance_result.get("gridFlag", True)
+                self._not_grid_tied = not bool(grid_flag)
+                logger.debug(f"get_stats: NOT_GRID_TIED startup cache set to {self._not_grid_tied} (gridFlag={grid_flag})")
+            except Exception as e:
+                logger.warning(f"get_stats: get_entrance_info() failed for NOT_GRID_TIED cache: {e}")
+                self._not_grid_tied = False  # safe default: assume grid-tied
+
+        # Step 2: derive state
+        if self._not_grid_tied:
+            grid_connection_state = GridConnectionState.NOT_GRID_TIED
+        elif grid_relay_raw == 0:  # relay OPEN — exceptional state
+            # Gate: only call get_grid_status() when relay is open (rare on healthy systems)
+            try:
+                gs = await self.get_grid_status()
+                gs_result = gs.get("result", gs) if isinstance(gs, dict) else {}
+                if gs_result.get("offgridState", 0) == 1:
+                    grid_connection_state = GridConnectionState.SIMULATED_OFF_GRID
+                else:
+                    grid_connection_state = GridConnectionState.OUTAGE
+            except Exception as e:
+                logger.warning(f"get_stats: get_grid_status() failed during open-relay gate: {e}")
+                grid_connection_state = GridConnectionState.OUTAGE  # safe fallback
+        else:
+            grid_connection_state = GridConnectionState.CONNECTED
 
         v2lModeEnable = runtimedata_v2.get("v2lModeEnable", 0) or 0
         v2lRunState = runtimedata_v2.get("v2lRunState", 0) or 0
@@ -153,7 +184,7 @@ class StatsMixin:
                 runtimedata_v2.get("p_load", 0.0),
                 runtimedata_v2.get("soc", 0.0),
                 sw1_pwr, sw2_pwr, car_sw_pwr,
-                grid_outage,
+                grid_connection_state,
                 workMode,
                 workMode_desc,
                 data_v2.get("deviceStatus", 0),

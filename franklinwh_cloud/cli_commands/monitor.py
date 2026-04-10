@@ -19,6 +19,8 @@ from franklinwh_cloud.cli_output import (
     print_header, print_kv, print_json_output,
     c,
 )
+from franklinwh_cloud.models import GridConnectionState
+
 
 
 # ── ANSI helpers ─────────────────────────────────────────────────────
@@ -68,10 +70,14 @@ def _direction(kw: float, pos_label: str = "export", neg_label: str = "import") 
     return "idle"
 
 
-def _grid_status_display(outage: bool) -> str:
-    if outage:
-        return f"{RED}✗ Outage{RESET}"
-    return f"{GREEN}✓ Connected{RESET}"
+def _grid_status_display(state: GridConnectionState) -> str:
+    return {
+        GridConnectionState.CONNECTED:          f"{GREEN}✓ Connected{RESET}",
+        GridConnectionState.OUTAGE:             f"{RED}✗ Outage{RESET}",
+        GridConnectionState.SIMULATED_OFF_GRID: f"{YELLOW}⚡ Simulated{RESET}",
+        GridConnectionState.NOT_GRID_TIED:      f"{CYAN}~ Not Grid-Tied{RESET}",
+    }.get(state, f"{GREEN}✓ Connected{RESET}")
+
 
 
 
@@ -108,7 +114,7 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
     lines.append("")
 
     # Battery & Mode status line
-    lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_outage)}")
+    lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_connection_state)}")
     lines.append(f"  {BOLD}⚙️  Mode{RESET}      {mode_desc}   Status: {cur.run_status_dec}")
     lines.append("")
 
@@ -164,7 +170,7 @@ def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
     """Render single-line compact view."""
     cur = stats.current
     now = datetime.now().strftime("%H:%M:%S")
-    grid_sym = "●" if not cur.grid_outage else "✗"
+    grid_sym = "●" if cur.grid_connection_state == GridConnectionState.CONNECTED else "✗"
     batt_dir = "↑" if cur.battery_use > 0.05 else "↓" if cur.battery_use < -0.05 else "─"
     return (
         f"[{now}] "
