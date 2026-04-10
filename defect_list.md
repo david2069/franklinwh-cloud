@@ -8,6 +8,8 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
+| DEF-GRID-STATUS-SEMANTIC | Models / Mixins / CLI | `GridStatus.NORMAL` is semantically wrong for permanently-islanded (non-grid-tied) systems. `offgridreason=0` means "no outage detected", not "grid is present" — so an islanded aGate always reports `NORMAL`. Root cause: `Current.grid_status` is derived solely from `offgridreason`, ignoring `gridFlag` from `get_entrance_info()` which is the authoritative "utility service present" signal. Fix: replace `grid_status: GridStatus` in `Current` with three explicit booleans (`grid_connected`, `grid_contactor_open`, `grid_outage`); retain `GridStatus` enum only as the command token for `set_grid_status()`. Breaking change to `Current` dataclass — requires explicit authorization. | 2026-04-10 |
+| DEF-BMS-STATE-SWAP | Constants / CLI | `BMS_STATE` in `states.py` has Charging and Discharging inverted: `6` maps to `"Discharging"` and `7` to `"Charging"`, but firmware ground truth (captured 2026-02-23, V10R01B04D00) is `6=Charging, 7=Discharging` (pattern: `bms_work = run_status + 5`). Separately, FHAI `status.py` looks up `bms_work` values (5/6/7) against `RUN_STATUS` (0-2 range) — wrong dict, produces `"Off-Grid Standby"` / `"Off-Grid Charging"` / `"Off-Grid Discharging"` for a grid-on battery. Fix: swap `6`/`7` labels in `BMS_STATE`; add `bms_work = run_status + 5` invariant comment; add `DCDCStatus` mapping. FHAI must use `BMS_STATE` not `RUN_STATUS` for `bms_work` fields. | 2026-04-10 |
 
 ### S3 — Medium
 
