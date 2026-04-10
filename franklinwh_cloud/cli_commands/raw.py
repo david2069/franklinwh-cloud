@@ -147,10 +147,22 @@ async def run(client, method: str, values: list[str] | None = None,
 
     # Output
     if json_output:
-        output = result
+        import dataclasses
+
+        def _make_serializable(obj):
+            """Recursively convert dataclasses to dicts for JSON serialization."""
+            if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+                return dataclasses.asdict(obj)
+            if isinstance(obj, dict):
+                return {k: _make_serializable(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_make_serializable(i) for i in obj]
+            return obj
+
+        output = _make_serializable(result)
         if show_timings or show_headers:
             # Wrap result with metadata
-            output = {"_result": result}
+            output = {"_result": output}
             if show_timings:
                 output["_timing"] = {"elapsed_ms": round(elapsed_ms, 1)}
                 if hasattr(client, 'edge_tracker') and client.edge_tracker:
@@ -161,6 +173,7 @@ async def run(client, method: str, values: list[str] | None = None,
             if show_headers and hasattr(client, 'edge_tracker') and client.edge_tracker:
                 output["_headers"] = client.edge_tracker._last_response_headers
         print_json_output(output)
+
     else:
         # Timings banner
         if show_timings:

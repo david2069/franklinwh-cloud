@@ -59,7 +59,7 @@ class Current:
     switch_1_load: float
     switch_2_load: float
     v2l_use: float
-    grid_status: GridStatus
+    grid_outage: bool
     work_mode: int
     work_mode_desc: str
     device_status: int
@@ -162,7 +162,7 @@ def empty_stats() -> Stats:
         Current(
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0,   # solar, generator, battery, grid, home, soc
             0.0, 0.0, 0.0,                     # sw1, sw2, v2l
-            GridStatus.NORMAL,                  # grid_status
+            False,                              # grid_outage
             0, "", 0, 0, "", 0, "",             # work_mode through run_status_dec
             "", "", "", "",                     # apower fields
             0.0,                                # agate_ambient_temparture

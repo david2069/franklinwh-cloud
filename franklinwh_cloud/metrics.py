@@ -35,10 +35,14 @@ DISCLAIMER = (
 def get_default_client_headers() -> dict:
     """Return default client identification headers.
 
-    We spoof the 'softwareversion' to masquerade as the official mobile app
-    in order to unlock the latest JSON schema capabilities from the backend.
-    However, we still honestly identify as a third-party Python client via
-    the 'optsource' and 'optsystemversion' telemetry headers.
+    We send the certified baseline ``softwareversion`` (``APP2.4.1``) to
+    identify the client as a known-good app version. Empirical testing has
+    shown that varying this header does **not** alter JSON payload structure
+    on current endpoints — its primary role is authentication negotiation and
+    server-side telemetry/analytics.
+
+    We honestly identify as a third-party Python client via the ``optsource``
+    and ``optsystemversion`` telemetry headers ("good citizen" practice).
     """
     return {
         "softwareversion": "APP2.4.1",
@@ -423,6 +427,11 @@ class ClientMetrics:
     total_rate_limits: int = 0
     total_throttle_waits: int = 0
 
+    # Backend version telemetry — populated on login and each token refresh.
+    # Contains the softwareVersion the server echoed back in its login response
+    # (e.g. "APP2.4.1"). None until the first token refresh completes.
+    _latest_backend_software_version: str | None = None
+
     def record_call(self, method: str, endpoint: str, elapsed: float) -> None:
         """Record a successful API call."""
         self.total_calls += 1
@@ -490,6 +499,9 @@ class ClientMetrics:
             "login_count": self.login_count,
             "total_rate_limits": self.total_rate_limits,
             "total_throttle_waits": self.total_throttle_waits,
+            # Backend version echoed by the server on login/refresh.
+            # None until first token refresh. Used by the canary trap.
+            "latest_backend_software_version": self._latest_backend_software_version,
         }
 
 

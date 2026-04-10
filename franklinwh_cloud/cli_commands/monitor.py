@@ -68,15 +68,13 @@ def _direction(kw: float, pos_label: str = "export", neg_label: str = "import") 
     return "idle"
 
 
-def _grid_status_display(status_name: str) -> str:
-    """Colorize grid status."""
-    if status_name == "NORMAL":
-        return f"{GREEN}● CONNECTED{RESET}"
-    elif status_name == "DOWN":
-        return f"{RED}● DISCONNECTED{RESET}"
-    elif status_name == "OFF":
-        return f"{YELLOW}● OFF-GRID{RESET}"
-    return status_name
+def _grid_status_display(outage: bool) -> str:
+    if outage:
+        return f"{RED}✗ Outage{RESET}"
+    return f"{GREEN}✓ Connected{RESET}"
+
+
+
 
 
 # ── Display Renderers ────────────────────────────────────────────────
@@ -110,7 +108,7 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
     lines.append("")
 
     # Battery & Mode status line
-    lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_status.name)}")
+    lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_outage)}")
     lines.append(f"  {BOLD}⚙️  Mode{RESET}      {mode_desc}   Status: {cur.run_status_dec}")
     lines.append("")
 
@@ -166,7 +164,7 @@ def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
     """Render single-line compact view."""
     cur = stats.current
     now = datetime.now().strftime("%H:%M:%S")
-    grid_sym = "●" if cur.grid_status.name == "NORMAL" else "✗"
+    grid_sym = "●" if not cur.grid_outage else "✗"
     batt_dir = "↑" if cur.battery_use > 0.05 else "↓" if cur.battery_use < -0.05 else "─"
     return (
         f"[{now}] "

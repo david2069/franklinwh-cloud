@@ -275,6 +275,9 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Don't auto-inject gatewayId into payload")
     sub_fetch.add_argument("--inject-user", action="store_true",
                            help="Auto-inject userId into payload")
+    sub_fetch.add_argument("--app-version", metavar="VER",
+                           help="Override softwareversion header for this call only (e.g. APP2.11.0, APP1.0.0). "
+                                "Default: APP2.4.1 (certified baseline). Use for API version comparison testing.")
 
     return parser
 
@@ -475,7 +478,8 @@ async def async_main():
                                 output_file=args.output,
                                 json_output=args.json,
                                 inject_gateway=not args.no_gateway,
-                                inject_user=args.inject_user)
+                                inject_user=args.inject_user,
+                                app_version=getattr(args, 'app_version', None))
 
     except KeyboardInterrupt:
         print("\nInterrupted.")
