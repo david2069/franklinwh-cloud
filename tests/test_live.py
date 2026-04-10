@@ -32,7 +32,7 @@ import jsonschema
 
 from franklinwh_cloud.client import Client, Stats
 from franklinwh_cloud.auth import PasswordAuth
-from franklinwh_cloud.models import GridStatus
+from franklinwh_cloud.models import GridStatus, GridConnectionState
 
 
 def _assert_live_schema(path: str, method: str, raw_payload: dict):
@@ -160,9 +160,11 @@ class TestLiveStats:
         # Total solar should be >= 0
         assert stats.totals.solar >= 0
 
-    async def test_stats_grid_status(self, live_client):
+    async def test_stats_grid_connection_state(self, live_client):
         stats = await live_client.get_stats()
-        assert isinstance(stats.current.grid_status, GridStatus)
+        assert isinstance(stats.current.grid_connection_state, GridConnectionState)
+        # On a live connected system this must be CONNECTED
+        assert stats.current.grid_connection_state == GridConnectionState.CONNECTED
 
     async def test_runtime_data(self, live_client):
         result = await live_client.get_runtime_data()
@@ -348,3 +350,202 @@ class TestLiveMetrics:
         assert metrics["uptime_s"] > 0
         assert metrics["total_errors"] == 0
 
+
+# ---------------------------------------------------------------------------
+# Destructive — Simulated Off-Grid (opt-in, explicit user confirmation)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.live
+@pytest.mark.destructive
+class TestLiveGridConnectionState:
+    """Verify GridConnectionState transitions through a live simulated off-grid cycle.
+
+    DESTRUCTIVE: performs one grid relay open/close cycle (~15 seconds total).
+    Non-backed loads will lose power during the simulation window.
+
+    Requires both markers to run:
+        pytest -m "live and destructive" tests/test_live.py::TestLiveGridConnectionState -s
+    """
+
+    async def test_simulated_offgrid_state_cycle(self, live_client):
+        """Full state machine: CONNECTED → SIMULATED_OFF_GRID → CONNECTED.
+
+        Safety pre-flight:
+          - SOC must be ≥ reserve + 10% margin
+          - System must currently be CONNECTED
+          - No active off-grid state or outage
+          - Explicit terminal confirmation from user (type 'yes')
+
+        Guarantees:
+          - try/finally ensures restore even on assertion failure or crash
+          - Exactly 1 simulated outage
+          - ~15 second total duration
+        """
+        import asyncio
+        import sys
+
+        # ── Pre-flight ───────────────────────────────────────────────
+        print("\n" + "═" * 62)
+        print("  ⚠️   LIVE OFF-GRID SIMULATION TEST — PRE-FLIGHT CHECK")
+        print("═" * 62)
+
+        stats = await live_client.get_stats()
+        cur = stats.current
+        soc        = cur.battery_soc
+        solar_kw   = cur.solar_production
+        battery_kw = cur.battery_use
+        grid_kw    = cur.grid_use
+        home_kw    = cur.home_load
+
+        # Reserve SOC
+        try:
+            mode_info = await live_client.get_mode_info()
+            reserve_soc = int(mode_info.get("result", {}).get("soc", 20)) if isinstance(mode_info, dict) else 20
+        except Exception:
+            reserve_soc = 20
+        margin = soc - reserve_soc
+        soc_ok = margin >= 10
+
+        # Current off-grid API state
+        gs = await live_client.get_grid_status()
+        gs_result = gs.get("result", gs) if isinstance(gs, dict) else {}
+        already_simulated = gs_result.get("offgridState", 0) == 1
+        already_requested = gs_result.get("offgridSet", 0) == 1
+        not_grid_tied = getattr(live_client, "_not_grid_tied", False)
+
+        print(f"  Current state:    {cur.grid_connection_state.value}")
+        print(f"  SOC:              {soc:.0f}%  |  Reserve: {reserve_soc:.0f}%  |  Margin: {margin:.0f}%  {'✅' if soc_ok else '❌ INSUFFICIENT'}")
+        print(f"  Solar:            {solar_kw:.1f} kW")
+        bat_dir = "charging" if battery_kw < -0.05 else "discharging" if battery_kw > 0.05 else "idle"
+        print(f"  Battery:          {battery_kw:+.1f} kW  ({bat_dir})")
+        grid_dir = "importing" if grid_kw > 0.05 else "exporting" if grid_kw < -0.05 else "idle"
+        print(f"  Grid:             {grid_kw:+.1f} kW  ({grid_dir})")
+        print(f"  Home load:        {home_kw:.1f} kW")
+        print(f"  Not grid-tied:    {not_grid_tied}")
+        print(f"  offgridState:     {gs_result.get('offgridState', 0)}")
+        print()
+        print("  This test will:")
+        print("    • Perform exactly 1 simulated grid disconnect")
+        print("    • Duration: ~15 seconds total (5s settle + capture + 5s restore)")
+        print("    • Non-backed loads WILL lose power during the simulation")
+        print("    • Grid restore is guaranteed via try/finally (even on crash)")
+        print("═" * 62)
+
+        # Safety guards — skip rather than fail so CI doesn't break
+        if not_grid_tied:
+            pytest.skip("System is not grid-tied — simulated off-grid not applicable")
+        if already_simulated or already_requested:
+            pytest.skip("System already in off-grid state — restore first then re-run")
+        if cur.grid_connection_state != GridConnectionState.CONNECTED:
+            pytest.skip(f"System not CONNECTED ({cur.grid_connection_state.value}) — cannot test")
+        if not soc_ok:
+            pytest.skip(f"SOC margin insufficient ({margin:.0f}%) — need ≥10% above reserve ({reserve_soc:.0f}%)")
+
+        # ── Explicit user confirmation ────────────────────────────────
+        print("  Type 'yes' to proceed, anything else to abort: ", end="", flush=True)
+        try:
+            answer = sys.stdin.readline().strip().lower()
+        except Exception:
+            answer = ""
+        if answer != "yes":
+            pytest.skip("User aborted — no changes made to system")
+
+        # ── Test cycle ────────────────────────────────────────────────
+        print("\n  [1/4] Activating simulated off-grid (offgridSet=1)...")
+        stats_during = cur_during = None
+        main_sw = []
+        grid_relay_raw = -1
+        offgridreason = None
+        offgrid_state = -1
+        restored = False
+
+        try:
+            await live_client.set_grid_status(status=GridStatus.OFF, soc=5)
+
+            print("  [2/4] Settling 5 seconds...")
+            await asyncio.sleep(5)
+
+            print("  [3/4] Capturing state during simulation...")
+            # Invalidate NOT_GRID_TIED cache so get_stats() re-evaluates relay gate
+            live_client._not_grid_tied = False
+            stats_during = await live_client.get_stats()
+            cur_during = stats_during.current
+            print(f"         grid_connection_state = {cur_during.grid_connection_state.value}")
+
+            comp = await live_client.get_device_composite_info()
+            runtime = comp.get("result", {}).get("runtimeData", {})
+            main_sw = runtime.get("main_sw", [])
+            grid_relay_raw = main_sw[0] if main_sw else -1
+            offgridreason  = runtime.get("offgridreason")
+            print(f"         main_sw               = {main_sw}")
+            print(f"         main_sw[0] (gate val) = {grid_relay_raw}  (0=OPEN=disconnected)")
+            print(f"         offgridreason         = {offgridreason}")
+
+            gs_d = await live_client.get_grid_status()
+            gs_d_result = gs_d.get("result", gs_d) if isinstance(gs_d, dict) else {}
+            offgrid_state = gs_d_result.get("offgridState", -1)
+            print(f"         offgridState          = {offgrid_state}")
+
+        finally:
+            print("  [4/4] Restoring grid connection (offgridSet=0)...")
+            try:
+                await live_client.set_grid_status(status=GridStatus.NORMAL, soc=5)
+                await asyncio.sleep(8)  # relay takes several seconds to physically close
+                restored = True
+                print("         Restore sent ✅")
+            except Exception as exc:
+                print(f"         ⚠️  Restore failed: {exc} — manual restore may be needed!")
+
+        # ── Assertions ────────────────────────────────────────────────
+        assert cur_during is not None, "Stats during simulation were not captured"
+
+        assert main_sw, "main_sw was empty during simulation — firmware did not report relay state"
+
+        assert grid_relay_raw == 0, (
+            f"DEF-GRID-STATE-ENUM gate assumption invalid: "
+            f"expected main_sw[0]=0 (OPEN) during simulation, got {grid_relay_raw}. "
+            "Review relay encoding — the gate condition must be updated."
+        )
+        assert offgrid_state == 1, (
+            f"Expected offgridState=1 from selectOffgrid during simulation, got {offgrid_state}. "
+            "get_grid_status() disambiguation is not working correctly."
+        )
+        assert cur_during.grid_connection_state == GridConnectionState.SIMULATED_OFF_GRID, (
+            f"Expected SIMULATED_OFF_GRID from get_stats(), got {cur_during.grid_connection_state.value}. "
+            "Library GridConnectionState state machine is incorrect."
+        )
+        assert restored, "Grid restore did not complete — check system manually"
+
+        # Poll until CONNECTED (relay takes time to physically close after restore)
+        print("  Polling for CONNECTED state (up to 30s)...")
+        stats_after = None
+        for attempt in range(10):
+            await asyncio.sleep(3)
+            try:
+                live_client._not_grid_tied = False  # reset cache each poll
+                stats_after = await live_client.get_stats()
+                state_after = stats_after.current.grid_connection_state
+                print(f"         [{attempt+1}/10] grid_connection_state = {state_after.value}")
+                if state_after == GridConnectionState.CONNECTED:
+                    break
+            except Exception as e:
+                print(f"         [{attempt+1}/10] poll error: {e}")
+        else:
+            assert False, (
+                f"System did not return to CONNECTED within 30s of restore. "
+                f"Last state: {stats_after.current.grid_connection_state.value if stats_after else 'unknown'}. "
+                "Check system manually — relay may still be transitioning."
+            )
+
+        assert stats_after.current.grid_connection_state == GridConnectionState.CONNECTED, (
+            f"Expected CONNECTED after restore, got {stats_after.current.grid_connection_state.value}"
+        )
+
+        print()
+        print("═" * 62)
+        print("  ✅  ALL ASSERTIONS PASSED")
+        print(f"      CONNECTED → SIMULATED_OFF_GRID → CONNECTED  ✓")
+        print(f"      main_sw[0]=0 gate confirmed                 ✓")
+        print(f"      offgridState=1 from selectOffgrid           ✓")
+        print(f"      GridConnectionState enum correct             ✓")
+        print("═" * 62)
