@@ -42,7 +42,176 @@ If your integrator tool (like an Admin Console) shows thousands of hits to stati
 
 ---
 
+## 🔌 Grid Connection State
+
+> [!IMPORTANT]
+> `GridConnectionState` replaces the old `grid_outage: bool` field (removed 2026-04-10).
+> Any integrator reading `stats.current.grid_outage` must migrate to `stats.current.grid_connection_state`.
+
+The `GridConnectionState` enum provides unambiguous, four-state grid reporting covering all
+real-world FranklinWH site topologies — grid-tied homes, off-grid sites, active outages,
+and user-initiated simulation tests.
+
+### The Four States
+
+| Value | `.value` (str) | Meaning | When you see it |
+|-------|----------------|---------|-----------------|
+| `CONNECTED` | `"Connected"` | Grid relay CLOSED — utility power available | Normal daily operation |
+| `OUTAGE` | `"Outage"` | Firmware detected grid loss (`offGridFlag=1`) | Real grid failure — island mode |
+| `NOT_GRID_TIED` | `"NotGridTied"` | Site has no utility connection — permanent island | Off-grid solar/battery installs |
+| `SIMULATED_OFF_GRID` | `"SimulatedOffGrid"` | User-initiated island test | Commissioning, testing, drills |
+
+### Detection Strategy (Zero-Overhead on Normal Systems)
+
+The library derives state from data already fetched by `get_stats()`. No extra API calls
+are made on a normally-connected system:
+
+```
+startup:   get_entrance_info() → gridFlag=False → NOT_GRID_TIED cached forever (never re-checked)
+
+per poll:
+  offGridFlag == 1    → OUTAGE              (short-circuit, no extra call)
+  main_sw[0] == 1     → CONNECTED           (no extra call — covers 99.9% of polls)
+  main_sw[0] == 0  ─┐
+  offgridreason != 0 ─┼→ get_grid_status() → offgridState==1 → SIMULATED_OFF_GRID
+                      └→                   → offgridState==0 → OUTAGE
+```
+
+> [!NOTE]
+> The dual-gate (`main_sw[0]==0 OR offgridreason!=null`) handles a known firmware API
+> reporting lag (~5–10s) where `offgridreason` is set before `main_sw` updates after
+> a simulated off-grid activation. This is expected vendor behaviour — the grid contactor
+> is a mechanical relay. The library does not retry; it returns the correct state on the
+> first poll where API data is internally consistent.
+
+### Basic Usage
+
+```python
+import asyncio
+from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.models import GridConnectionState
+
+async def main():
+    client = FranklinWHCloud.from_config("franklinwh.ini")
+    await client.login()
+    await client.select_gateway()
+
+    stats = await client.get_stats()
+    state = stats.current.grid_connection_state
+
+    # .value gives the display string directly
+    print(f"Grid: {state.value}")
+    # Output: "Connected" | "Outage" | "SimulatedOffGrid" | "NotGridTied"
+
+    # Exact identity check
+    if state == GridConnectionState.CONNECTED:
+        print("✅ Grid available — normal operation")
+    elif state == GridConnectionState.OUTAGE:
+        print("❌ Grid outage — running on battery + solar")
+    elif state == GridConnectionState.SIMULATED_OFF_GRID:
+        print("⚡ Simulated off-grid — user-initiated island test")
+    elif state == GridConnectionState.NOT_GRID_TIED:
+        print("🏝️  Off-grid site — no utility connection")
+
+asyncio.run(main())
+```
+
+### State-Gated Automation (Safe Pattern)
+
+Gate grid-dependent actions behind `CONNECTED`. This prevents dispatching grid charges
+or exports during outages, simulations, or on off-grid sites:
+
+```python
+from franklinwh_cloud.models import GridConnectionState
+from franklinwh_cloud.const import EMERGENCY_BACKUP
+
+stats = await client.get_stats()
+state = stats.current.grid_connection_state
+
+if state == GridConnectionState.CONNECTED:
+    # Safe to: import from grid, export to grid, run TOU schedules
+    await client.set_tou_schedule(touMode="SELF")
+
+elif state == GridConnectionState.OUTAGE:
+    # Grid is down — switch to Emergency Backup to maximise reserve
+    await client.set_mode(EMERGENCY_BACKUP, soc=100)
+    print("🚨 Grid outage detected — Emergency Backup activated")
+
+elif state == GridConnectionState.SIMULATED_OFF_GRID:
+    # User is running an island test — take no automated action
+    print("⚡ Simulation active — skipping scheduled dispatch")
+
+elif state == GridConnectionState.NOT_GRID_TIED:
+    # Permanent off-grid site — grid-dependent schedules never apply
+    print("🏝️  Off-grid site — TOU schedule skipped")
+```
+
+### Dashboard / Status Display
+
+```python
+# Colour-coded terminal output (ANSI)
+_COLORS = {
+    GridConnectionState.CONNECTED:          "\033[32mConnected\033[0m",      # green
+    GridConnectionState.OUTAGE:             "\033[31mOutage\033[0m",         # red
+    GridConnectionState.SIMULATED_OFF_GRID: "\033[33mSimulated\033[0m",     # yellow
+    GridConnectionState.NOT_GRID_TIED:      "\033[36mNot Grid-Tied\033[0m", # cyan
+}
+
+state = stats.current.grid_connection_state
+print(f"Grid: {_COLORS.get(state, state.value)}")
+
+# JSON / MQTT telemetry payload — .value is always a str
+payload = {
+    "grid_status": state.value,                          # "Connected" etc.
+    "grid_ok":     state == GridConnectionState.CONNECTED,  # bool shortcut
+    "solar_kw":    stats.current.solar_production,
+    "battery_soc": stats.current.battery_soc,
+}
+```
+
+### FHAI / Home Assistant Integration
+
+The FHAI gateway service receives the flattened `Current` dataclass as a dict.
+`dataclasses.asdict()` serialises the enum to its `.value` string automatically:
+
+```python
+import dataclasses
+from franklinwh_cloud.models import GridConnectionState
+
+stats = await client.get_stats()
+d = dataclasses.asdict(stats.current)
+# grid_connection_state is now the .value string in the dict
+
+grid_status = d.get("grid_connection_state", "Connected")
+# → "Connected" | "Outage" | "SimulatedOffGrid" | "NotGridTied"
+
+status_payload = {
+    "grid_status": grid_status,   # forward directly to HA sensor
+    # ... other fields
+}
+```
+
+> [!TIP]
+> **FHAI handoff note:** `grid_connection_state` is always a string after `asdict()`.
+> No bool checks, no `if grid_outage` branches. Map each value to a Home Assistant
+> `sensor` state directly — e.g. HA `state_class: measurement` with `options` list.
+
+### Live Integration Test
+
+A destructive live test verifying the complete state cycle is included:
+
+```bash
+# Requires: franklinwh.ini with real credentials, SOC ≥ reserve + 10%
+pytest -m "live and destructive" tests/test_live.py::TestLiveGridConnectionState -s -v
+```
+
+Pre-flight checks enforced: SOC margin, current connection state, terminal `yes` confirmation.
+Guarantees: `try/finally` restore, poll-loop on reconnect (30s timeout).
+
+---
+
 ## 🏛️ Roles & Responsibilities: Integrator vs Library
+
 
 When integrating this library into an end-user application (like Home Assistant), you must maintain a strict conceptual boundary between what the library does and what your application is responsible for.
 
@@ -194,15 +363,20 @@ stats = await client.get_stats()
 
 # Instantaneous power (kW)
 solar_kw     = stats.current.solar_production    # p_sun
-battery_kw   = stats.current.battery_power       # p_fhp (negative = charging)
-grid_kw      = stats.current.grid_power          # p_uti
-home_kw      = stats.current.home_consumption    # p_load
-soc          = stats.current.soc                 # Battery %
+battery_kw   = stats.current.battery_use         # p_fhp (negative = charging)
+grid_kw      = stats.current.grid_use            # p_uti
+home_kw      = stats.current.home_load           # p_load
+soc          = stats.current.battery_soc         # Battery %
 
 # Operating state
 mode_name    = stats.current.work_mode_desc      # "Self Consumption"
-run_status   = stats.current.run_status_desc     # "Normal operation"
-grid_status  = stats.current.grid_status         # GridStatus.NORMAL
+run_status   = stats.current.run_status_dec      # "Normal operation"
+
+# Grid connection state (four-state enum — see GridConnectionState section below)
+from franklinwh_cloud.models import GridConnectionState
+grid_state   = stats.current.grid_connection_state  # GridConnectionState.CONNECTED
+grid_label   = grid_state.value                      # "Connected" / "Outage" / ...
+grid_ok      = grid_state == GridConnectionState.CONNECTED
 
 # Daily totals (kWh)
 solar_kwh    = stats.totals.solar                # kwh_sun
@@ -210,7 +384,7 @@ grid_in_kwh  = stats.totals.grid_import          # kwh_uti_in
 grid_out_kwh = stats.totals.grid_export          # kwh_uti_out
 bat_chg_kwh  = stats.totals.battery_charge       # kwh_fhp_chg
 bat_dis_kwh  = stats.totals.battery_discharge    # kwh_fhp_di
-home_kwh     = stats.totals.home                 # kwh_load
+home_kwh     = stats.totals.home_use             # kwh_load
 ```
 
 ### Operating Mode
@@ -286,7 +460,7 @@ await client.set_tou_schedule_multi(strategy_list)
 ### Power Control (PCS)
 
 ```python
-from franklinwh_cloud.models import GridStatus
+from franklinwh_cloud.models import GridStatus, GridConnectionState
 
 # Get current grid import/export limits
 pcs = await client.get_power_control_settings()
@@ -298,8 +472,9 @@ await client.set_power_control_settings(
 )
 
 # Go off-grid (simulate outage — opens grid contactor)
+# NOTE: this changes grid_connection_state → SIMULATED_OFF_GRID
 await client.set_grid_status(GridStatus.OFF, soc=5)
-#                            GridStatus.OFF=2  minimum SoC
+#                            GridStatus.OFF=2  minimum SoC before auto-restore
 
 # Restore grid connection
 await client.set_grid_status(GridStatus.NORMAL)
@@ -507,10 +682,10 @@ async def main():
     print()
 
     # ── Status ──
-    print(f"🔋 Battery: {c.soc:.0f}%")
+    print(f"🔋 Battery: {c.battery_soc:.0f}%")
     print(f"📋 Mode:    {c.work_mode_desc}")
-    print(f"🏃 Status:  {c.run_status_desc}")
-    print(f"🔌 Grid:    {c.grid_status.name}")
+    print(f"🏃 Status:  {c.run_status_dec}")
+    print(f"🔌 Grid:    {c.grid_connection_state.value}")
     print()
 
     # ── SoC Time Estimation ──
@@ -558,7 +733,7 @@ asyncio.run(main())
 🔋 Battery: 72%
 📋 Mode:    Self Consumption
 🏃 Status:  Normal operation
-🔌 Grid:    NORMAL
+🔌 Grid:    Connected
 
 ⏱️  Estimated ~1h 49m to 100%  (at 2.1 kW)
 
@@ -748,8 +923,9 @@ and the SoC target has been reached.
                 break
 
             # ── 3b. Grid check — still connected? ──
-            if grid_status != GridStatus.NORMAL:
-                print(f"⚠️  Grid status: {grid_status.name} — cannot charge from grid while off-grid!")
+            grid_state = stats.current.grid_connection_state
+            if grid_state != GridConnectionState.CONNECTED:
+                print(f"⚠️  Grid state: {grid_state.value} — cannot charge from grid while not connected!")
                 break
 
             # ── 3c. Power flow direction ──
