@@ -83,19 +83,8 @@ class StatsMixin:
         grid_relay_raw = main_sw_early[0] if main_sw_early else 1  # 1=CLOSED=connected default
         offgridreason_val = offgridreason if offgridreason is not None else 0
 
-        # Step 1: lazy-populate NOT_GRID_TIED startup cache (one extra API call, once ever)
-        if not hasattr(self, '_not_grid_tied') or self._not_grid_tied is None:
-            try:
-                entrance = await self.get_entrance_info()
-                entrance_result = entrance.get("result", {})
-                grid_flag = entrance_result.get("gridFlag", True)
-                self._not_grid_tied = not bool(grid_flag)
-                logger.debug(f"get_stats: NOT_GRID_TIED startup cache set to {self._not_grid_tied} (gridFlag={grid_flag})")
-            except Exception as e:
-                logger.warning(f"get_stats: get_entrance_info() failed for NOT_GRID_TIED cache: {e}")
-                self._not_grid_tied = False  # safe default: assume grid-tied
-
-        # Step 2: derive state
+        # Grid topology — integrator sets self._not_grid_tied at Client construction from DB.
+        # No get_entrance_info() call here. Zero overhead on every poll.
         if self._not_grid_tied:
             grid_connection_state = GridConnectionState.NOT_GRID_TIED
         elif bool(offGridFlag):
