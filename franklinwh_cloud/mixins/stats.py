@@ -137,21 +137,34 @@ class StatsMixin:
         oil_relay    = main_sw[1] if len(main_sw) > 1 else 0
         solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
 
-        # Extended relays and electrical metrics from get_power_info() (cmdType 211).
-        # Only populated when include_electrical=True to avoid an extra MQTT round-trip
-        # on every poll. Callers should use this on a slow cadence (e.g. every 5th poll).
-        grid_relay2 = 0
-        black_start_relay = 0
-        pv_relay2 = 0
-        bfpv_apbox_relay = 0
-        grid_vol1 = 0.0
-        grid_vol2 = 0.0
-        grid_cur1 = 0.0
-        grid_cur2 = 0.0
-        grid_freq = 0.0
-        grid_set_freq = 0.0
-        grid_line_vol = 0.0
-        gen_vol = 0.0
+        # ── 211 electrical fields — sticky via _last_electrical cache ────────────
+        # On fast polls (include_electrical=False) these vars are pre-loaded from
+        # the last successful get_power_info() result so FHAI never sees stale zeros
+        # overwriting its own cached values. Cache is updated on every successful
+        # include_electrical=True poll.
+        _ec = getattr(self, "_last_electrical", {})
+        grid_relay2       = _ec.get("grid_relay2", 0)
+        black_start_relay = _ec.get("black_start_relay", 0)
+        pv_relay2         = _ec.get("pv_relay2", 0)
+        bfpv_apbox_relay  = _ec.get("bfpv_apbox_relay", 0)
+        grid_vol1         = _ec.get("grid_vol1", 0.0)
+        grid_vol2         = _ec.get("grid_vol2", 0.0)
+        grid_cur1         = _ec.get("grid_cur1", 0.0)
+        grid_cur2         = _ec.get("grid_cur2", 0.0)
+        grid_freq         = _ec.get("grid_freq", 0.0)
+        grid_set_freq     = _ec.get("grid_set_freq", 0.0)
+        grid_line_vol     = _ec.get("grid_line_vol", 0.0)
+        gen_vol           = _ec.get("gen_vol", 0.0)
+        load_relay1       = _ec.get("load_relay1", 0)
+        load_relay2       = _ec.get("load_relay2", 0)
+        v2l_relay         = _ec.get("v2l_relay", 0)
+        load_solar_relay1 = _ec.get("load_solar_relay1", 0)
+        load_solar_relay2 = _ec.get("load_solar_relay2", 0)
+        load_current1     = _ec.get("load_current1", 0.0)
+        load_current2     = _ec.get("load_current2", 0.0)
+        dsp_run_status    = _ec.get("dsp_run_status", 0)
+        ibg_run_status    = _ec.get("ibg_run_status", 0)
+        electricity_type  = _ec.get("electricity_type", 0)
 
         if include_electrical:
             try:
@@ -183,8 +196,24 @@ class StatsMixin:
                 dsp_run_status    = int(pi.get("dspRunStatus", 0) or 0)
                 ibg_run_status    = int(pi.get("ibgRunStatus", 0) or 0)
                 electricity_type  = int(pi.get("electricity_type", 0) or 0)
+                # Update sticky cache with fresh values
+                self._last_electrical = {
+                    "grid_relay2": grid_relay2, "black_start_relay": black_start_relay,
+                    "pv_relay2": pv_relay2, "bfpv_apbox_relay": bfpv_apbox_relay,
+                    "grid_vol1": grid_vol1, "grid_vol2": grid_vol2,
+                    "grid_cur1": grid_cur1, "grid_cur2": grid_cur2,
+                    "grid_freq": grid_freq, "grid_set_freq": grid_set_freq,
+                    "grid_line_vol": grid_line_vol, "gen_vol": gen_vol,
+                    "load_relay1": load_relay1, "load_relay2": load_relay2,
+                    "v2l_relay": v2l_relay,
+                    "load_solar_relay1": load_solar_relay1, "load_solar_relay2": load_solar_relay2,
+                    "load_current1": load_current1, "load_current2": load_current2,
+                    "dsp_run_status": dsp_run_status, "ibg_run_status": ibg_run_status,
+                    "electricity_type": electricity_type,
+                }
+                logger.debug("get_stats: 211 electrical cache updated")
             except Exception as e:
-                logger.warning(f"get_stats: get_power_info() failed, electrical fields zeroed: {e}")
+                logger.warning(f"get_stats: get_power_info() failed, using last-known-good 211 values: {e}")
 
         return Stats(
             Current(

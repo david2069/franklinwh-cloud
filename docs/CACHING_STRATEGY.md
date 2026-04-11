@@ -21,6 +21,7 @@ mode or performance concern. They are independent and stack on top of each other
 | [3. Stats Last-Known-Good](#3-stats-last-known-good-defect-def-blank-stats-passthrough) | _(not yet implemented — DEF-BLANK-STATS-PASSTHROUGH)_ | Per `Client` | Configurable | Zero telemetry published ⚠️ |
 | [4. Static Site Data (Conceptual)](#4-static-site-data-gateway--device-info) | Caller responsibility | Per session | Until hardware changes | Re-fetched on every call |
 | [5. CloudFront Edge Cache](#5-cloudfront-edge-cache) | AWS infrastructure | Per CDN node | Varies by endpoint | Transparent miss, slightly slower |
+| [6. Electrical Fields Sticky Cache](#6-electrical-fields-sticky-cache-_last_electrical) | `client._last_electrical` | Per `Client` instance | Until next `include_electrical=True` poll | 0.0 zeros returned (pre-fix: overwrote FHAI cache) |
 
 ---
 
