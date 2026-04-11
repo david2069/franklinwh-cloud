@@ -104,9 +104,10 @@ class Current:
     agate_ambient_temparture: float  # runtimeData.t_amb  (°C)  [sic — vendor typo]
 
     # ── Primary relays (main_sw[]) ───────────────────────────────────────────
-    # FW encoding: 1=OPEN (disconnected), 0=CLOSED (connected)
+    # FW encoding for main_sw: 1=CLOSED (connected), 0=OPEN (disconnected)
+    # NOTE: INVERTED vs cmdType 211 extended relays (which use 1=OPEN, 0=CLOSED)
     # Array order: main_sw[Grid=0, Generator=1, Solar=2]
-    grid_relay1: int                 # runtimeData.main_sw[0]  (1=OPEN, 0=CLOSED)
+    grid_relay1: int                 # runtimeData.main_sw[0]  (1=CLOSED, 0=OPEN)
     generator_relay: int             # runtimeData.main_sw[1]
     solar_relay1: int                # runtimeData.main_sw[2]
 
@@ -202,11 +203,13 @@ class Totals:
     v2l_export: float                # sw_data.CarSWExpEnergy  (V2L export)
     v2l_import: float                # sw_data.CarSWImpEnergy  (V2L import)
 
-    # ── Load breakdown by source (kWh) ───────────────────────────────────────
-    solar_load_kwh: float            # runtimeData.kwhSolarLoad
-    grid_load_kwh: float             # runtimeData.kwhGridLoad
-    battery_load_kwh: float          # runtimeData.kwhFhpLoad
-    generator_load_kwh: float        # runtimeData.kwhGenLoad
+    # ── Load breakdown by source ──────────────────────────────────────────
+    # NOTE: live observation shows values ~13442, 3933, 2632 — far above daily kWh.
+    # Suspected to be cumulative lifetime Wh (not daily kWh). Treat with caution.
+    solar_load_kwh: float            # runtimeData.kwhSolarLoad  (suspected cumulative Wh)
+    grid_load_kwh: float             # runtimeData.kwhGridLoad   (suspected cumulative Wh)
+    battery_load_kwh: float          # runtimeData.kwhFhpLoad    (suspected cumulative Wh)
+    generator_load_kwh: float        # runtimeData.kwhGenLoad    (suspected cumulative Wh)
 
     # ── APbox / MPAN PV (kWh) ────────────────────────────────────────────────
     mpan_pv1_wh: float               # runtimeData.mpanPv1Wh  (note: field name is Wh not kWh)
