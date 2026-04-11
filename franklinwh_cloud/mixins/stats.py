@@ -171,12 +171,18 @@ class StatsMixin:
                 black_start_relay = int(pi.get("blackStartRelay", 0) or 0)
                 pv_relay2         = int(pi.get("pvRelay2", 0) or 0)
                 bfpv_apbox_relay  = int(pi.get("BFPVApboxRelay", 0) or 0)
-                # Load & EV relays (APBox / smart circuit contactors)
+                # Load & V2L relays (APBox / smart circuit contactors)
                 load_relay1       = int(pi.get("loadRelay1Stat", 0) or 0)
                 load_relay2       = int(pi.get("loadRelay2Stat", 0) or 0)
                 v2l_relay         = int(pi.get("evRelayStat", 0) or 0)
                 load_solar_relay1 = int(pi.get("loadSolarRelay1Stat", 0) or 0)
                 load_solar_relay2 = int(pi.get("loadSolarRelay2Stat", 0) or 0)
+                # Power measurements
+                load_current1     = float(pi.get("loadCurr1", 0.0) or 0.0)
+                load_current2     = float(pi.get("loadCurr2", 0.0) or 0.0)
+                dsp_run_status    = int(pi.get("dspRunStatus", 0) or 0)
+                ibg_run_status    = int(pi.get("ibgRunStatus", 0) or 0)
+                electricity_type  = int(pi.get("electricity_type", 0) or 0)
             except Exception as e:
                 logger.warning(f"get_stats: get_power_info() failed, electrical fields zeroed: {e}")
 
@@ -255,6 +261,12 @@ class StatsMixin:
                 v2l_relay=locals().get("v2l_relay", 0),
                 load_solar_relay1=locals().get("load_solar_relay1", 0),
                 load_solar_relay2=locals().get("load_solar_relay2", 0),
+                # Power measurements (only populated when include_electrical=True)
+                load_current1=locals().get("load_current1", 0.0),
+                load_current2=locals().get("load_current2", 0.0),
+                dsp_run_status=locals().get("dsp_run_status", 0),
+                ibg_run_status=locals().get("ibg_run_status", 0),
+                electricity_type=locals().get("electricity_type", 0),
             ),
             Totals(
                 runtimedata_v2.get("kwh_fhp_chg", 0.0),

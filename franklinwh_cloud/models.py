@@ -153,16 +153,21 @@ class Current:
     pv_relay2: int                   # cmdType 211 result.pvRelay2
     bfpv_apbox_relay: int            # cmdType 211 result.BFPVApboxRelay
 
-    # ── Electrical measurements (cmdType 211 / get_power_info) ───────────────
+    # ── Electrical measurements (cmdType 211 / get_power_info) ───────────────────
     # Only populated when get_stats(include_electrical=True).
-    grid_voltage1: float             # cmdType 211 result.gridVol1  (V)
-    grid_voltage2: float             # cmdType 211 result.gridVol2  (V)
-    grid_current1: float             # cmdType 211 result.gridCur1  (A)
-    grid_current2: float             # cmdType 211 result.gridCur2  (A)
-    grid_frequency: float            # cmdType 211 result.gridFreq  (Hz)
-    grid_set_frequency: float        # cmdType 211 result.gridSetFreq  (Hz)
+    grid_voltage1: float             # cmdType 211 result.gridVol1   (V)
+    grid_voltage2: float             # cmdType 211 result.gridVol2   (V)
+    grid_current1: float             # cmdType 211 result.gridCurr1  (A) [double-r in raw]
+    grid_current2: float             # cmdType 211 result.gridCurr2  (A) [double-r in raw]
+    grid_frequency: float            # cmdType 211 result.gridFreq   (Hz)
+    grid_set_frequency: float        # cmdType 211 result.dspSetFreq (Hz) [raw key is dspSetFreq not gridSetFreq]
     grid_line_voltage: float         # cmdType 211 result.gridLineVol ÷ 10  (V, raw is tenths)
-    generator_voltage: float         # cmdType 211 result.oilVol  (V)
+    generator_voltage: float         # cmdType 211 result.genVoltage (V)  [raw key is genVoltage not oilVol]
+    load_current1: float = 0.0       # cmdType 211 result.loadCurr1  (A, load side current L1)
+    load_current2: float = 0.0       # cmdType 211 result.loadCurr2  (A, load side current L2)
+    dsp_run_status: int = 0          # cmdType 211 result.dspRunStatus
+    ibg_run_status: int = 0          # cmdType 211 result.ibgRunStatus
+    electricity_type: int = 0        # cmdType 211 result.electricity_type
 
     # ── Active TOU window (optional, from get_tou_info) ──────────────────────
     active_tou_name: str = ""        # derived from TOU schedule lookup
