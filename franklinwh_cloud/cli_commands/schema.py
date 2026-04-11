@@ -263,7 +263,7 @@ def _terminal_output(live_current, live_totals, filter_group):
         print(row)
 
     print()
-    print("  Relay encoding: 1=OPEN (disconnected), 0=CLOSED (connected)")
+    print("  Relay encoding: 1=CLOSED (connected), 0=OPEN (disconnected)  — all relays")
     print("  cmdType 211 fields only populated when get_stats(include_electrical=True)")
     print("  cmdType 311 fields require Smart Circuit accessory installed")
     print("  kwhSolarLoad / kwhGridLoad / kwhFhpLoad values may be cumulative Wh (not daily kWh)")
