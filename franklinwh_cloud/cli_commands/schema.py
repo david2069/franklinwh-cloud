@@ -9,7 +9,7 @@ Shows every field in franklinwh_cloud.models.Current and Totals with:
 
 Usage:
     franklinwh-cli schema                  # show field schema (no login needed)
-    franklinwh-cli schema --live           # schema + live values from get_stats()
+    franklinwh-cli schema --live           # schema + live values (calls get_stats(include_electrical=True))
     franklinwh-cli schema --live --json    # JSON output
     franklinwh-cli schema --filter power   # filter to power-flow fields only
 """
@@ -180,7 +180,7 @@ async def run(client, json_output: bool = False, show_live: bool = False,
 
     if show_live:
         try:
-            stats = await client.get_stats()
+            stats = await client.get_stats(include_electrical=True)
             live_current = dataclasses.asdict(stats.current)
             # Enum values aren't serialisable by asdict — convert manually
             live_current["grid_connection_state"] = stats.current.grid_connection_state.value
