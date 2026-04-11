@@ -79,14 +79,20 @@ CURRENT_SCHEMA = {
     "battery_export_to_grid":   ("batOutGrid",         "203/runtimeData",  "kW",    "Power Flow"),
     # APbox / MPPT
     "apbox_remote_solar":       ("apbox20Pv",          "203/runtimeData",  "kW",    "APbox/MPPT"),
-    "remote_solar_enabled":     ("remoteSolarEn",      "203/runtimeData",  "bool",  "APbox/MPPT"),
-    "mppt_status":              ("mpptSta",            "203/runtimeData",  "int",   "APbox/MPPT"),
-    "mppt_all_power":           ("mpptAllPower",       "203/runtimeData",  "kW",    "APbox/MPPT"),
-    "mppt_active_power":        ("mpptActPower",       "203/runtimeData",  "kW",    "APbox/MPPT"),
-    "mpan_pv1_power":           ("mPanPv1Power",       "203/runtimeData",  "kW",    "APbox/MPPT"),
-    "mpan_pv2_power":           ("mPanPv2Power",       "203/runtimeData",  "kW",    "APbox/MPPT"),
+    "remote_solar_enabled":     ("remoteSolarEn",       "203/runtimeData",  "bool",  "APbox/MPPT"),
+    "remote_solar_mode":        ("remoteSolarMode",     "solarHaveVo",      "int",   "APbox/MPPT"),
+    "mppt_status":              ("mpptSta",             "203/runtimeData",  "int",   "APbox/MPPT"),
+    "mppt_all_power":           ("mpptAllPower",        "203/runtimeData",  "kW",    "APbox/MPPT"),
+    "mppt_active_power":        ("mpptActPower",        "203/runtimeData",  "kW",    "APbox/MPPT"),
+    "mpan_pv1_power":           ("mPanPv1Power",        "203/runtimeData",  "kW",    "APbox/MPPT"),
+    "mpan_pv2_power":           ("mPanPv2Power",        "203/runtimeData",  "kW",    "APbox/MPPT"),
     "remote_solar_pv1":         ("remoteSolar1Power",  "203/runtimeData",  "kW",    "APbox/MPPT"),
     "remote_solar_pv2":         ("remoteSolar2Power",  "203/runtimeData",  "kW",    "APbox/MPPT"),
+    # APbox / MPPT config flags (NOT relays — firmware enable booleans)
+    "mppt_en_flag":             ("mpptEnFlag",          "203/runtimeData",  "bool",  "APbox/MPPT Flags"),
+    "mppt_export_en":           ("mpptExportEn",        "203/runtimeData",  "bool",  "APbox/MPPT Flags"),
+    "install_pv1_port":         ("installPv1Port",      "203/runtimeData",  "0/1",   "APbox/MPPT Flags"),
+    "install_pv2_port":         ("installPv2Port",      "203/runtimeData",  "0/1",   "APbox/MPPT Flags"),
     # Alarms
     "alarms_count":             ("currentAlarmVOList", "203/result",       "count", "Alarms"),
     # Extended relays (cmdType 211 — opt-in)
@@ -94,6 +100,12 @@ CURRENT_SCHEMA = {
     "black_start_relay":        ("bFpVApboxRelay",     "211/result",       "relay", "Extended Relays (211)"),
     "pv_relay2":                ("pvRelay2",           "211/result",       "relay", "Extended Relays (211)"),
     "bfpv_apbox_relay":         ("BFPVApboxRelay",     "211/result",       "relay", "Extended Relays (211)"),
+    # Load & EV relays (cmdType 211 — opt-in) — APBox smart-circuit / V2L contactors
+    "load_relay1":              ("loadRelay1Stat",     "211/result",       "relay", "Load & EV Relays (211)"),
+    "load_relay2":              ("loadRelay2Stat",     "211/result",       "relay", "Load & EV Relays (211)"),
+    "ev_relay":                 ("evRelayStat",        "211/result",       "relay", "Load & EV Relays (211)"),
+    "load_solar_relay1":        ("loadSolarRelay1Stat","211/result",       "relay", "Load & EV Relays (211)"),
+    "load_solar_relay2":        ("loadSolarRelay2Stat","211/result",       "relay", "Load & EV Relays (211)"),
     # Electrical (cmdType 211 — opt-in)
     "grid_voltage1":            ("gridVol1",           "211/result",       "V",     "Electrical (211)"),
     "grid_voltage2":            ("gridVol2",           "211/result",       "V",     "Electrical (211)"),
