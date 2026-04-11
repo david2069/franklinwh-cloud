@@ -61,10 +61,10 @@ MODBUS_TO_CLOUD_MODE = {v: k for k, v in CLOUD_TO_MODBUS_MODE.items()}
 
 
 OPERATING_MODES = {
-    1: "Time of Use",
+    1: "Time-Of-Use",
     2: "Self-Consumption",
     3: "Emergency Backup",
-    "Time of Use": 1,
+    "Time-Of-Use": 1,
     "Self-Consumption": 2,
     "Emergency Backup": 3,
     "time_of_use": 1,
