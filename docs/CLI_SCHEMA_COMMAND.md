@@ -32,14 +32,10 @@ franklinwh-cli schema --live                    # + live values from get_stats()
 franklinwh-cli schema --filter 211              # only cmdType 211 electrical fields
 franklinwh-cli schema --filter power            # only power flow fields
 franklinwh-cli schema --filter relay            # only relay fields
-franklinwh-cli --json schema                    # machine-readable JSON
-franklinwh-cli --json schema --live             # JSON + live values
-franklinwh-cli --json schema --filter power     # filtered JSON
+franklinwh-cli schema --json                    # machine-readable JSON
+franklinwh-cli schema --live --json             # JSON + live values
+franklinwh-cli schema --live --filter power     # filtered JSON
 ```
-
-> [!NOTE]
-> `--json` is a global flag and must appear **before** the subcommand name:
-> `franklinwh-cli --json schema`, not `franklinwh-cli schema --json`
 
 ---
 
