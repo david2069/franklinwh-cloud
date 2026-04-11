@@ -104,10 +104,9 @@ class Current:
     agate_ambient_temparture: float  # runtimeData.t_amb  (°C)  [sic — vendor typo]
 
     # ── Primary relays (main_sw[]) ───────────────────────────────────────────
-    # FW encoding for main_sw: 1=CLOSED (connected), 0=OPEN (disconnected)
-    # NOTE: INVERTED vs cmdType 211 extended relays (which use 1=OPEN, 0=CLOSED)
+    # FW encoding: 1=OPEN (disconnected), 0=CLOSED (connected)
     # Array order: main_sw[Grid=0, Generator=1, Solar=2]
-    grid_relay1: int                 # runtimeData.main_sw[0]  (1=CLOSED, 0=OPEN)
+    grid_relay1: int                 # runtimeData.main_sw[0]  (1=OPEN, 0=CLOSED)
     generator_relay: int             # runtimeData.main_sw[1]
     solar_relay1: int                # runtimeData.main_sw[2]
 
