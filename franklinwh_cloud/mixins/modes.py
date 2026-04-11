@@ -4,7 +4,7 @@ Provides set_mode, get_mode, update_soc, and get_mode_info for controlling
 the FranklinWH aGate operating mode via the Cloud API.
 
 API URL parameter reference (from richo/franklinwh-python original):
-    Time of Use:        currendId=9322&gatewayId=___&lang=EN_US&oldIndex=3&soc=15&stromEn=1&workMode=1
+    Time-Of-Use:        currendId=9322&gatewayId=___&lang=EN_US&oldIndex=3&soc=15&stromEn=1&workMode=1
     Self Consumption:   currendId=9323&gatewayId=___&lang=EN_US&oldIndex=2&soc=20&stromEn=1&workMode=2
     Emergency Backup:   currendId=9324&gatewayId=___&lang=EN_US&oldIndex=1&soc=100&stromEn=1&workMode=3
 """
@@ -28,7 +28,7 @@ class ModesMixin:
     Controls the FranklinWH aGate operating mode via the Cloud API.
     Three modes are supported:
 
-        1 = Time of Use (TOU)        — schedule-based battery dispatch
+        1 = Time-Of-Use (TOU)        — schedule-based battery dispatch
         2 = Self Consumption          — maximise solar self-consumption
         3 = Emergency Backup          — reserve battery for grid outages
 
@@ -45,7 +45,7 @@ class ModesMixin:
         ----------
         requestedOperatingMode : int or str
             The requested operating mode:
-                1 = Time of Use
+                1 = Time-Of-Use
                 2 = Self Consumption
                 3 = Emergency Backup
 
@@ -69,7 +69,7 @@ class ModesMixin:
             2 = Fixed duration (requires reqdurationMinutes)
         reqnextWorkMode : int (MANDATORY)
             The next work mode after Emergency Backup ends:
-                1 = Time of Use
+                1 = Time-Of-Use
                 2 = Self Consumption
         reqdurationMinutes : int (MANDATORY if reqbackupForeverFlag=2)
             Duration in minutes for Emergency Backup (30–4320, i.e. 30 min to 3 days)
@@ -502,7 +502,7 @@ class ModesMixin:
         Returns
         -------
         str
-            Canonical mode name e.g. "Time of Use", "Self-Consumption",
+            Canonical mode name e.g. "Time-Of-Use", "Self-Consumption",
             "Emergency Backup". Falls back to "Mode {N}" for unknown IDs.
         """
         return OPERATING_MODES.get(work_mode, f"Mode {work_mode}")

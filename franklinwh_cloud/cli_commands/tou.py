@@ -124,7 +124,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
         if der:
             print_kv("DER Schedule", der)
         work_mode = template.get("workMode", 0)
-        mode_names = {1: "Time of Use", 2: "Self Consumption", 3: "Emergency Backup"}
+        mode_names = {1: "Time-Of-Use", 2: "Self Consumption", 3: "Emergency Backup"}
         print_kv("Work Mode", mode_names.get(work_mode, f"Unknown ({work_mode})"))
 
         nem_type = dispatch_result.get("nemType", 0)

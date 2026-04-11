@@ -40,12 +40,12 @@ class TestOperatingModes:
     """OPERATING_MODES: bidirectional int ↔ string lookup."""
 
     def test_int_to_string(self):
-        assert OPERATING_MODES[1] == "Time of Use"
+        assert OPERATING_MODES[1] == "Time-Of-Use"
         assert OPERATING_MODES[2] == "Self-Consumption"
         assert OPERATING_MODES[3] == "Emergency Backup"
 
     def test_string_to_int(self):
-        assert OPERATING_MODES["Time of Use"] == 1
+        assert OPERATING_MODES["Time-Of-Use"] == 1
         assert OPERATING_MODES["Self-Consumption"] == 2
         assert OPERATING_MODES["Emergency Backup"] == 3
 
@@ -98,7 +98,7 @@ class TestCanonicalModeName:
     """
 
     async def test_returns_canonical_names(self, minimal_client):
-        assert await minimal_client.get_operating_mode_name(1) == "Time of Use"
+        assert await minimal_client.get_operating_mode_name(1) == "Time-Of-Use"
         assert await minimal_client.get_operating_mode_name(2) == "Self-Consumption"
         assert await minimal_client.get_operating_mode_name(3) == "Emergency Backup"
 

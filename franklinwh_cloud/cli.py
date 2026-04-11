@@ -258,6 +258,14 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Include BMS battery test (extra sendMqtt load — opt-in)")
 
 
+    # schema
+    sub_schema = subs.add_parser("schema",
+                                 help="Show Current/Totals field schema — Python attr → raw API key mapping")
+    sub_schema.add_argument("--live", action="store_true",
+                            help="Fetch live values from get_stats() and show alongside the schema")
+    sub_schema.add_argument("--filter", dest="filter_group", metavar="GROUP",
+                            help="Filter to fields in a group (e.g. 'power', 'electrical', 'relay', '211')")
+
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
     sub_fetch.add_argument("http_method", choices=["GET", "POST", "get", "post"],
@@ -468,6 +476,12 @@ async def async_main():
                                       compare_file=getattr(args, 'compare_file', None),
                                       scope=getattr(args, 'scope', 'all'),
                                       info=getattr(args, 'info', False))
+
+            case "schema":
+                from franklinwh_cloud.cli_commands import schema
+                await schema.run(client, json_output=args.json,
+                                 show_live=getattr(args, 'live', False),
+                                 filter_group=getattr(args, 'filter_group', None))
 
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
