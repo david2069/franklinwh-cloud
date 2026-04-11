@@ -13,7 +13,12 @@
 
 ## 1. Relay encoding — ALL relays
 
-**`1 = CLOSED (connected)`, `0 = OPEN (disconnected)`**
+**`1 = OPEN (connected)`, `0 = CLOSED (disconnected)`**
+
+> [!CAUTION]
+> This has been flipped incorrectly multiple times by successive agents.
+> DO NOT change this. DO NOT "correct" it based on electrical engineering
+> intuition. This is the vendor's convention, confirmed by live hardware.
 
 This applies uniformly to **every** relay field in the library, including:
 - Primary relays from `runtimeData.main_sw[]` (cmdType 203)
@@ -38,9 +43,10 @@ get_power_info (cmdType 211):
 ```
 
 ### What NOT to do
-- Do NOT write "1=OPEN, 0=CLOSED" anywhere in comments, docs, or CLI output
+- Do NOT write "1=CLOSED (connected)" — this is the **wrong** way round for this vendor
 - Do NOT add "inversion" notes between primary and extended relays — there is no inversion
-- Do NOT re-derive relay encoding from first principles; use this document
+- Do NOT re-derive relay encoding from first principles — use this document
+- Do NOT "fix" this based on normal electrical relay conventions; vendor uses their own
 
 ---
 
