@@ -174,7 +174,7 @@ class StatsMixin:
                 # Load & EV relays (APBox / smart circuit contactors)
                 load_relay1       = int(pi.get("loadRelay1Stat", 0) or 0)
                 load_relay2       = int(pi.get("loadRelay2Stat", 0) or 0)
-                ev_relay          = int(pi.get("evRelayStat", 0) or 0)
+                v2l_relay         = int(pi.get("evRelayStat", 0) or 0)
                 load_solar_relay1 = int(pi.get("loadSolarRelay1Stat", 0) or 0)
                 load_solar_relay2 = int(pi.get("loadSolarRelay2Stat", 0) or 0)
             except Exception as e:
@@ -244,10 +244,15 @@ class StatsMixin:
                 install_pv1_port=int(runtimedata_v2.get("installPv1Port", 0) or 0),
                 install_pv2_port=int(runtimedata_v2.get("installPv2Port", 0) or 0),
                 remote_solar_mode=int(solarHaveVo.get("remoteSolarMode", 0) or 0),
-                # Load & EV relays (only populated when include_electrical=True)
+                # Hardware install config (static site topology)
+                pv_split_ct_en=int(runtimedata_v2.get("pvSplitCtEn", 0) or 0),
+                grid_split_ct_en=int(runtimedata_v2.get("gridSplitCtEn", 0) or 0),
+                install_proximal_solar=int(runtimedata_v2.get("installProximalsolar", 0) or 0),
+                is_three_phase_install=int(runtimedata_v2.get("isThreePhaseInstall", 0) or 0),
+                # Load & V2L relays (only populated when include_electrical=True)
                 load_relay1=locals().get("load_relay1", 0),
                 load_relay2=locals().get("load_relay2", 0),
-                ev_relay=locals().get("ev_relay", 0),
+                v2l_relay=locals().get("v2l_relay", 0),
                 load_solar_relay1=locals().get("load_solar_relay1", 0),
                 load_solar_relay2=locals().get("load_solar_relay2", 0),
             ),
