@@ -362,6 +362,67 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_grid_profile_info (Tier 1) failed: {e}")
 
+        # 8. Site info — siteId + siteName (gateway_name already set from get_equipment_location)
+        try:
+            site_data = await self.get_site_and_device_info()
+            sites = site_data.get("result", []) if isinstance(site_data, dict) else []
+            if sites:
+                site = sites[0]
+                snap.site.site_id = site.get("siteId", 0)
+                snap.site.site_name = site.get("siteName", "")
+                # gateway_name from nested device list (fallback if equipment_location failed)
+                devices = site.get("basicDeviceInfoVOList", [])
+                if devices and not snap.site.gateway_name:
+                    snap.site.gateway_name = devices[0].get("gatewayName", "")
+        except Exception as e:
+            logger.warning(f"discover: get_site_and_device_info (Tier 1) failed: {e}")
+
+        # 9. Smart circuit detection — direct probe avoids get_accessories() failures
+        try:
+            sc_info = await self.get_smart_circuits_info()
+            # SC is present if the response is a dict containing the Sw1Name key
+            if isinstance(sc_info, dict) and "Sw1Name" in sc_info:
+                snap.accessories.has_smart_circuits = True
+                sw_merged = sc_info.get("SwMerge", 0) == 1
+                if sw_merged:
+                    names = [
+                        (sc_info.get("Sw1Name", "") or "").strip(),
+                        (sc_info.get("Sw3Name", "") or "").strip(),
+                    ]
+                    modes = [
+                        SMART_CIRCUIT_MODE.get(sc_info.get("Sw1Mode", 0), str(sc_info.get("Sw1Mode", 0))),
+                        SMART_CIRCUIT_MODE.get(sc_info.get("Sw3Mode", 0), str(sc_info.get("Sw3Mode", 0))),
+                    ]
+                    count = 2
+                else:
+                    names = []
+                    modes = []
+                    for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
+                        name = sc_info.get(key, "") or ""
+                        names.append(name.strip())
+                        m = sc_info.get(mode_key, 0)
+                        modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
+                    count = 2  # default AU/US-V1; Tier 2 accessories may refine
+                    for acc_id, acc_info in catalog.get("accessories", {}).items():
+                        if (acc_info.get("type") == "smart_circuits"
+                                and acc_info.get("country_id") == snap.site.country_id):
+                            count = acc_info.get("circuit_count", 2)
+                            break
+                    names = names[:count]
+                    modes = modes[:count]
+                sc_version = 2 if snap.agate.generation == 2 else 1
+                snap.accessories.smart_circuits = SmartCircuitConfig(
+                    count=count,
+                    version=sc_version,
+                    merged=sw_merged,
+                    names=names,
+                    modes=modes,
+                    v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
+                    v2l_enabled=snap.flags.v2l_enabled,
+                )
+        except Exception as e:
+            logger.warning(f"discover: get_smart_circuits_info (Tier 1) failed: {e}")
+
     # ── Tier 2 ────────────────────────────────────────────────────
 
     async def _discover_tier2(self, snap, catalog):
@@ -430,8 +491,8 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_accessories failed: {e}")
 
-        # 8. Smart circuits detail
-        if snap.accessories.has_smart_circuits:
+        # 8. Smart circuits detail — skip if already populated from Tier 1 probe
+        if snap.accessories.has_smart_circuits and snap.accessories.smart_circuits is None:
             try:
                 sc_info = await self.get_smart_circuits_info()
                 if isinstance(sc_info, dict):
@@ -623,16 +684,17 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_agate_info failed: {e}")
 
-        # 13. Site and device info
+        # 13. Site and device info — skip if already populated from Tier 1
         try:
-            site_data = await self.get_site_and_device_info()
-            sites = site_data.get("result", []) if isinstance(site_data, dict) else []
-            if sites:
-                site = sites[0]
-                snap.site.site_id = site.get("siteId", 0)
-                snap.site.site_name = site.get("siteName", "")
-                if not snap.site.address:
-                    snap.site.address = site.get("completeAddress", "")
+            if not snap.site.site_id:
+                site_data = await self.get_site_and_device_info()
+                sites = site_data.get("result", []) if isinstance(site_data, dict) else []
+                if sites:
+                    site = sites[0]
+                    snap.site.site_id = site.get("siteId", 0)
+                    snap.site.site_name = site.get("siteName", "")
+                    if not snap.site.address:
+                        snap.site.address = site.get("completeAddress", "")
         except Exception as e:
             logger.warning(f"discover: get_site_and_device_info failed: {e}")
 
