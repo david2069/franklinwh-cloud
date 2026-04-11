@@ -59,8 +59,13 @@ def _render_site(snap):
     """Render site identity."""
     print_section("📍", "Site")
     s = snap.site
-    if s.gateway_name:
-        print_kv("Name", s.gateway_name)
+    # Site name from cloud portal (siteName), not the aGate device name (gatewayName)
+    if s.site_name:
+        print_kv("Name", s.site_name)
+    elif s.gateway_name:
+        print_kv("Name", s.gateway_name)  # fallback if site_and_device_info failed
+    if s.site_id:
+        print_kv("Site ID", str(s.site_id))
     if s.address:
         print_kv("Address", s.address)
     if s.country:
@@ -105,6 +110,9 @@ def _render_agate(snap):
     """Render aGate identity."""
     print_section("🏠", "aGate")
     a = snap.agate
+    # User-configured aGate device name (e.g. "FHP")
+    if snap.site.gateway_name:
+        print_kv("Name", snap.site.gateway_name)
     if a.model:
         print_kv("Model", f"{a.model_name} — {a.model}")
     if a.sku:
