@@ -63,97 +63,154 @@ class GridStatus(Enum):
 
 @dataclass
 class Current:
-    """Current statistics for FranklinWH gateway."""
+    """Current power flow and state snapshot for FranklinWH gateway.
 
-    solar_production: float
-    generator_production: float
-    battery_use: float
-    grid_use: float
-    home_load: float
-    battery_soc: float
-    switch_1_load: float
-    switch_2_load: float
-    v2l_use: float
-    grid_connection_state: GridConnectionState
-    work_mode: int
-    work_mode_desc: str
-    device_status: int
-    tou_mode: int
-    tou_mode_desc: str
-    run_status: int
-    run_status_dec: str
-    apower_serial_numbers: str
-    apower_soc: str
-    apower_power: str
-    apower_bms_mode: str
-    agate_ambient_temparture: float
-    grid_relay1: int
-    generator_relay: int
-    solar_relay1: int
-    mobile_signal: float
-    wifi_signal: float
-    network_connection: int
-    v2l_enabled: int
-    v2l_status: int
-    generator_enabled: int
-    generator_status: int
-    grid_charging_battery: float
-    solar_export_to_grid: float
-    solar_charging_battery: float
-    battery_export_to_grid: float
-    apbox_remote_solar: float
-    remote_solar_enabled: int
-    mppt_status: int
-    mppt_all_power: float
-    mppt_active_power: float
-    mpan_pv1_power: float
-    mpan_pv2_power: float
-    remote_solar_pv1: float
-    remote_solar_pv2: float
-    alarms_count: int
-    grid_relay2: int
-    black_start_relay: int
-    pv_relay2: int
-    bfpv_apbox_relay: int
-    grid_voltage1: float
-    grid_voltage2: float
-    grid_current1: float
-    grid_current2: float
-    grid_frequency: float
-    grid_set_frequency: float
-    grid_line_voltage: float
-    generator_voltage: float
-    active_tou_name: str = ""
-    active_tou_dispatch: str = ""
-    active_tou_start: str = ""
-    active_tou_end: str = ""
-    active_tou_remaining: str = ""
-    switch_1_state: int = 0
-    switch_2_state: int = 0
-    switch_3_state: int = 0
+    All fields sourced from getDeviceCompositeInfo (cmdType 203) → result.runtimeData
+    unless noted. Field comments show the raw API key name.
+
+    Power values are in kW (positive = producing/exporting, negative = consuming/importing).
+    """
+
+    # ── Power flow (kW) ──────────────────────────────────────────────────────
+    solar_production: float          # runtimeData.p_sun
+    generator_production: float      # runtimeData.p_gen
+    battery_use: float               # runtimeData.p_fhp  (negative = charging)
+    grid_use: float                  # runtimeData.p_uti  (negative = exporting to grid)
+    home_load: float                 # runtimeData.p_load
+    battery_soc: float               # runtimeData.soc  (%)
+    switch_1_load: float             # cmdType 311 pro_load_pwr[0] or sw_data
+    switch_2_load: float             # cmdType 311 pro_load_pwr[1]
+    v2l_use: float                   # cmdType 311 CarSWPower (V2L / car charger)
+
+    # ── Grid state ───────────────────────────────────────────────────────────
+    grid_connection_state: GridConnectionState  # derived — see mixins/stats.py
+
+    # ── Operating mode ───────────────────────────────────────────────────────
+    work_mode: int                   # result.currentWorkMode  (1=TOU, 2=Self, 3=EmgBkp)
+    work_mode_desc: str              # derived from OPERATING_MODES[work_mode]
+    device_status: int               # result.deviceStatus
+    tou_mode: int                    # runtimeData.mode  (TOU sub-mode)
+    tou_mode_desc: str               # runtimeData.name
+    run_status: int                  # runtimeData.run_status  (0=Normal, 1=OG-Standby, 2=OG-Chg, 3=OG-Dis)
+    run_status_dec: str              # derived from RUN_STATUS[run_status]
+
+    # ── Battery pack telemetry ───────────────────────────────────────────────
+    apower_serial_numbers: str       # runtimeData.fhpSn  (list → str)
+    apower_soc: str                  # runtimeData.fhpSoc  (per-pack SoC list)
+    apower_power: str                # runtimeData.fhpPower  (per-pack power list)
+    apower_bms_mode: str             # runtimeData.bms_work  (per-pack BMS state; use BMS_STATE[v])
+
+    # ── Environment ──────────────────────────────────────────────────────────
+    agate_ambient_temparture: float  # runtimeData.t_amb  (°C)  [sic — vendor typo]
+
+    # ── Primary relays (main_sw[]) ───────────────────────────────────────────
+    # FW encoding: 1=OPEN (disconnected), 0=CLOSED (connected)
+    # Array order: main_sw[Grid=0, Generator=1, Solar=2]
+    grid_relay1: int                 # runtimeData.main_sw[0]  (1=OPEN, 0=CLOSED)
+    generator_relay: int             # runtimeData.main_sw[1]
+    solar_relay1: int                # runtimeData.main_sw[2]
+
+    # ── Connectivity ─────────────────────────────────────────────────────────
+    mobile_signal: float             # runtimeData.signal  (RSSI dBm or %)
+    wifi_signal: float               # runtimeData.wifiSignal
+    network_connection: int          # runtimeData.connType  (0=4G, 1=WiFi, 2=Ethernet)
+
+    # ── V2L / Vehicle-to-Load ────────────────────────────────────────────────
+    v2l_enabled: int                 # runtimeData.v2lModeEnable
+    v2l_status: int                  # runtimeData.v2lRunState
+
+    # ── Generator ────────────────────────────────────────────────────────────
+    generator_enabled: int           # runtimeData.genEn
+    generator_status: int            # runtimeData.genStat
+
+    # ── Power flow breakdown (kW) ────────────────────────────────────────────
+    grid_charging_battery: float     # runtimeData.gridChBat
+    solar_export_to_grid: float      # runtimeData.soOutGrid
+    solar_charging_battery: float    # runtimeData.soChBat
+    battery_export_to_grid: float    # runtimeData.batOutGrid
+
+    # ── APbox / Remote Solar (MPPT) ──────────────────────────────────────────
+    apbox_remote_solar: float        # runtimeData.apbox20Pv  (APbox 20A PV input kW)
+    remote_solar_enabled: int        # runtimeData.remoteSolarEn
+    mppt_status: int                 # runtimeData.mpptSta
+    mppt_all_power: float            # runtimeData.mpptAllPower  (kW)
+    mppt_active_power: float         # runtimeData.mpptActPower  (kW)
+    mpan_pv1_power: float            # runtimeData.mPanPv1Power  (kW)
+    mpan_pv2_power: float            # runtimeData.mPanPv2Power  (kW)
+    remote_solar_pv1: float          # runtimeData.remoteSolar1Power  (kW)
+    remote_solar_pv2: float          # runtimeData.remoteSolar2Power  (kW)
+
+    # ── Alarms ───────────────────────────────────────────────────────────────
+    alarms_count: int                # derived from result.currentAlarmVOList length
+
+    # ── Extended relays (cmdType 211 / get_power_info) ───────────────────────
+    # Only populated when get_stats(include_electrical=True) — extra MQTT call.
+    # FW encoding: 1=OPEN, 0=CLOSED
+    grid_relay2: int                 # cmdType 211 result.gridRelayStat  (second grid contactor)
+    black_start_relay: int           # cmdType 211 result.bFpVApboxRelay  (black-start contactor)
+    pv_relay2: int                   # cmdType 211 result.pvRelay2
+    bfpv_apbox_relay: int            # cmdType 211 result.BFPVApboxRelay
+
+    # ── Electrical measurements (cmdType 211 / get_power_info) ───────────────
+    # Only populated when get_stats(include_electrical=True).
+    grid_voltage1: float             # cmdType 211 result.gridVol1  (V)
+    grid_voltage2: float             # cmdType 211 result.gridVol2  (V)
+    grid_current1: float             # cmdType 211 result.gridCur1  (A)
+    grid_current2: float             # cmdType 211 result.gridCur2  (A)
+    grid_frequency: float            # cmdType 211 result.gridFreq  (Hz)
+    grid_set_frequency: float        # cmdType 211 result.gridSetFreq  (Hz)
+    grid_line_voltage: float         # cmdType 211 result.gridLineVol ÷ 10  (V, raw is tenths)
+    generator_voltage: float         # cmdType 211 result.oilVol  (V)
+
+    # ── Active TOU window (optional, from get_tou_info) ──────────────────────
+    active_tou_name: str = ""        # derived from TOU schedule lookup
+    active_tou_dispatch: str = ""    # dispatch mode name
+    active_tou_start: str = ""       # HH:MM
+    active_tou_end: str = ""         # HH:MM
+    active_tou_remaining: str = ""   # "Xh Ym remaining"
+
+    # ── Smart circuit switch states (cmdType 311) ────────────────────────────
+    switch_1_state: int = 0          # runtimeData.pro_load[0]  (0=OFF, 1=ON)
+    switch_2_state: int = 0          # runtimeData.pro_load[1]
+    switch_3_state: int = 0          # runtimeData.pro_load[2]
 
 
 @dataclass
 class Totals:
-    """Total energy statistics for FranklinWH gateway."""
+    """Daily energy totals for FranklinWH gateway (kWh, reset at midnight local time).
 
-    battery_charge: float
-    battery_discharge: float
-    grid_import: float
-    grid_export: float
-    solar: float
-    generator: float
-    home_use: float
-    switch_1_use: float
-    switch_2_use: float
-    v2l_export: float
-    v2l_import: float
-    solar_load_kwh: float
-    grid_load_kwh: float
-    battery_load_kwh: float
-    generator_load_kwh: float
-    mpan_pv1_wh: float
-    mpan_pv2_wh: float
+    All fields sourced from getDeviceCompositeInfo (cmdType 203) → result.runtimeData
+    unless noted. Field comments show the raw API key name.
+    """
+
+    # ── Battery (kWh) ────────────────────────────────────────────────────────
+    battery_charge: float            # runtimeData.kwh_fhp_chg
+    battery_discharge: float         # runtimeData.kwh_fhp_di
+
+    # ── Grid (kWh) ───────────────────────────────────────────────────────────
+    grid_import: float               # runtimeData.kwh_uti_in
+    grid_export: float               # runtimeData.kwh_uti_out
+
+    # ── Generation (kWh) ─────────────────────────────────────────────────────
+    solar: float                     # runtimeData.kwh_sun
+    generator: float                 # runtimeData.kwh_gen
+    home_use: float                  # runtimeData.kwh_load
+
+    # ── Smart switch energy (kWh, from cmdType 311 sw_data) ──────────────────
+    switch_1_use: float              # sw_data.SW1ExpEnergy
+    switch_2_use: float              # sw_data.SW2ExpEnergy
+    v2l_export: float                # sw_data.CarSWExpEnergy  (V2L export)
+    v2l_import: float                # sw_data.CarSWImpEnergy  (V2L import)
+
+    # ── Load breakdown by source (kWh) ───────────────────────────────────────
+    solar_load_kwh: float            # runtimeData.kwhSolarLoad
+    grid_load_kwh: float             # runtimeData.kwhGridLoad
+    battery_load_kwh: float          # runtimeData.kwhFhpLoad
+    generator_load_kwh: float        # runtimeData.kwhGenLoad
+
+    # ── APbox / MPAN PV (kWh) ────────────────────────────────────────────────
+    mpan_pv1_wh: float               # runtimeData.mpanPv1Wh  (note: field name is Wh not kWh)
+    mpan_pv2_wh: float               # runtimeData.mpanPv2Wh
 
 
 @dataclass
