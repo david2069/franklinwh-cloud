@@ -423,6 +423,19 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_smart_circuits_info (Tier 1) failed: {e}")
 
+        # 10. Supported operating modes from getGatewayTouListV2 showType=1
+        # Only supported modes are returned; AU devices typically only show TOU.
+        # Also captures: socExceedTimerEndTime, complianceSoc, delayMinutes (new v2.0.0 fields)
+        try:
+            tou = await self.get_gateway_tou_list()
+            result = tou.get("result", {}) if isinstance(tou, dict) else {}
+            if result:
+                snap.electrical.supported_modes = result.get("list", [])
+                snap.electrical.tou_status = result.get("status", 0)
+                snap.electrical.tou_dispatch_count = len(result.get("dispatchList", []))
+        except Exception as e:
+            logger.warning(f"discover: get_gateway_tou_list (Tier 1 modes) failed: {e}")
+
     # ── Tier 2 ────────────────────────────────────────────────────
 
     async def _discover_tier2(self, snap, catalog):
@@ -624,7 +637,7 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_stats (extended relays/electrical) failed: {e}")
 
-        # 13. TOU dispatch status — flags backend issues
+        # 13. TOU dispatch status — skip supported_modes if already fetched in Tier 1
         try:
             tou = await self.get_gateway_tou_list()
             result = tou.get("result", {}) if isinstance(tou, dict) else {}
@@ -632,6 +645,8 @@ class DiscoverMixin:
                 snap.electrical.tou_status = result.get("status", 0)
                 dispatch = result.get("dispatchList", [])
                 snap.electrical.tou_dispatch_count = len(dispatch)
+                if not snap.electrical.supported_modes:
+                    snap.electrical.supported_modes = result.get("list", [])
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list (Tier 2) failed: {e}")
 
