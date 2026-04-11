@@ -104,9 +104,9 @@ class Current:
     agate_ambient_temparture: float  # runtimeData.t_amb  (°C)  [sic — vendor typo]
 
     # ── Primary relays (main_sw[]) ───────────────────────────────────────────
-    # FW encoding: 1=OPEN (disconnected), 0=CLOSED (connected)
+    # FW encoding: 1=CLOSED (connected), 0=OPEN (disconnected)  — same for all relays
     # Array order: main_sw[Grid=0, Generator=1, Solar=2]
-    grid_relay1: int                 # runtimeData.main_sw[0]  (1=OPEN, 0=CLOSED)
+    grid_relay1: int                 # runtimeData.main_sw[0]  (1=CLOSED, 0=OPEN)
     generator_relay: int             # runtimeData.main_sw[1]
     solar_relay1: int                # runtimeData.main_sw[2]
 
@@ -145,7 +145,7 @@ class Current:
 
     # ── Extended relays (cmdType 211 / get_power_info) ───────────────────────
     # Only populated when get_stats(include_electrical=True) — extra MQTT call.
-    # FW encoding: 1=OPEN, 0=CLOSED
+    # FW encoding: 1=CLOSED (connected), 0=OPEN (disconnected)  — same as primary relays.
     grid_relay2: int                 # cmdType 211 result.gridRelayStat  (second grid contactor)
     black_start_relay: int           # cmdType 211 result.bFpVApboxRelay  (black-start contactor)
     pv_relay2: int                   # cmdType 211 result.pvRelay2
