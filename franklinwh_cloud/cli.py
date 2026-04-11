@@ -294,8 +294,47 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def async_main():
     """Async entrypoint."""
+    import sys
+
     parser = build_parser()
-    args = parser.parse_args()
+
+    # ── Normalise argv: hoist global flags to before the subcommand ───────────
+    # argparse requires global flags (--json, --no-color, -v, etc.) to appear
+    # before the subcommand name. Users naturally write them after the subcommand
+    # (e.g. 'schema --live --json'). Pre-process argv so both positions work.
+    _GLOBAL_FLAGS = {
+        "--json", "-j", "--no-color",
+        "--verbose", "-v", "-vv", "-vvv",
+        "--api-trace", "--installer",
+    }
+    _GLOBAL_OPTS_WITH_VALUE = {"--config", "-c", "--email", "-e", "--password", "-p",
+                                "--gateway", "-g", "--trace", "--log-file"}
+
+    raw = sys.argv[1:]
+    before: list[str] = []   # flags that belong before the subcommand
+    rest:   list[str] = []   # subcommand + its own args
+    subcmd_seen = False
+    i = 0
+    while i < len(raw):
+        tok = raw[i]
+        if not subcmd_seen:
+            # Everything before the subcommand stays in order
+            rest.append(tok)
+            if not tok.startswith("-"):
+                subcmd_seen = True
+        else:
+            # After the subcommand — lift recognised global flags out
+            if tok in _GLOBAL_FLAGS:
+                before.append(tok)
+            elif tok in _GLOBAL_OPTS_WITH_VALUE and i + 1 < len(raw):
+                before.extend([tok, raw[i + 1]])
+                i += 1
+            else:
+                rest.append(tok)
+        i += 1
+
+    argv = before + rest
+    args = parser.parse_args(argv)
 
     if not args.command:
         parser.print_help()
