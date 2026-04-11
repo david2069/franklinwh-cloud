@@ -21,10 +21,10 @@ from franklinwh_cloud.cli_commands.support import (
 
 class TestRedactEmail:
     def test_partial(self):
-        assert _redact_email("[REDACTED]@gmail.com", "partial") == "d***@g***.com"
+        assert _redact_email("dave@gmail.com", "partial") == "d***@g***.com"
 
     def test_full(self):
-        assert _redact_email("[REDACTED]@gmail.com", "full") == "[REDACTED]"
+        assert _redact_email("dave@gmail.com", "full") == "[REDACTED]"
 
     def test_empty(self):
         assert _redact_email("", "partial") == ""
@@ -35,7 +35,7 @@ class TestRedactEmail:
 
 class TestRedactSerial:
     def test_partial(self):
-        assert _redact_serial("10060006AXXXXXXXXX", "partial") == "1006***0091"
+        assert _redact_serial("10060006AXXXXXXXXX", "partial") == "1006***XXXX"
 
     def test_full(self):
         assert _redact_serial("10060006AXXXXXXXXX", "full") == "[REDACTED]"
@@ -85,7 +85,7 @@ class TestRedactSnapshot:
         data = {
             "identity": {
                 "serial": "10060006AXXXXXXXXX",
-                "email": "[REDACTED]@gmail.com",
+                "email": "dave@gmail.com",
             },
             "network": {
                 "wifi": {"mac": "4C:24:CE:67:3A:7C", "ip": "192.168.0.110"},
@@ -98,7 +98,7 @@ class TestRedactSnapshot:
             },
         }
         result = redact_snapshot(data, "partial")
-        assert result["identity"]["serial"] == "1006***0091"
+        assert result["identity"]["serial"] == "1006***XXXX"
         assert result["identity"]["email"] == "d***@g***.com"
         assert result["network"]["wifi"]["mac"] == "4C:24:CE:XX:XX:XX"
         assert result["network"]["wifi"]["ip"] == "192.168.0.XXX"
