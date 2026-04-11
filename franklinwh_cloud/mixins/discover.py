@@ -245,24 +245,37 @@ class DiscoverMixin:
             solar_vo = result.get("solarHaveVo", {}) if result else {}
             runtime = result.get("runtimeData", {}) if result else {}
 
+            # Install flags live in runtimeData; solarHaveVo is a fallback for older firmware
+            def _install(key, default="0"):
+                """Read install flag from runtimeData first, then solarHaveVo."""
+                return runtime.get(key, solar_vo.get(key, default))
+
+            if result:
+                pv1 = str(_install("installPv1Port")) == "1"
+                pv2 = str(_install("installPv2Port")) == "1"
+                proximal = str(_install("installProximalsolar")) == "1"
+                snap.flags.three_phase = str(_install("isThreePhaseInstall")) == "1"
+                snap.flags.ct_split_grid = bool(int(_install("gridSplitCtEn", 0) or 0))
+                snap.flags.ct_split_pv = bool(int(_install("pvSplitCtEn", 0) or 0))
+
             if solar_vo:
-                pv1 = str(solar_vo.get("installPv1Port", "0")) == "1"
-                pv2 = str(solar_vo.get("installPv2Port", "0")) == "1"
-                snap.flags.three_phase = str(solar_vo.get("isThreePhaseInstall", "0")) == "1"
-                snap.flags.ct_split_grid = bool(int(solar_vo.get("gridSplitCtEn", 0) or 0))
-                snap.flags.ct_split_pv = bool(int(solar_vo.get("pvSplitCtEn", 0) or 0))
                 snap.flags.remote_solar = bool(int(solar_vo.get("remoteSolarEn", 0) or 0))
                 if not snap.flags.mppt_enabled:
-                    snap.flags.mppt_enabled = str(solar_vo.get("mpptEnFlag", "0")) == "1"
-                # Solar detail string
-                if pv1 and pv2:
-                    snap.flags.solar_detail = "PV1 + PV2"
-                elif pv1:
-                    snap.flags.solar_detail = "PV1 only"
-                elif pv2:
-                    snap.flags.solar_detail = "PV2 only"
+                    snap.flags.mppt_enabled = str(_install("mpptEnFlag", "0")) == "1"
+
+                # Solar detail string — combine DC ports with AC-coupled proximal
+                detail_parts = []
+                if pv1:
+                    detail_parts.append("PV1")
+                if pv2:
+                    detail_parts.append("PV2")
+                if proximal:
+                    detail_parts.append("Proximal (AC-coupled)")
+                if detail_parts:
+                    snap.flags.solar_detail = " + ".join(detail_parts)
                 elif snap.flags.solar:
                     snap.flags.solar_detail = "Configured"
+
                 # Off-grid from composite
                 off_flag = solar_vo.get("offGridFlag", runtime.get("offGridFlag", 0))
                 if off_flag:
@@ -283,7 +296,7 @@ class DiscoverMixin:
                 snap.electrical.run_status_name = RUN_STATUS.get(run_st, f"Unknown ({run_st})")
                 snap.electrical.device_status = dev_st
                 snap.electrical.soc = runtime.get("soc", 0)
-                # Grid electrical
+                # Grid electrical (these fields don't exist in runtimeData — placeholder for 211 data)
                 snap.electrical.v_l1 = runtime.get("gridV1", runtime.get("v_l1"))
                 snap.electrical.v_l2 = runtime.get("gridV2", runtime.get("v_l2"))
                 snap.electrical.i_l1 = runtime.get("gridA1", runtime.get("i_l1"))
@@ -335,6 +348,19 @@ class DiscoverMixin:
                     snap.grid.connected = False
         except Exception as e:
             logger.warning(f"discover: get_grid_status failed: {e}")
+
+        # 7. Grid profile (Tier 1) — so Active Profile is populated before region quirks render
+        try:
+            gp = await self.get_grid_profile_info()
+            if isinstance(gp, dict):
+                profiles = gp.get("list", [])
+                current_id = gp.get("currentId", 0)
+                for p in profiles:
+                    if p.get("id") == current_id:
+                        snap.site.grid_profile = p.get("name", "")
+                        break
+        except Exception as e:
+            logger.warning(f"discover: get_grid_profile_info (Tier 1) failed: {e}")
 
     # ── Tier 2 ────────────────────────────────────────────────────
 
@@ -465,16 +491,17 @@ class DiscoverMixin:
                 logger.warning(f"discover: get_smart_circuits_info failed: {e}")
 
 
-        # 9. Grid profile
+        # 9. Grid profile — now fetched in Tier 1; skip if already populated
         try:
-            gp = await self.get_grid_profile_info()
-            if isinstance(gp, dict):
-                profiles = gp.get("list", [])
-                current_id = gp.get("currentId", 0)
-                for p in profiles:
-                    if p.get("id") == current_id:
-                        snap.site.grid_profile = p.get("name", "")
-                        break
+            if not snap.site.grid_profile:
+                gp = await self.get_grid_profile_info()
+                if isinstance(gp, dict):
+                    profiles = gp.get("list", [])
+                    current_id = gp.get("currentId", 0)
+                    for p in profiles:
+                        if p.get("id") == current_id:
+                            snap.site.grid_profile = p.get("name", "")
+                            break
         except Exception as e:
             logger.warning(f"discover: get_grid_profile_info failed: {e}")
 
@@ -514,16 +541,27 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_warranty_info failed: {e}")
 
-        # 12. Extended relays from get_stats (powerInfo)
+        # 12. Extended relays from get_stats(include_electrical=True)
         try:
-            stats = await self.get_stats()
+            stats = await self.get_stats(include_electrical=True)
             if hasattr(stats.current, 'grid_relay2'):
                 snap.electrical.relays["grid_2"] = not bool(stats.current.grid_relay2)
                 snap.electrical.relays["black_start"] = not bool(stats.current.black_start_relay)
                 snap.electrical.relays["solar_pv_2"] = not bool(stats.current.pv_relay2)
                 snap.electrical.relays["apbox"] = not bool(stats.current.bfpv_apbox_relay)
+                # Also populate electrical measurements from the fresh 211 poll
+                if stats.current.grid_voltage1:
+                    snap.electrical.v_l1 = stats.current.grid_voltage1
+                if stats.current.grid_voltage2:
+                    snap.electrical.v_l2 = stats.current.grid_voltage2
+                if stats.current.grid_current1:
+                    snap.electrical.i_l1 = stats.current.grid_current1
+                if stats.current.grid_current2:
+                    snap.electrical.i_l2 = stats.current.grid_current2
+                if stats.current.grid_frequency:
+                    snap.electrical.frequency = stats.current.grid_frequency
         except Exception as e:
-            logger.warning(f"discover: get_stats (extended relays) failed: {e}")
+            logger.warning(f"discover: get_stats (extended relays/electrical) failed: {e}")
 
         # 13. TOU dispatch status — flags backend issues
         try:
