@@ -67,11 +67,11 @@ CURRENT_SCHEMA = {
     "wifi_signal":              ("wifiSignal",         "203/runtimeData",  "%",     "Connectivity"),
     "network_connection":       ("connType",           "203/runtimeData",  "int",   "Connectivity"),
     # V2L
-    "v2l_enabled":              ("v2lModeEnable",      "203/runtimeData",  "bool",  "V2L"),
-    "v2l_status":               ("v2lRunState",        "203/runtimeData",  "int",   "V2L"),
+    "v2l_enabled":              ("v2lModeEnable",       "203/runtimeData",  "bool",  "V2L"),  # US only, off-grid only
+    "v2l_status":               ("v2lRunState",         "203/runtimeData",  "int",   "V2L"),
     # Generator
-    "generator_enabled":        ("genEn",              "203/runtimeData",  "bool",  "Generator"),
-    "generator_status":         ("genStat",            "203/runtimeData",  "int",   "Generator"),
+    "generator_enabled":        ("genEn",               "203/runtimeData",  "bool",  "Generator"),  # off-grid only
+    "generator_status":         ("genStat",             "203/runtimeData",  "int",   "Generator"),
     # Power flow breakdown
     "grid_charging_battery":    ("gridChBat",          "203/runtimeData",  "kW",    "Power Flow"),
     "solar_export_to_grid":     ("soOutGrid",          "203/runtimeData",  "kW",    "Power Flow"),
@@ -93,6 +93,11 @@ CURRENT_SCHEMA = {
     "mppt_export_en":           ("mpptExportEn",        "203/runtimeData",  "bool",  "APbox/MPPT Flags"),
     "install_pv1_port":         ("installPv1Port",      "203/runtimeData",  "0/1",   "APbox/MPPT Flags"),
     "install_pv2_port":         ("installPv2Port",      "203/runtimeData",  "0/1",   "APbox/MPPT Flags"),
+    # Hardware install config (static site topology — set at install, rarely changes)
+    "pv_split_ct_en":           ("pvSplitCtEn",         "203/runtimeData",  "0/1",   "Hardware Config"),
+    "grid_split_ct_en":         ("gridSplitCtEn",       "203/runtimeData",  "0/1",   "Hardware Config"),
+    "install_proximal_solar":   ("installProximalsolar","203/runtimeData",  "0/1",   "Hardware Config"),
+    "is_three_phase_install":   ("isThreePhaseInstall", "203/runtimeData",  "0/1",   "Hardware Config"),
     # Alarms
     "alarms_count":             ("currentAlarmVOList", "203/result",       "count", "Alarms"),
     # Extended relays (cmdType 211 — opt-in)
@@ -101,11 +106,11 @@ CURRENT_SCHEMA = {
     "pv_relay2":                ("pvRelay2",           "211/result",       "relay", "Extended Relays (211)"),
     "bfpv_apbox_relay":         ("BFPVApboxRelay",     "211/result",       "relay", "Extended Relays (211)"),
     # Load & EV relays (cmdType 211 — opt-in) — APBox smart-circuit / V2L contactors
-    "load_relay1":              ("loadRelay1Stat",     "211/result",       "relay", "Load & EV Relays (211)"),
-    "load_relay2":              ("loadRelay2Stat",     "211/result",       "relay", "Load & EV Relays (211)"),
-    "ev_relay":                 ("evRelayStat",        "211/result",       "relay", "Load & EV Relays (211)"),
-    "load_solar_relay1":        ("loadSolarRelay1Stat","211/result",       "relay", "Load & EV Relays (211)"),
-    "load_solar_relay2":        ("loadSolarRelay2Stat","211/result",       "relay", "Load & EV Relays (211)"),
+    "load_relay1":              ("loadRelay1Stat",     "211/result",       "relay", "Load & V2L Relays (211)"),
+    "load_relay2":              ("loadRelay2Stat",     "211/result",       "relay", "Load & V2L Relays (211)"),
+    "v2l_relay":                 ("evRelayStat",        "211/result",       "relay", "Load & V2L Relays (211)"),  # V2L contactor only u2014 NOT EVSE
+    "load_solar_relay1":        ("loadSolarRelay1Stat","211/result",       "relay", "Load & V2L Relays (211)"),
+    "load_solar_relay2":        ("loadSolarRelay2Stat","211/result",       "relay", "Load & V2L Relays (211)"),
     # Electrical (cmdType 211 — opt-in)
     "grid_voltage1":            ("gridVol1",           "211/result",       "V",     "Electrical (211)"),
     "grid_voltage2":            ("gridVol2",           "211/result",       "V",     "Electrical (211)"),

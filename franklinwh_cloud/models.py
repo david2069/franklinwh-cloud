@@ -116,11 +116,13 @@ class Current:
     network_connection: int          # runtimeData.connType  (0=4G, 1=WiFi, 2=Ethernet)
 
     # ── V2L / Vehicle-to-Load ────────────────────────────────────────────────
-    v2l_enabled: int                 # runtimeData.v2lModeEnable
+    # US hardware only. Only operational when off-grid (relay OPEN).
+    v2l_enabled: int                 # runtimeData.v2lModeEnable  (None if not installed)
     v2l_status: int                  # runtimeData.v2lRunState
 
     # ── Generator ────────────────────────────────────────────────────────────
-    generator_enabled: int           # runtimeData.genEn
+    # Only operational when off-grid.
+    generator_enabled: int           # runtimeData.genEn   (None if not installed)
     generator_status: int            # runtimeData.genStat
 
     # ── Power flow breakdown (kW) ────────────────────────────────────────────
@@ -182,11 +184,18 @@ class Current:
     install_pv2_port: int = 0         # runtimeData.installPv2Port (PV port 2 installed: 1=yes)
     remote_solar_mode: int = 0        # solarHaveVo.remoteSolarMode (aPBox remote solar mode)
 
+    # ── Hardware install config ───────────────────────────────────────────────
+    # Static site topology flags — set at install time, rarely change.
+    pv_split_ct_en: int = 0           # runtimeData.pvSplitCtEn        (solar PV CT / split-phase CT enabled)
+    grid_split_ct_en: int = 0         # runtimeData.gridSplitCtEn      (split grid CT2 enabled)
+    install_proximal_solar: int = 0   # runtimeData.installProximalsolar (proximal/roof solar installed: 1=yes)
+    is_three_phase_install: int = 0   # runtimeData.isThreePhaseInstall  (3-phase site: 1=yes, 0=split-phase)
+
     # ── Load & EV relays (cmdType 211 / get_power_info — include_electrical=True) ────────
     # Relay encoding: 1=OPEN (connected), 0=CLOSED (disconnected) — same as all relays.
     load_relay1: int = 0              # cmdType 211 result.loadRelay1Stat      (smart circuit / load relay 1)
     load_relay2: int = 0              # cmdType 211 result.loadRelay2Stat      (smart circuit / load relay 2)
-    ev_relay: int = 0                 # cmdType 211 result.evRelayStat         (EV / V2L contactor)
+    v2l_relay: int = 0                # cmdType 211 result.evRelayStat  (V2L contactor — NOT EVSE/EV charger)
     load_solar_relay1: int = 0        # cmdType 211 result.loadSolarRelay1Stat (APBox solar relay 1)
     load_solar_relay2: int = 0        # cmdType 211 result.loadSolarRelay2Stat (APBox solar relay 2)
 
