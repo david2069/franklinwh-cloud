@@ -174,6 +174,22 @@ class Current:
     switch_2_state: int = 0          # runtimeData.pro_load[1]
     switch_3_state: int = 0          # runtimeData.pro_load[2]
 
+    # ── APbox / MPPT config flags ─────────────────────────────────────────────
+    # Enable flags — these are NOT relays; they are firmware feature-enable booleans.
+    mppt_en_flag: bool = False        # runtimeData.mpptEnFlag     (aPower S only — DC Solar Inverter enabled)
+    mppt_export_en: int = 0           # runtimeData.mpptExportEn   (aPower S — export enable)
+    install_pv1_port: int = 0         # runtimeData.installPv1Port (PV port 1 installed: 1=yes)
+    install_pv2_port: int = 0         # runtimeData.installPv2Port (PV port 2 installed: 1=yes)
+    remote_solar_mode: int = 0        # solarHaveVo.remoteSolarMode (aPBox remote solar mode)
+
+    # ── Load & EV relays (cmdType 211 / get_power_info — include_electrical=True) ────────
+    # Relay encoding: 1=OPEN (connected), 0=CLOSED (disconnected) — same as all relays.
+    load_relay1: int = 0              # cmdType 211 result.loadRelay1Stat      (smart circuit / load relay 1)
+    load_relay2: int = 0              # cmdType 211 result.loadRelay2Stat      (smart circuit / load relay 2)
+    ev_relay: int = 0                 # cmdType 211 result.evRelayStat         (EV / V2L contactor)
+    load_solar_relay1: int = 0        # cmdType 211 result.loadSolarRelay1Stat (APBox solar relay 1)
+    load_solar_relay2: int = 0        # cmdType 211 result.loadSolarRelay2Stat (APBox solar relay 2)
+
 
 @dataclass
 class Totals:

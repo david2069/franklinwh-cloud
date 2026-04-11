@@ -171,6 +171,12 @@ class StatsMixin:
                 black_start_relay = int(pi.get("blackStartRelay", 0) or 0)
                 pv_relay2         = int(pi.get("pvRelay2", 0) or 0)
                 bfpv_apbox_relay  = int(pi.get("BFPVApboxRelay", 0) or 0)
+                # Load & EV relays (APBox / smart circuit contactors)
+                load_relay1       = int(pi.get("loadRelay1Stat", 0) or 0)
+                load_relay2       = int(pi.get("loadRelay2Stat", 0) or 0)
+                ev_relay          = int(pi.get("evRelayStat", 0) or 0)
+                load_solar_relay1 = int(pi.get("loadSolarRelay1Stat", 0) or 0)
+                load_solar_relay2 = int(pi.get("loadSolarRelay2Stat", 0) or 0)
             except Exception as e:
                 logger.warning(f"get_stats: get_power_info() failed, electrical fields zeroed: {e}")
 
@@ -232,6 +238,18 @@ class StatsMixin:
                 switch_1_state=smart_circuits[0] if len(smart_circuits) > 0 else 0,
                 switch_2_state=smart_circuits[1] if len(smart_circuits) > 1 else 0,
                 switch_3_state=smart_circuits[2] if len(smart_circuits) > 2 else 0,
+                # APBox / MPPT config flags
+                mppt_en_flag=bool(runtimedata_v2.get("mpptEnFlag", False)),
+                mppt_export_en=int(runtimedata_v2.get("mpptExportEn", 0) or 0),
+                install_pv1_port=int(runtimedata_v2.get("installPv1Port", 0) or 0),
+                install_pv2_port=int(runtimedata_v2.get("installPv2Port", 0) or 0),
+                remote_solar_mode=int(solarHaveVo.get("remoteSolarMode", 0) or 0),
+                # Load & EV relays (only populated when include_electrical=True)
+                load_relay1=locals().get("load_relay1", 0),
+                load_relay2=locals().get("load_relay2", 0),
+                ev_relay=locals().get("ev_relay", 0),
+                load_solar_relay1=locals().get("load_solar_relay1", 0),
+                load_solar_relay2=locals().get("load_solar_relay2", 0),
             ),
             Totals(
                 runtimedata_v2.get("kwh_fhp_chg", 0.0),
