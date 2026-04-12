@@ -53,7 +53,15 @@ class StatsMixin:
         """
         res = await self.get_device_composite_info()
         data_v2 = res.get("result")
+        
+        # Intercept empty cloud API payload glitch (HTTP 200 with result: null)
+        # to prevent 0% telemetry passthrough.
         if not data_v2:
+            last_known = getattr(self, "_last_known_stats", None)
+            if last_known:
+                logger.warning("get_stats: API payload was empty. Returning last-known-good stats with is_stale=True.")
+                last_known.is_stale = True
+                return last_known
             return empty_stats()
 
         workMode = data_v2.get("currentWorkMode", 1)
@@ -215,7 +223,7 @@ class StatsMixin:
             except Exception as e:
                 logger.warning(f"get_stats: get_power_info() failed, using last-known-good 211 values: {e}")
 
-        return Stats(
+        stats_obj = Stats(
             Current(
                 runtimedata_v2.get("p_sun", 0.0),
                 runtimedata_v2.get("p_gen", 0.0),
@@ -317,6 +325,9 @@ class StatsMixin:
                 runtimedata_v2.get("mpanPv2Wh", 0.0),
             ),
         )
+
+        self._last_known_stats = stats_obj
+        return stats_obj
 
     async def get_runtime_data(self):
         """Get runtime data — similar to getDeviceCompositeInfo with extra relays.

@@ -370,7 +370,7 @@ soc          = stats.current.battery_soc         # Battery %
 
 # Operating state
 mode_name    = stats.current.work_mode_desc      # "Self Consumption"
-run_status   = stats.current.run_status_dec      # "Normal operation"
+run_status   = stats.current.run_status_desc      # "Normal operation"
 
 # Grid connection state (four-state enum — see GridConnectionState section below)
 from franklinwh_cloud.models import GridConnectionState
@@ -684,7 +684,7 @@ async def main():
     # ── Status ──
     print(f"🔋 Battery: {c.battery_soc:.0f}%")
     print(f"📋 Mode:    {c.work_mode_desc}")
-    print(f"🏃 Status:  {c.run_status_dec}")
+    print(f"🏃 Status:  {c.run_status_desc}")
     print(f"🔌 Grid:    {c.grid_connection_state.value}")
     print()
 

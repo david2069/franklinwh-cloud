@@ -92,7 +92,12 @@ class Current:
     tou_mode: int                    # runtimeData.mode  (TOU sub-mode)
     tou_mode_desc: str               # runtimeData.name
     run_status: int                  # runtimeData.run_status  (0=Normal, 1=OG-Standby, 2=OG-Chg, 3=OG-Dis)
-    run_status_dec: str              # derived from RUN_STATUS[run_status]
+    run_status_desc: str             # derived from RUN_STATUS[run_status]
+
+    @property
+    def run_status_dec(self) -> str:
+        """DEPRECATED (typo alias): Use run_status_desc."""
+        return self.run_status_desc
 
     # ── Battery pack telemetry ───────────────────────────────────────────────
     apower_serial_numbers: str       # runtimeData.fhpSn  (list → str)
@@ -251,6 +256,7 @@ class Stats:
 
     current: Current
     totals: Totals
+    is_stale: bool = False           # True if telemetry is a last-known-good cache hit
 
 
 def empty_stats() -> Stats:

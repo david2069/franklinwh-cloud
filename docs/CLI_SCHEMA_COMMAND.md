@@ -106,7 +106,7 @@ Python Attribute                Raw API Key             Source                Un
   tou_mode                        mode                    203/runtimeData       int
   tou_mode_desc                   name                    203/runtimeData       str
   run_status                      run_status              203/runtimeData       int
-  run_status_dec                  derived                 derived               str
+  run_status_desc                  derived                 derived               str
 
   ── Battery Packs
   apower_serial_numbers           fhpSn                   203/runtimeData       list
