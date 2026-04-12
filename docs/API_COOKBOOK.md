@@ -36,9 +36,43 @@ The cloud API often exposes duplicated attributes via different payload structur
 * `solarRelayStat` == `main_sw[2]`
 **Recommendation:** Always consume the curated `client.get_stats()` → `Stats.current` object, which evaluates and normalizes these aliases automatically beneath the hood without making excessive API calls.
 
-### Native Library Cache & Metrics
-The `franklinwh-cloud` library ships with a built-in `ClientMetrics` tracker (via `client.metrics`) and a `StaleDataCache` to actively combat excessive polling. 
-If your integrator tool (like an Admin Console) shows thousands of hits to static endpoints over just a few hours, it means your architecture is circumventing the internal cache boundaries! Always check `client.metrics.snapshot()` to audit your background thread discipline.
+### Native Library Cache & Rate Limiting
+
+The `franklinwh-cloud` library ships with built-in mechanisms to actively combat excessive polling and protect the fragile aGate MQTT boundaries. If your integrator tool (like an Admin Console) shows thousands of hits to static endpoints over just a few hours, your architecture is circumventing the internal cache boundaries! 
+
+**1. The Method TTL Cache (Proactive)**
+You can instruct the client to cache expensive, slow-changing static endpoints (like Smart Circuits or BMS data) natively for a fixed TTL. If you call `get_smart_circuits_info()` 10 times in a minute, only 1 actual API request will be sent to the cloud.
+
+```python
+from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.cache import DEFAULT_CACHE
+
+# Initialize with library-recommended TTL mapping
+client = FranklinWHCloud("YOUR_EMAIL", "YOUR_PASSWORD", cache=DEFAULT_CACHE)
+
+# Or override specific TTLs (seconds)
+custom_cache = {
+    **DEFAULT_CACHE,
+    "get_bms_info": 120,    # Cache battery cell voltages for 2 mins
+    "get_device_info": 600, # Cache hardware serials for 10 mins
+}
+client = FranklinWHCloud("YOUR_EMAIL", "YOUR_PASSWORD", cache=custom_cache)
+```
+*(Any method that modifies state, e.g. `set_smart_switch_state`, automatically invalidates its relevant cache slot.)*
+
+**2. Stale Data Degradation (Reactive)**
+If the upstream FranklinWH Cloud encounters an outage or severely limits your account, you can enable `tolerate_stale_data`. The client will safely serve the last-known-good telemetry rather than throwing hard `TimeoutExceptions`.
+
+```python
+client = FranklinWHCloud(
+    email="YOUR_EMAIL", 
+    password="YOUR_PASSWORD", 
+    tolerate_stale_data=True, 
+    stale_cache_ttl=300 # Data is considered "stale but usable" for 5 minutes
+)
+```
+
+Always check `client.metrics.snapshot()` to audit your background thread discipline.
 
 ---
 
@@ -1333,6 +1367,49 @@ All library-specific exceptions inherit from `FranklinWHError`. Below are the pr
 | `TokenExpiredException` | JWT session rotation required. | Invoke `client.login()` or `client.get_token()` to renew. |
 | `InvalidCredentialsException` | 401 Unauthorized (`Code 10009`). | Verify username/password or `LOGIN_TYPE` flag. |
 | `BadRequestParsingError` | JSON blob abruptly mutated (V1 to V2). | Ensure dependencies are tracking the latest PyPI distribution. |
+
+## Raw Cloud Endpoints vs Pythonic Aliases
+
+The `franklinwh-cloud` library internally negotiates with a series of undocumented REST and MQTT endpoints. To keep abstractions clean, it provides simplified `snake_case` wrappers (e.g. `get_device_info()`, `get_stats()`) around these raw endpoints.
+
+If you are inspecting or reverse-engineering the native Cloud API, you can hit the raw endpoints directly via `client._get()` and `client._post()`. This bypasses the dataclass parsing and returns the raw JSON.
+
+```python
+# The Pythonic Wrapper (Recommended)
+# Safely parses the response, resolves typologies, and returns a Stats dataclass
+stats = await client.get_stats()
+
+# The Raw Cloud API equivalent (For reverse-engineering)
+# Using the internal protected method to hit the endpoint exactly as the mobile app does.
+url = "https://energy.franklinwh.com/hes-gateway/terminal/getDeviceCompositeInfo"
+# Must dynamically include gateway ID for most terminal operations
+raw_json = await client._get(url, params={"gatewayId": client.gateway})
+print(f"Raw Firmware string: {raw_json['result']['runtimeData']['fhpVersions']}")
+```
+
+## Extracting CloudFront Edge Failovers (Log Analysis)
+
+The library actively tracks CloudFront PoP (Point of Presence) edge routing nodes by automatically reading the `x-amz-cf-pop` headers returned by AWS. A transition event is raised when AWS dynamically shifts your active internet session to a different geographical edge location (for example: `SYD62-P1` → `MEL50-C1`).
+
+The edge tracker mechanism automatically emits a standard application `WARN` log whenever your active session shifts. You can extract these failover events directly from your historical application logs (e.g., if you pipe them via standard out or text logging files) using basic log analysis.
+
+**Example Command (grep):**
+```bash
+# Search historical logs for edge failover warnings
+grep "CloudFront edge transition" app.log
+
+# Expected Terminal Output:
+# [WARN] ☁️ CloudFront edge transition: SYD62-P1 → MEL50-C1
+# [WARN] ☁️ CloudFront edge transition: MEL50-C1 → SYD62-P1
+```
+
+If you wish to view your active routing map natively inside your Python code via Edge Tracker API logic, you can generate a snapshot:
+```python
+edge_data = client.get_metrics()['edge'] # or via client.get_edge_tracker().snapshot() if exposed
+if getattr(client, "get_metrics", None):
+    # Depending on client abstraction layer
+    pass
+```
 ## Wave Type (Pricing Tier) Reference
 
 | Code | `WaveType` Enum | Description |
