@@ -569,7 +569,7 @@ def _render_whats_missing(snap):
         notes.append(("ⓘ", "No Generator Module installed"))
     if not f.vpp_enrolled:
         notes.append(("ⓘ", "Not enrolled in VPP programme"))
-    if snap.warranty.expiry == "":
+    if snap.tier >= 2 and snap.warranty.expiry == "":
         notes.append(("ⓘ", "Warranty info unavailable"))
 
     if notes:
