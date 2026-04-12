@@ -160,10 +160,18 @@ TOTALS_SCHEMA = {
 TOU_SCHEMA = {
     "startHourTime":        ("startHourTime",      "setTouSchedule",   "HH:MM", "Time Block"),
     "endHourTime":          ("endHourTime",        "setTouSchedule",   "HH:MM", "Time Block"),
-    "name":                 ("name",               "setTouSchedule",   "str",   "Configuration"),
+    "name":                 ("name",               "getTouList",       "str",   "Configuration"),
     "dispatchId":           ("dispatchId",         "setTouSchedule",   "int",   "Configuration"),
     "waveType":             ("waveType",           "setTouSchedule",   "int",   "Tariff/Pricing"),
     "targetSoc":            ("targetSoc",          "setTouSchedule",   "int",   "Configuration"),
+}
+
+MODE_SCHEMA = {
+    "soc":                  ("soc",                "getTouList",       "float", "SOC Limits"),
+    "maxSoc":               ("maxSoc",             "getTouList",       "float", "SOC Limits"),
+    "minSoc":               ("minSoc",             "getTouList",       "float", "SOC Limits"),
+    "dischargeDepthSoc":    ("dischargeDepthSoc",  "getTouList",       "float", "SOC Limits"),
+    "complianceSoc":        ("complianceSoc",      "getTouList",       "float", "SOC Limits"),
 }
 
 
@@ -232,6 +240,13 @@ def _json_output(live_current, live_totals, filter_group):
         entry = {"api_key": api_key, "source": source, "units": units, "group": group}
         result["tou"][field] = entry
 
+    result["mode"] = {}
+    for field, (api_key, source, units, group) in MODE_SCHEMA.items():
+        if filter_group and filter_group.lower() not in group.lower() and filter_group.lower() != "mode":
+            continue
+        entry = {"api_key": api_key, "source": source, "units": units, "group": group}
+        result["mode"][field] = entry
+
     print_json_output(result)
 
 
@@ -299,6 +314,37 @@ def _terminal_output(live_current, live_totals, filter_group):
             val = live_totals.get(field)
             row += f"  {_fmt_value(val)}"
         print(row)
+
+    # ── Modes ─────────────────────────────────────────────────────────
+    mode_filtered = False
+    
+    # Check if MODE_SCHEMA has any matches for the filter
+    for field, (api_key, source, units, group) in MODE_SCHEMA.items():
+        if not filter_group or filter_group.lower() in group.lower() or filter_group.lower() == "mode" or filter_group.lower() in "soc":
+            mode_filtered = True
+            break
+            
+    if mode_filtered:
+        print()
+        print_section("⚙️", "Operating Mode Config  (getGatewayTouListV2)")
+        print(_header_row())
+        print(_divider())
+
+        mode_group = None
+        for field, (api_key, source, units, group) in MODE_SCHEMA.items():
+            if filter_group and filter_group.lower() not in group.lower() and filter_group.lower() != "mode" and filter_group.lower() not in "soc":
+                continue
+            if group != mode_group:
+                print(f"\n  ── {group}")
+                mode_group = group
+            row = (f"  {field:<{col_field}}  "
+                   f"{api_key:<{col_key}}  "
+                   f"{source:<{col_src}}  "
+                   f"{units:<{col_units}}")
+            # Mode schemas don't currently have a 'live' equivalent from get_stats
+            if live_totals is not None:
+                row += f"  {_fmt_value(None)}"
+            print(row)
 
     # ── TOU ───────────────────────────────────────────────────────────
     tou_filtered = False
