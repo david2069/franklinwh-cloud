@@ -263,6 +263,14 @@ def _json_output(live_current, live_totals, filter_group):
         if filter_group and filter_group.lower() not in group.lower() and filter_group.lower() != "tou":
             continue
         entry = {"api_key": api_key, "source": source, "units": units, "group": group}
+        if live_current is not None:
+            val = None
+            if field == "startHourTime": val = live_current.get("active_tou_start")
+            elif field == "endHourTime": val = live_current.get("active_tou_end")
+            elif field == "name": val = live_current.get("active_tou_name")
+            elif field == "dispatchId": val = live_current.get("active_tou_dispatch_id")
+            elif field == "waveType": val = live_current.get("active_tou_wave_type")
+            entry["live_value"] = val
         result["tou"][field] = entry
 
     result["mode"] = {}
@@ -398,8 +406,16 @@ def _terminal_output(live_current, live_totals, filter_group):
                    f"{source:<{col_src}}  "
                    f"{units:<{col_units}}")
             # TOU schemas don't currently have a 'live' equivalent from get_stats
+            # We map the active block values extrapolated into live_current
             if live_totals is not None:
-                row += f"  {_fmt_value(None)}"
+                val = None
+                if live_current is not None:
+                    if field == "startHourTime": val = live_current.get("active_tou_start")
+                    elif field == "endHourTime": val = live_current.get("active_tou_end")
+                    elif field == "name": val = live_current.get("active_tou_name")
+                    elif field == "dispatchId": val = live_current.get("active_tou_dispatch_id")
+                    elif field == "waveType": val = live_current.get("active_tou_wave_type")
+                row += f"  {_fmt_value(val)}"
             print(row)
 
     print()
