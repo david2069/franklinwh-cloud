@@ -31,6 +31,8 @@ franklinwh-cli schema                           # full schema — no login requi
 franklinwh-cli schema --live                    # + live values from get_stats()
 franklinwh-cli schema --filter 211              # only cmdType 211 electrical fields
 franklinwh-cli schema --filter power            # only power flow fields
+franklinwh-cli schema --filter mode             # only global Operating Mode configurations (SOC limiters)
+franklinwh-cli schema --filter tou              # only TOU schedule blocks
 franklinwh-cli schema --filter relay            # only relay fields
 franklinwh-cli schema --json                    # machine-readable JSON
 franklinwh-cli schema --live --json             # JSON + live values
@@ -171,12 +173,20 @@ Python Attribute                Raw API Key             Source                Un
   grid_line_voltage               gridLineVol÷10          211/result            V
   generator_voltage               oilVol                  211/result            V
 
-  ── TOU Window
-  active_tou_name                 derived                 get_tou_info          str
-  active_tou_dispatch             derived                 get_tou_info          str
-  active_tou_start                derived                 get_tou_info          HH:MM
-  active_tou_end                  derived                 get_tou_info          HH:MM
-  active_tou_remaining            derived                 get_tou_info          str
+  ── Operating Mode Config (getGatewayTouListV2)
+  soc                             soc                     getTouList            float  
+  maxSoc                          maxSoc                  getTouList            float  
+  minSoc                          minSoc                  getTouList            float  
+  dischargeDepthSoc               dischargeDepthSoc       getTouList            float  
+  complianceSoc                   complianceSoc           getTouList            float  
+
+  ── TOU Schedule Blocks (detailVoList)
+  startHourTime                   startHourTime           setTouSchedule        HH:MM  
+  endHourTime                     endHourTime             setTouSchedule        HH:MM  
+  name                            name                    getTouList            str    
+  dispatchId                      dispatchId              setTouSchedule        int      [1=Home, 2=Standby, 3=SolarCharge, 6=SelfCons, 7=Export, 8=GridCharge]
+  waveType                        waveType                setTouSchedule        int      [0=OffPeak, 1=MidPeak, 2=Peak, 4=SuperOff]
+  targetSoc                       targetSoc               setTouSchedule        int
 
   ── Smart Circuits
   switch_1_state                  pro_load[0]             311/runtimeData       0/1
@@ -254,6 +264,43 @@ $ franklinwh-cli schema --filter 211
 > `grid_line_voltage` applies a `÷ 10` scaling factor. The raw API field `gridLineVol`
 > is an integer in tenths of a volt (e.g. `2440` = `244.0 V`). The library divides by 10
 > before storing the value. This is the only field with a non-obvious raw-to-display transform.
+
+---
+
+### Operating Mode & TOU Blocks
+
+Recent updates have decoupled the global Operating Mode configurations (like global SOC limiters) from the individual Time of Use schedule blocks. You can view their respective structures using `--filter mode` and `--filter tou`.
+
+```bash
+$ franklinwh-cli schema --filter mode
+```
+
+```
+  ── SOC Limits
+  soc                             soc                     getTouList            float  
+  maxSoc                          maxSoc                  getTouList            float  
+  minSoc                          minSoc                  getTouList            float  
+  dischargeDepthSoc               dischargeDepthSoc       getTouList            float  
+  complianceSoc                   complianceSoc           getTouList            float  
+```
+
+```bash
+$ franklinwh-cli schema --filter tou
+```
+
+```
+  ── Time Block
+  startHourTime                   startHourTime           setTouSchedule        HH:MM  
+  endHourTime                     endHourTime             setTouSchedule        HH:MM  
+
+  ── Configuration
+  name                            name                    getTouList            str    
+  dispatchId                      dispatchId              setTouSchedule        int      [1=Home, 2=Standby, 3=SolarCharge, 6=SelfCons, 7=Export, 8=GridCharge]
+  targetSoc                       targetSoc               setTouSchedule        int    
+
+  ── Tariff/Pricing
+  waveType                        waveType                setTouSchedule        int      [0=OffPeak, 1=MidPeak, 2=Peak, 4=SuperOff]
+```
 
 ---
 

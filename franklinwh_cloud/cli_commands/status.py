@@ -107,7 +107,7 @@ async def run(client, *, json_output: bool = False):
     # aPower batteries
     if cur.apower_serial_numbers:
         print_section("🔋", "aPower Batteries")
-        from franklinwh_cloud.const import RUN_STATUS
+        from franklinwh_cloud.const.states import BMS_STATE
         sns = cur.apower_serial_numbers if isinstance(cur.apower_serial_numbers, list) else [cur.apower_serial_numbers]
         socs = cur.apower_soc if isinstance(cur.apower_soc, list) else [cur.apower_soc]
         pwrs = cur.apower_power if isinstance(cur.apower_power, list) else [cur.apower_power]
@@ -118,7 +118,7 @@ async def run(client, *, json_output: bool = False):
             soc = socs[i] if i < len(socs) else "?"
             pwr = pwrs[i] if i < len(pwrs) else "?"
             bms = bmss[i] if i < len(bmss) else 0
-            bms_desc = RUN_STATUS.get(int(bms), "Unknown") if bms else ""
+            bms_desc = BMS_STATE.get(int(bms), "Unknown") if bms else ""
             sn_short = sn[-6:] if len(str(sn)) > 6 else sn
             print_kv(f"aPower {sn_short}", f"SoC: {soc}%  Power: {pwr}W  {bms_desc}")
 
