@@ -128,6 +128,9 @@ CURRENT_SCHEMA = {
     # TOU window (derived from get_tou_info)
     "active_tou_name":          ("derived",            "get_tou_info",     "str",   "TOU Window"),
     "active_tou_dispatch":      ("derived",            "get_tou_info",     "str",   "TOU Window"),
+    "active_tou_dispatch_id":   ("derived",            "get_tou_info",     "int",   "TOU Window"),
+    "active_tou_wave_type":     ("derived",            "get_tou_info",     "int",   "TOU Window"),
+    "active_tou_wave_type_desc":("derived",            "get_tou_info",     "str",   "TOU Window"),
     "active_tou_start":         ("derived",            "get_tou_info",     "HH:MM", "TOU Window"),
     "active_tou_end":           ("derived",            "get_tou_info",     "HH:MM", "TOU Window"),
     "active_tou_remaining":     ("derived",            "get_tou_info",     "str",   "TOU Window"),
@@ -201,6 +204,28 @@ async def run(client, json_output: bool = False, show_live: bool = False,
             live_current = dataclasses.asdict(stats.current)
             # Enum values aren't serialisable by asdict — convert manually
             live_current["grid_connection_state"] = stats.current.grid_connection_state.value
+            
+            # Formally populate active_tou fields on-the-fly for schema validation
+            if True:  # Only if in TOU mode
+                try:
+                    tou = await client.get_tou_info(1)  # Fetch current/next
+                    if tou:
+                        live_current["active_tou_name"] = tou.get("activeTOUname", "")
+                        live_current["active_tou_dispatch"] = tou.get("activeTOUtitle", "")
+                        live_current["active_tou_dispatch_id"] = tou.get("activeTOUdispatchId")
+                        wt = tou.get("activeWaveType")
+                        live_current["active_tou_wave_type"] = wt
+                        from franklinwh_cloud.const.tou import WAVE_TYPES
+                        live_current["active_tou_wave_type_desc"] = WAVE_TYPES.get(wt, "")
+                        live_current["active_tou_start"] = tou.get("activeStartTime", "")
+                        live_current["active_tou_end"] = tou.get("activeEndTime", "")
+                        rem = tou.get("activeRemainingTime", "")
+                        if rem and ":" in rem:
+                            h, m = rem.split(":")
+                            live_current["active_tou_remaining"] = f"{int(h)}h {int(m)}m"
+                except Exception:
+                    pass
+
             live_totals = dataclasses.asdict(stats.totals)
         except Exception as e:
             if not json_output:

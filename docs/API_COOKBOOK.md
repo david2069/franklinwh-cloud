@@ -421,34 +421,49 @@ bat_dis_kwh  = stats.totals.battery_discharge    # kwh_fhp_di
 home_kwh     = stats.totals.home_use             # kwh_load
 ```
 
-### Operating Mode
+### Operating Mode & System Limiters (Global SOC Configs)
+
+The `getGatewayTouListV2` endpoint serves not just TOU schedules, but acts as a global **Operating Mode Configuration** blob. Recent updates have exposed several programmatic SOC (State of Charge) limiters:
+
+*   `soc`: The global backup reserve buffer (Emergency Reserve).
+*   `maxSoc`: The maximum allowed charging limit (e.g., protecting degraded cells).
+*   `complianceSoc`: The regulatory/utility-mandated minimum reserve.
+*   `dischargeDepthSoc`: The lowest permissible physical discharge limit (often 5% or 10%).
 
 ```python
 from franklinwh_cloud.const import (
     TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP,  # 1, 2, 3
 )
 
-# Get current mode
+# 1. View Global Configurations (Including SOC parameters)
+config = await client.get_tou_dispatch_detail()
+
+print(f"Current Reserve SOC: {config.get('soc')}%")
+print(f"Maximum Charge Limit (maxSoc): {config.get('maxSoc', 'Unrestricted')}%")
+print(f"Compliance Reserve (complianceSoc): {config.get('complianceSoc', 'None')}%")
+print(f"Discharge Depth Threshold: {config.get('dischargeDepthSoc', 'None')}%")
+
+# 2. Get current mode specifically
 mode = await client.get_mode()
 print(f"Mode: {mode['modeName']}, Run: {mode['run_desc']}")
 
-# Get reserve SoC for all modes
+# 3. Get reserve SoC for all modes
 soc_all = await client.get_all_mode_soc()
 # Returns: [{'workMode': 1, 'name': 'Time of Use', 'soc': 7.0, ...}, ...]
 
-# Switch to Self-Consumption, keep current SoC
+# 4. Switch to Self-Consumption, keep current SoC
 await client.set_mode(SELF_CONSUMPTION, None, None, None, None)
 #                     workMode=2        soc  forever nextMode duration
 
-# Switch to Emergency Backup — indefinite
+# 5. Switch to Emergency Backup — indefinite
 await client.set_mode(EMERGENCY_BACKUP, None, 1, SELF_CONSUMPTION, None)
 #                     workMode=3        soc  forever=1 nextMode=2   duration
 
-# Switch to Emergency Backup — 2 hours, then revert to Self-Consumption
+# 6. Switch to Emergency Backup — 2 hours, then revert to Self-Consumption
 await client.set_mode(EMERGENCY_BACKUP, None, 2, SELF_CONSUMPTION, 120)
 #                     workMode=3        soc  timed=2  nextMode=2    mins
 
-# Update backup reserve SoC to 20% for Self-Consumption mode
+# 7. Update backup reserve SoC to 20% for Self-Consumption mode
 await client.update_soc(requestedSOC=20, workMode=SELF_CONSUMPTION)
 #                                        workMode=2
 ```

@@ -177,6 +177,9 @@ class Current:
     # ── Active TOU window (optional, from get_tou_info) ──────────────────────
     active_tou_name: str = ""        # derived from TOU schedule lookup
     active_tou_dispatch: str = ""    # dispatch mode name
+    active_tou_dispatch_id: int | None = None # dispatchId integer from schedule block
+    active_tou_wave_type: int | None = None   # waveType integer from schedule block
+    active_tou_wave_type_desc: str = ""       # string representation of waveType
     active_tou_start: str = ""       # HH:MM
     active_tou_end: str = ""         # HH:MM
     active_tou_remaining: str = ""   # "Xh Ym remaining"
