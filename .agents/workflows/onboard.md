@@ -8,6 +8,10 @@ description: Mandatory Zero-Trust initialization sequence for all AI Agents atta
 > 
 > **Do NOT summarize these files yet.** Read them all first using your `view_file` tool.
 > 
+> ## 🚨 Workspace Scope Rule (CRITICAL)
+> **THIS AGENT OPERATES EXCLUSIVELY WITHIN THE `franklinwh-cloud` REPOSITORY.**
+> If the user has multiple repositories open (or is actively editing a file in `franklinwh-ha-integrator`), you remain bound strictly to the policies of `franklinwh-cloud/`. You may not edit files outside of this boundary unless explicitly instructed to switch context.
+> 
 > ## STEP 1: Understand Top-Level Rules
 > 1. Formally read `AGENT.md`.
 > 2. Formally read `CONTRIBUTING.md` to establish the firm zero-regression definitions.

@@ -102,7 +102,7 @@ async def run(client, *, json_output: bool = False):
                 print_kv("Reserve SoC", f"{active_soc}%")
     except Exception:
         pass
-    print_kv("Run Status", cur.run_status_dec)
+    print_kv("Run Status", cur.run_status_desc)
 
     # aPower batteries
     if cur.apower_serial_numbers:

@@ -115,7 +115,7 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
 
     # Battery & Mode status line
     lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_connection_state)}")
-    lines.append(f"  {BOLD}⚙️  Mode{RESET}      {mode_desc}   Status: {cur.run_status_dec}")
+    lines.append(f"  {BOLD}⚙️  Mode{RESET}      {mode_desc}   Status: {cur.run_status_desc}")
     lines.append("")
 
     # Daily energy

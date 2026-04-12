@@ -71,7 +71,7 @@ Key differences:
 
 | Category | Fields Added |
 |----------|-------------|
-| **Operating mode** | `work_mode`, `work_mode_desc`, `device_status`, `tou_mode`, `tou_mode_desc`, `run_status`, `run_status_dec` |
+| **Operating mode** | `work_mode`, `work_mode_desc`, `device_status`, `tou_mode`, `tou_mode_desc`, `run_status`, `run_status_desc` |
 | **Per-battery** | `apower_serial_numbers`, `apower_soc`, `apower_power`, `apower_bms_mode` |
 | **Environment** | `agate_ambient_temparture` |
 | **Relays** | `grid_relay1`, `generator_relay`, `solar_relay1`, `grid_relay2`, `black_start_relay`, `pv_relay2`, `bfpv_apbox_relay` |

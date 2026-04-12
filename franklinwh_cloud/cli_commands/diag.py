@@ -443,7 +443,7 @@ async def run(client, *, json_output: bool = False):
             "grid_status": cur.grid_connection_state.value,
             "home_load_kw": cur.home_load,
             "operating_mode": cur.work_mode_desc,
-            "run_status": cur.run_status_dec,
+            "run_status": cur.run_status_desc,
         }
         checks_passed += 1
     except Exception as e:

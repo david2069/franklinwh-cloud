@@ -50,7 +50,7 @@ CURRENT_SCHEMA = {
     "tou_mode":                 ("mode",               "203/runtimeData",  "int",   "Mode"),
     "tou_mode_desc":            ("name",               "203/runtimeData",  "str",   "Mode"),
     "run_status":               ("run_status",         "203/runtimeData",  "int",   "Mode"),
-    "run_status_dec":           ("derived",            "derived",          "str",   "Mode"),
+    "run_status_desc":          ("derived",            "derived",          "str",   "Mode"),
     # Battery pack telemetry
     "apower_serial_numbers":    ("fhpSn",              "203/runtimeData",  "list",  "Battery Packs"),
     "apower_soc":               ("fhpSoc",             "203/runtimeData",  "list",  "Battery Packs"),
@@ -157,6 +157,15 @@ TOTALS_SCHEMA = {
     "mpan_pv2_wh":          ("mpanPv2Wh",          "203/runtimeData",  "Wh",   "APbox/MPPT"),
 }
 
+TOU_SCHEMA = {
+    "startHourTime":        ("startHourTime",      "setTouSchedule",   "HH:MM", "Time Block"),
+    "endHourTime":          ("endHourTime",        "setTouSchedule",   "HH:MM", "Time Block"),
+    "name":                 ("name",               "setTouSchedule",   "str",   "Configuration"),
+    "dispatchId":           ("dispatchId",         "setTouSchedule",   "int",   "Configuration"),
+    "waveType":             ("waveType",           "setTouSchedule",   "int",   "Tariff/Pricing"),
+    "targetSoc":            ("targetSoc",          "setTouSchedule",   "int",   "Configuration"),
+}
+
 
 def _fmt_value(val) -> str:
     """Format a live value for display."""
@@ -215,6 +224,13 @@ def _json_output(live_current, live_totals, filter_group):
         if live_totals is not None:
             entry["live_value"] = live_totals.get(field)
         result["totals"][field] = entry
+
+    result["tou"] = {}
+    for field, (api_key, source, units, group) in TOU_SCHEMA.items():
+        if filter_group and filter_group.lower() not in group.lower() and filter_group.lower() != "tou":
+            continue
+        entry = {"api_key": api_key, "source": source, "units": units, "group": group}
+        result["tou"][field] = entry
 
     print_json_output(result)
 
@@ -283,6 +299,37 @@ def _terminal_output(live_current, live_totals, filter_group):
             val = live_totals.get(field)
             row += f"  {_fmt_value(val)}"
         print(row)
+
+    # ── TOU ───────────────────────────────────────────────────────────
+    tou_filtered = False
+    
+    # Check if TOU_SCHEMA has any matches for the filter
+    for field, (api_key, source, units, group) in TOU_SCHEMA.items():
+        if not filter_group or filter_group.lower() in group.lower() or filter_group.lower() == "tou" or filter_group.lower() in "dispatch":
+            tou_filtered = True
+            break
+            
+    if tou_filtered:
+        print()
+        print_section("📅", "TOU Schedule Blocks  (detailVoList)")
+        print(_header_row())
+        print(_divider())
+
+        tou_group = None
+        for field, (api_key, source, units, group) in TOU_SCHEMA.items():
+            if filter_group and filter_group.lower() not in group.lower() and filter_group.lower() != "tou" and filter_group.lower() not in "dispatch":
+                continue
+            if group != tou_group:
+                print(f"\n  ── {group}")
+                tou_group = group
+            row = (f"  {field:<{col_field}}  "
+                   f"{api_key:<{col_key}}  "
+                   f"{source:<{col_src}}  "
+                   f"{units:<{col_units}}")
+            # TOU schemas don't currently have a 'live' equivalent from get_stats
+            if live_totals is not None:
+                row += f"  {_fmt_value(None)}"
+            print(row)
 
     print()
     print("  Relay encoding: 1=OPEN (connected), 0=CLOSED (disconnected)  — all relays")
