@@ -398,8 +398,9 @@ class ClientMetrics:
 
     # API call counters
     total_calls: int = 0
-    calls_by_method: dict = field(default_factory=dict)
-    calls_by_endpoint: dict = field(default_factory=dict)
+    calls_by_method: dict = field(default_factory=dict)      # HTTP verbs: {"GET": N, "POST": M}
+    calls_by_endpoint: dict = field(default_factory=dict)    # Cloud endpoint names: {"getDeviceCompositeInfo": N, ...}
+    calls_by_python_method: dict = field(default_factory=dict)  # Python wrapper names: {"get_stats": N, ...} — opt-in via track_python_methods=True
 
     # Response timing
     total_time_s: float = 0.0
@@ -444,6 +445,22 @@ class ClientMetrics:
         if elapsed > self.max_call_time_s:
             self.max_call_time_s = elapsed
 
+    def record_python_call(self, method_name: str) -> None:
+        """Record a Python-level API wrapper invocation.
+
+        Distinct from record_call() which records HTTP-level transport calls.
+        Incremented by _apply_method_tracking() wrappers bound at Client.__init__
+        time. Only populated when track_python_methods=True is passed to Client.
+
+        Parameters
+        ----------
+        method_name : str
+            Python method name, e.g. 'get_stats', 'set_mode'.
+        """
+        self.calls_by_python_method[method_name] = (
+            self.calls_by_python_method.get(method_name, 0) + 1
+        )
+
     def record_error(self, error_type: str) -> None:
         """Record an API error by category."""
         self.total_errors += 1
@@ -487,6 +504,7 @@ class ClientMetrics:
             "total_api_calls": self.total_calls,
             "calls_by_method": dict(self.calls_by_method),
             "calls_by_endpoint": dict(self.calls_by_endpoint),
+            "calls_by_python_method": dict(self.calls_by_python_method),
             "avg_response_time_s": round(self.avg_call_time_s, 4),
             "min_response_time_s": round(self.min_call_time_s, 4) if self.total_calls > 0 else 0.0,
             "max_response_time_s": round(self.max_call_time_s, 4),

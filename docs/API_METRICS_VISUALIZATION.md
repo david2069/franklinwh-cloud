@@ -4,13 +4,29 @@ The `franklinwh-cloud` library internally tracks extensive telemetry about API u
 
 This document serves as the architectural explanation and visualization strategy for these metrics.
 
+> ⚠️ **AGENT NOTE — READ BEFORE WRITING CODE AGAINST THIS DOCUMENT:**
+> The field `calls_by_method` contains **HTTP verb counts** (`{"GET": N, "POST": M}`),
+> NOT Python wrapper method names. This is by design and must not be changed.
+> For Python-level call counts (e.g. `get_stats`, `set_mode`), use the separate
+> field `calls_by_python_method` — which is only populated when the `Client` is
+> constructed with `track_python_methods=True`. Two consecutive agent sessions
+> (April 2026) failed by misreading this. See INCIDENT log in defect_list.md.
+
+## The Two Metrics Fields
+
+`client.get_metrics()` returns two distinct call-count dictionaries:
+
+| Field | Content | Always present? | Notes |
+|-------|---------|-----------------|-------|
+| `calls_by_method` | HTTP verb counts: `{"GET": N, "POST": M}` | ✅ Yes | Recorded at the transport layer inside `instrumented_retry()`. Stable public field since v0.1. Do **not** rename or repurpose. |
+| `calls_by_endpoint` | Cloud endpoint names: `{"getDeviceCompositeInfo": N, "sendMqtt": M}` | ✅ Yes | Short name extracted from the outbound URL path. |
+| `calls_by_python_method` | Python wrapper names: `{"get_stats": N, "set_mode": M}` | ✅ Yes (empty dict `{}` when disabled) | Populated only when `Client(... , track_python_methods=True)`. Added in FEAT-METRICS-PYTHON-METHOD-COUNTERS. |
+
 ## The Mismatch: Methods vs. Endpoints
 
-When consuming `client.get_metrics()`, you receive two primary payload dictionaries:
-1. `calls_by_method`: Execution counts of internal Python wrapper functions (e.g., `get_stats_v2`, `update_soc`).
-2. `calls_by_endpoint`: Raw outbound HTTP network hits against the FranklinWH Cloud API endpoints (e.g., `getDeviceCompositeInfo`, `sendMqtt`).
+When consuming `client.get_metrics()`, the `calls_by_python_method` and
+`calls_by_endpoint` totals **will inherently mismatch** for three specific reasons:
 
-These totals **will inherently mismatch** for three specific reasons:
 
 ### 1. The Caching Multiplier (High Call Volume, Low Network IO)
 Local polling daemons (like the MQTT Publisher) run on fast loops, calling Python methods (like `get_stats`) every few seconds. Because the library intercepts these calls with the `StaleDataCache`, >90% of those Python calls return instantly from memory. Thus, thousands of `get_stats` calls may resolve to only a handful of actual HTTP requests locally.
@@ -121,9 +137,9 @@ To deploy this in an integrator UI properly without confusing the end-user:
 
 ### 1. Dual-View or Sankey Dashboard
 Instead of relying on a toggle dropdown that fundamentally changes the meaning of the `Total API Calls` metric at the top of the dashboard, deploy a **Sankey Graphic** component directly above the data tables.
-*   **Left-side nodes:** `data.methods` sizes.
+*   **Left-side nodes:** `data.calls_by_python_method` sizes (requires `track_python_methods=True`).
 *   **Central node:** The Cache / Router layer.
-*   **Right-side nodes:** `data.endpoints` bound sizes.
+*   **Right-side nodes:** `data.calls_by_endpoint` bound sizes.
 
 ### 2. Interactive Table Filtering
 Use the visual Sankey as the interactive filter for the tables below it.

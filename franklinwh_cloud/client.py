@@ -234,6 +234,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         emulate_app_version: str = "APP2.4.1",
         cache: dict | None = None,
         not_grid_tied: bool = False,
+        track_python_methods: bool = False,
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -314,6 +315,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             self._apply_method_cache()
         else:
             self.method_cache = None
+
+        # Python-method call tracking — opt-in, must run AFTER _apply_method_cache
+        # so the tracker wraps the cache layer (tracker fires on cache hits too)
+        if track_python_methods:
+            self._apply_method_tracking()
 
         # Client identity headers — good API citizenship
         default_headers = {}
@@ -553,6 +559,39 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             sv = self.fetcher.info.get("_backend_software_version")
             if sv:
                 self.metrics._latest_backend_software_version = sv
+
+    def _apply_method_tracking(self) -> None:
+        """Wrap all public async methods with Python-level call counters.
+
+        Must be called AFTER _apply_method_cache() so the tracker sits OUTSIDE
+        the cache layer. Call chain:
+            tracker → [cache wrapper if active] → original method
+
+        This guarantees cache hits are counted, not just cache misses.
+        Only public async methods (no leading underscore) are tracked.
+        """
+        import inspect
+        import functools
+
+        for name in list(dir(type(self))):
+            if name.startswith("_"):
+                continue
+            # Resolve the current binding — may be a cache wrapper (instance attr)
+            # or an unbound class method; getattr binds it to self either way.
+            fn = getattr(self, name, None)
+            if fn is None:
+                continue
+            if not inspect.iscoroutinefunction(fn):
+                continue
+
+            def _make_tracker(method_name: str, bound_fn):
+                @functools.wraps(bound_fn)
+                async def _tracked(*args, **kwargs):
+                    self.metrics.record_python_call(method_name)
+                    return await bound_fn(*args, **kwargs)
+                return _tracked
+
+            setattr(self, name, _make_tracker(name, fn))
 
     def _apply_method_cache(self) -> None:
         """Wrap configured methods with TTL caching at init time.
