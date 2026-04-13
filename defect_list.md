@@ -14,7 +14,6 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
 | FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. **⏸ ON HOLD — client impact assessment required.** | 2026-03-26 |
-| FEAT-METRICS-PYTHON-METHOD-COUNTERS | Metrics / ClientMetrics | `calls_by_method` stores HTTP verbs (`GET`/`POST`), not Python wrapper names. FHAI Sankey/dual-table dashboard requires per-Python-method call counts (e.g. `get_stats_v2: 900`, `set_mode: 15`). **Proposed fix:** add `calls_by_python_method: dict` field to `ClientMetrics`; populate via a lightweight decorator (`@track_method_calls`) applied to public mixin methods at class definition time. `calls_by_method` (HTTP verbs) must remain unchanged — it is a stable public field. The new field is additive only. FHAI agent to update `api_metrics_tab_v2.js` Sankey + table to use `calls_by_python_method` once published. | 2026-04-13 |
 
 > **Design Notes (FEAT-MODE-DYNAMIC-LIST — ON HOLD)**
 >
@@ -36,6 +35,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 |----|------|-------------|----------|
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
+| DEF-TOU-CURRENT-COUNT | CLI / `cli_commands/tou.py` | `franklinwh-cli tou --current` footer prints `N time blocks across M season(s)` using `len(strategies)` (total API seasons) rather than the count of seasons that passed the `current_month` filter. Users with 2 API seasons see "2 season(s)" even though `--current` only renders 1. **Fix:** count rendered seasons, not `len(strategies)`. One-line fix at L241. Reported by FHAI agent, 2026-04-14. | 2026-04-14 |
 
 ---
 
@@ -43,6 +43,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
+| FEAT-METRICS-PYTHON-METHOD-COUNTERS | Metrics / ClientMetrics | Added `calls_by_python_method` dict to `ClientMetrics` + `record_python_call()`. Instance-level `_apply_method_tracking()` on `Client` (runs after `_apply_method_cache` — tracker fires on cache hits). Opt-in via `track_python_methods=True`. CLI `metrics` updated. `API_METRICS_VISUALIZATION.md` corrected with agent warning. | 2026-04-14 | `638328c` |
 | DEF-BMS-STATE-SWAP | Constants / CLI | Fixed inverted BMS Charging/Discharging states and enforced dict lookup. | Unreleased | `27cfaf4` |
 | DEF-BLANK-STATS-PASSTHROUGH | Mixins / Models | Added `is_stale` caching to `get_stats()` to prevent API glitches sending zero-value payloads | Unreleased | `5b29114` |
 | DEF-GRID-STATE-ENUM | Models / Mixins / CLI / FHAI | Replaced `grid_outage: bool` with `GridConnectionState` enum (four states: `CONNECTED`, `OUTAGE`, `SIMULATED_OFF_GRID`, `NOT_GRID_TIED`). Startup cache for `NOT_GRID_TIED` via `get_entrance_info()`. Dual-gate on `main_sw[0]==0` OR `offgridreason!=null` before calling `get_grid_status()` — handles firmware relay reporting lag (~5–10s after go-off-grid). Live-verified: `CONNECTED → SIMULATED_OFF_GRID → CONNECTED` cycle. Full docs in `API_COOKBOOK.md §Grid Connection State`. | Unreleased | `76debfb` |

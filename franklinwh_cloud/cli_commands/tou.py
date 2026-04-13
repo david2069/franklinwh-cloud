@@ -142,6 +142,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
             from datetime import datetime
             current_month = str(datetime.now().month)
             total_blocks = 0
+            rendered_seasons = 0
             
             for season_idx, season in enumerate(strategies):
                 months = season.get("month", "")
@@ -151,7 +152,8 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                     active_months = [m.strip() for m in months.split(",") if m.strip()]
                     if current_month not in active_months:
                         continue
-                        
+
+                rendered_seasons += 1
                 season_name = season.get("seasonName", f"Season {season_idx + 1}")
                 month_display = _format_months(months)
 
@@ -238,7 +240,8 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                     else:
                         print_warning("  No dispatch periods configured for this day type.")
 
-            print_kv("Total", f"{total_blocks} time blocks across {len(strategies)} season(s)")
+            season_label = "season" if rendered_seasons == 1 else "seasons"
+            print_kv("Total", f"{total_blocks} time blocks across {rendered_seasons} {season_label}")
 
     except Exception as e:
         print_warning(f"Could not retrieve dispatch detail: {e}")
