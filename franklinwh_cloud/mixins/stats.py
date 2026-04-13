@@ -359,7 +359,7 @@ class StatsMixin:
         dict
             Power details for the specified day
         """
-        url = self.url_base + "hes-gateway/api-energy/power/getFhpPowerByDay"
+        url = self.url_base + "api-energy/power/getFhpPowerByDay"
         params = {"gatewayId": self.gateway, "dayTime": f"{dayTime}"}
         data = await self._get(url, params=params)
         return data.get("result", data)
@@ -374,7 +374,7 @@ class StatsMixin:
         timeperiod : str
             Target date of the date range
         """
-        url = self.url_base + "hes-gateway/api-energy/electic/getFhpPowerData"
+        url = self.url_base + "api-energy/electric/getFhpElectricData"
         params = {"gatewayId": self.gateway, "type": type, "dayTime": f"{timeperiod}"}
         data = await self._get(url, params=params)
         return data.get("result", data)
