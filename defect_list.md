@@ -14,6 +14,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
 | FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. **⏸ ON HOLD — client impact assessment required.** | 2026-03-26 |
+| DEF-SCHEMA-TOTALS-POWER-FILTER | CLI / `cli_commands/schema.py` | `franklinwh-cli schema --filter power --live` renders the `stats.totals` section header but zero rows. Root cause: the totals filter check at L337 tests `filter_group.lower() not in group.lower()`. `TOTALS_SCHEMA` groups are `"Battery"`, `"Grid"`, `"Generation"`, `"Smart Circuits"`, `"V2L"`, `"Load Breakdown"`, `"APbox/MPPT"` — none contain the substring `"power"`. By contrast `CURRENT_SCHEMA` has `"Power Flow"` and `"Power Measurements (211)"` which do match. **Fix:** extend the totals filter to also pass rows through when `filter_group == "power"` AND the group is a known energy/totals group (e.g. Battery, Grid, Generation, Load Breakdown) — OR alias `--filter power` to additionally show all totals groups. | 2026-04-14 |
 
 > **Design Notes (FEAT-MODE-DYNAMIC-LIST — ON HOLD)**
 >
@@ -35,6 +36,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 |----|------|-------------|----------|
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
+| DEF-TOU-NEXT-WAVE-OVERFLOW | CLI / `cli_commands/tou.py` | `franklinwh-cli tou --next` schedule table: WAVE column is `:<12` width but "Super Off-Peak" is 14 chars — overflows into DURATION column with no separator (renders as `Super Off-Peak10h 00m`). Full `tou` schedule table uses `:<15` for WAVE and renders correctly. **Fix:** change `_handle_next` header/row format string WAVE width from `:<12` to `:<15` to match. Line 862 and 883. | 2026-04-14 |
 
 ---
 
