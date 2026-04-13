@@ -35,7 +35,6 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 |----|------|-------------|----------|
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
-| DEF-TOU-CURRENT-COUNT | CLI / `cli_commands/tou.py` | `franklinwh-cli tou --current` footer prints `N time blocks across M season(s)` using `len(strategies)` (total API seasons) rather than the count of seasons that passed the `current_month` filter. Users with 2 API seasons see "2 season(s)" even though `--current` only renders 1. **Fix:** count rendered seasons, not `len(strategies)`. One-line fix at L241. Reported by FHAI agent, 2026-04-14. | 2026-04-14 |
 
 ---
 
@@ -43,6 +42,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
+| DEF-TOU-CURRENT-COUNT | CLI / `cli_commands/tou.py` | `tou --current` footer used `len(strategies)` (total seasons) instead of rendered seasons count. Fixed + improved grammar (`1 season` not `1 seasons`). | 2026-04-14 | `f7d7042` |
 | FEAT-METRICS-PYTHON-METHOD-COUNTERS | Metrics / ClientMetrics | Added `calls_by_python_method` dict to `ClientMetrics` + `record_python_call()`. Instance-level `_apply_method_tracking()` on `Client` (runs after `_apply_method_cache` — tracker fires on cache hits). Opt-in via `track_python_methods=True`. CLI `metrics` updated. `API_METRICS_VISUALIZATION.md` corrected with agent warning. | 2026-04-14 | `638328c` |
 | DEF-BMS-STATE-SWAP | Constants / CLI | Fixed inverted BMS Charging/Discharging states and enforced dict lookup. | Unreleased | `27cfaf4` |
 | DEF-BLANK-STATS-PASSTHROUGH | Mixins / Models | Added `is_stale` caching to `get_stats()` to prevent API glitches sending zero-value payloads | Unreleased | `5b29114` |
