@@ -14,6 +14,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
 | FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. **⏸ ON HOLD — client impact assessment required.** | 2026-03-26 |
+| FEAT-METRICS-PYTHON-METHOD-COUNTERS | Metrics / ClientMetrics | `calls_by_method` stores HTTP verbs (`GET`/`POST`), not Python wrapper names. FHAI Sankey/dual-table dashboard requires per-Python-method call counts (e.g. `get_stats_v2: 900`, `set_mode: 15`). **Proposed fix:** add `calls_by_python_method: dict` field to `ClientMetrics`; populate via a lightweight decorator (`@track_method_calls`) applied to public mixin methods at class definition time. `calls_by_method` (HTTP verbs) must remain unchanged — it is a stable public field. The new field is additive only. FHAI agent to update `api_metrics_tab_v2.js` Sankey + table to use `calls_by_python_method` once published. | 2026-04-13 |
 
 > **Design Notes (FEAT-MODE-DYNAMIC-LIST — ON HOLD)**
 >

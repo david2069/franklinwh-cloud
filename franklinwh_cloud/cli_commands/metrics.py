@@ -69,8 +69,18 @@ async def run(client, *, json_output: bool = False):
     print_kv("Total Calls", metrics["total_api_calls"])
     print_kv("Avg Response", f'{metrics["avg_response_time_s"]:.3f}s')
     print_kv("Min / Max", f'{metrics["min_response_time_s"]:.3f}s / {metrics["max_response_time_s"]:.3f}s')
-    print_kv("By Method", str(metrics["calls_by_method"]))
+    print_kv("By HTTP Verb", str(metrics["calls_by_method"]))
+
+    python_methods = metrics.get("calls_by_python_method", {})
+    if python_methods:
+        print_kv("By Python Method", "")
+        for meth, count in sorted(python_methods.items(), key=lambda x: -x[1]):
+            print_kv(f"    {meth}", f"{count} calls")
+    else:
+        print_kv("By Python Method", c("dim", "disabled — pass track_python_methods=True to Client"))
+
     print_kv("Errors", metrics["total_errors"])
+
 
     if metrics["calls_by_endpoint"]:
         print_section("🔗", "Endpoints")
