@@ -92,7 +92,7 @@ async def run(client, *, json_output: bool = False):
 
     # Operating mode
     print_section("⚡", "Operating Mode")
-    print_kv("Mode", cur.work_mode_desc)
+    print_kv("Mode", cur.effective_mode)
     # Show reserve SoC for active mode
     try:
         mode_info = await client.get_mode_info(cur.work_mode or 2)

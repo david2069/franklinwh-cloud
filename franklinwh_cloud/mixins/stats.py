@@ -73,7 +73,17 @@ class StatsMixin:
         runtimedata_v2 = data_v2.get("runtimeData") or {}
 
         run_status = int(runtimedata_v2.get("run_status", 0) or 0)
-        run_desc = RUN_STATUS.get(run_status, "Unknown")
+        # run_status_desc derives from runtimeData.mode (the programme state: VPP=9,
+        # Standby=0, Charging=1, Discharging=2, etc.) — NOT from runtimeData.run_status,
+        # which is a separate operational sub-state. FranklinWH has both fields; they
+        # carry different semantics and the naming is confusing by design.
+        _mode_val = int(runtimedata_v2.get("mode", 0) or 0)
+        run_desc = RUN_STATUS.get(_mode_val, "Unknown")
+        # effective_mode: mirrors the app's top-card mode label across ALL operating modes.
+        # When mode==9 (VPP), override work_mode_desc with the VPP label.
+        _VPP_RUN_STATUS = 9
+        _mode_name = runtimedata_v2.get("name", "") or ""
+        effective_mode = (_mode_name or RUN_STATUS[_VPP_RUN_STATUS]) if _mode_val == _VPP_RUN_STATUS else workMode_desc
         offGridFlag = solarHaveVo.get("offGridFlag", runtimedata_v2.get("offGridFlag", 0))
         offgridreason = runtimedata_v2.get("offgridreason", solarHaveVo.get("offGridReason", 0))
         offGridReason = solarHaveVo.get("offGridReason", runtimedata_v2.get("offgridreason", 0))
@@ -281,6 +291,7 @@ class StatsMixin:
                 switch_1_state=smart_circuits[0] if len(smart_circuits) > 0 else 0,
                 switch_2_state=smart_circuits[1] if len(smart_circuits) > 1 else 0,
                 switch_3_state=smart_circuits[2] if len(smart_circuits) > 2 else 0,
+                effective_mode=effective_mode,
                 # APBox / MPPT config flags
                 mppt_en_flag=bool(runtimedata_v2.get("mpptEnFlag", False)),
                 mppt_export_en=int(runtimedata_v2.get("mpptExportEn", 0) or 0),
