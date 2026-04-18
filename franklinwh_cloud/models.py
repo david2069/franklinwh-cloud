@@ -91,8 +91,10 @@ class Current:
     device_status: int               # result.deviceStatus
     tou_mode: int                    # runtimeData.mode  (TOU sub-mode)
     tou_mode_desc: str               # runtimeData.name
-    run_status: int                  # runtimeData.run_status  (0=Standby, 1=Chg, 2=Dis, 9=VPP)
-    run_status_desc: str             # derived: RUN_STATUS[runtimeData.mode]  (NOT run_status — different field!)
+    run_status: int                  # runtimeData.run_status  — RUN_STATUS key (0=Standby,1=Chg,2=Dis,9=VPP)
+    run_status_desc: str             # derived: RUN_STATUS[runtimeData.run_status]  (NOT runtimeData.mode — different field!)
+    # NOTE: runtimeData.mode is a programme/schedule ID (any int, e.g. 9=VPP, 29287=Ausgrid EA11 TOU).
+    # runtimeData.run_status is the RUN_STATUS key. FranklinWH naming is intentionally confusing.
 
     @property
     def run_status_dec(self) -> str:
