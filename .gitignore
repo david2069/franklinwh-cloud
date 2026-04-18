@@ -44,3 +44,5 @@ site/
 
 # Internal AI Research (Not Published)
 internal_research/
+scratch_dispatch.json
+scratch_*.json
