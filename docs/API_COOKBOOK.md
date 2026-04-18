@@ -244,6 +244,152 @@ Guarantees: `try/finally` restore, poll-loop on reconnect (30s timeout).
 
 ---
 
+## ⚙️ Operating Mode & Run Status — Field Guide
+
+> [!WARNING]
+> **FranklinWH Naming Collision.** The API payload for `runtimeData` contains **two** similarly-named
+> integer fields with completely different semantics. They are easy to conflate. Read this section
+> before writing any mode-display or VPP detection logic.
+
+### The Two Raw Fields — What They Actually Mean
+
+The raw API response (`getDeviceCompositeInfo`, cmdType 203, `result.runtimeData`) includes:
+
+| Raw API key | Python field | Semantics | Live example |
+|---|---|---|---|
+| `runtimeData.mode` | `tou_mode` (int) | **Programme/dispatch state** — which run-mode programme the gateway is executing. Maps to `RUN_STATUS`. | `9` = VPP controlled |
+| `runtimeData.run_status` | `run_status` (int) | **Operational sub-state** — what the battery hardware is physically doing right now. Also maps to `RUN_STATUS` keys, but is a separate snapshot. | `2` = Discharging |
+| `runtimeData.name` | `tou_mode_desc` (str) | **Programme label** — vendor string for the active programme. Frequently empty — always fall back to `RUN_STATUS[mode]`. | `""` or `"VPP Mode"` |
+
+> [!NOTE]
+> **Why the naming is confusing:** Both integers share the same `RUN_STATUS` value table
+> (0=Standby, 1=Charging, 2=Discharging, …, 9=VPP), but are sourced from different raw keys
+> and reflect different layers of system state. FranklinWH uses `mode` and `run_status`
+> inconsistently across their own mobile app, firmware, and docs. This library preserves both
+> fields faithfully rather than collapsing them.
+
+### RUN_STATUS Value Table
+
+```python
+from franklinwh_cloud.const import RUN_STATUS
+
+# RUN_STATUS = {
+#     0: "Standby",              # Inactive / idle — no significant charge or discharge
+#     1: "Charging",
+#     2: "Discharging",
+#     3: "Unknown 3",            # Reserved — not yet observed in the wild
+#     4: "Unknown 4",            # Reserved
+#     5: "Off-Grid Standby",     # Island mode — battery idle, no grid
+#     6: "Off-Grid Charging",    # Island mode — solar charging battery
+#     7: "Off-Grid Discharging", # Island mode — battery powering home
+#     8: "Debug Mode",           # Franklin Remote Support session active
+#     9: "VPP mode",             # Virtual Power Plant — utility/aggregator has control
+# }
+```
+
+### The Three Derived Fields on `stats.current`
+
+The library exposes three pre-computed fields from the raw values above:
+
+| Python field | Derived from | What it shows |
+|---|---|---|
+| `run_status_desc` | `RUN_STATUS[runtimeData.mode]` | Programme/dispatch state label — **what the FranklinWH app's gear icon (⊙) shows** |
+| `effective_mode` | derived | App-style primary label — `run_status_desc` when VPP active, else `work_mode_desc` |
+| `work_mode_desc` | `OPERATING_MODES[currentWorkMode]` | Base operating mode — `"Time-Of-Use"`, `"Self-Consumption"`, `"Emergency Backup"` |
+
+### VPP Mode (Virtual Power Plant)
+
+VPP mode means your gateway has been temporarily handed to a utility aggregator or demand-response
+programme. The gateway operates under external dispatch signals rather than your personal TOU schedule.
+
+**Detection:**
+
+```python
+stats = await client.get_stats()
+cur = stats.current
+
+# Primary check — runtimeData.mode == 9
+is_vpp = cur.tou_mode == 9
+
+# Or use the pre-derived desc
+is_vpp = cur.run_status_desc == "VPP mode"
+```
+
+**What the FranklinWH mobile app displays during VPP:**
+
+The app shows two lines in the status card:
+
+```
+● Discharging          ← runtimeData.run_status  →  hardware physical action
+⊙ VPP Mode            ← runtimeData.mode  →  programme state (RUN_STATUS[9])
+```
+
+The bullet-dot line is what the battery is *doing*. The gear-ring line is *what controls it*.
+
+### Recommended Display Recipe
+
+Use `effective_mode` for the single dominant label (app top-card style), and `run_status_desc`
+as the programme descriptor:
+
+```python
+stats = await client.get_stats()
+cur = stats.current
+
+# Single-label — matches what the app shows as the dominant mode
+print(f"Mode:      {cur.effective_mode}")    # "VPP mode" during VPP, else "Time-Of-Use" etc.
+print(f"Programme: {cur.run_status_desc}")   # From runtimeData.mode via RUN_STATUS
+print(f"Action:    {cur.run_status}")        # Raw int — runtimeData.run_status (hardware state)
+```
+
+To exactly reproduce the FranklinWH app's two-line display:
+
+```python
+from franklinwh_cloud.const import RUN_STATUS
+
+cur = stats.current
+
+# Line 1 (bullet ●) — what is the battery physically doing? (runtimeData.run_status)
+hardware_state = RUN_STATUS.get(cur.run_status, "Unknown")
+print(f"● {hardware_state}")                # "Discharging" | "Charging" | "Standby"
+
+# Line 2 (gear ⊙) — what programme is controlling it? (runtimeData.mode)
+print(f"⊙ {cur.run_status_desc}")           # "VPP mode" | "Discharging" | "Standby"
+```
+
+### Home Assistant / MQTT Payload
+
+```python
+from franklinwh_cloud.const import RUN_STATUS
+
+stats = await client.get_stats()
+cur = stats.current
+
+payload = {
+    # Single HA sensor for the dominant display mode
+    "effective_mode":    cur.effective_mode,
+    # → "VPP mode" | "Time-Of-Use" | "Self-Consumption" | "Emergency Backup"
+
+    # Separate sensors matching the app's two-line display
+    "programme_state":   cur.run_status_desc,               # gear icon line (runtimeData.mode)
+    "hardware_action":   RUN_STATUS.get(cur.run_status, "Unknown"),  # bullet line (runtimeData.run_status)
+
+    # Raw integers for automations / history graphs
+    "work_mode":         cur.work_mode,       # 1=TOU, 2=Self, 3=EmgBkp
+    "run_mode_int":      cur.tou_mode,        # runtimeData.mode  (9=VPP)
+    "run_status_int":    cur.run_status,      # runtimeData.run_status
+
+    # Convenience VPP flag
+    "vpp_active":        cur.tou_mode == 9,   # bool
+}
+```
+
+> [!TIP]
+> **When `runtimeData.name` is empty** (common during VPP): the library automatically falls back
+> to `RUN_STATUS[runtimeData.mode]` for both `run_status_desc` and `effective_mode`.
+> Never null-check `tou_mode_desc` yourself — just read the pre-derived fields.
+
+---
+
 ## 🏛️ Roles & Responsibilities: Integrator vs Library
 
 

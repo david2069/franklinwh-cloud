@@ -50,7 +50,7 @@ CURRENT_SCHEMA = {
     "tou_mode":                 ("mode",               "203/runtimeData",  "int",   "Mode"),
     "tou_mode_desc":            ("name",               "203/runtimeData",  "str",   "Mode"),
     "run_status":               ("run_status",         "203/runtimeData",  "int",   "Mode"),
-    "run_status_desc":          ("RUN_STATUS[mode]",   "derived",          "str",   "Mode"),  # derives from runtimeData.mode, NOT run_status
+    "run_status_desc":          ("RUN_STATUS[run_status]", "derived",      "str",   "Mode"),  # runtimeData.run_status — NOT runtimeData.mode
     "effective_mode":           ("derived",            "derived",          "str",   "Mode"),
     # Battery pack telemetry
     "apower_serial_numbers":    ("fhpSn",              "203/runtimeData",  "list",  "Battery Packs"),

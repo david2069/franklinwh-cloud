@@ -73,17 +73,27 @@ class StatsMixin:
         runtimedata_v2 = data_v2.get("runtimeData") or {}
 
         run_status = int(runtimedata_v2.get("run_status", 0) or 0)
-        # run_status_desc derives from runtimeData.mode (the programme state: VPP=9,
-        # Standby=0, Charging=1, Discharging=2, etc.) — NOT from runtimeData.run_status,
-        # which is a separate operational sub-state. FranklinWH has both fields; they
-        # carry different semantics and the naming is confusing by design.
-        _mode_val = int(runtimedata_v2.get("mode", 0) or 0)
-        run_desc = RUN_STATUS.get(_mode_val, "Unknown")
-        # effective_mode: mirrors the app's top-card mode label across ALL operating modes.
-        # When mode==9 (VPP), override work_mode_desc with the VPP label.
-        _VPP_RUN_STATUS = 9
+        run_desc = RUN_STATUS.get(run_status, "Unknown")
+
+        # effective_mode: mirrors the FranklinWH app's top-card dominant mode label.
+        #
+        # runtimeData.mode  = programme/schedule ID (any integer — NOT a RUN_STATUS key).
+        #                     VPP programme happens to use ID 9; other programmes use large
+        #                     IDs (e.g. 29287 for "Ausgrid EA11 TOU").
+        # runtimeData.name  = human-readable programme label from the cloud backend.
+        #                     May be empty (common during VPP).
+        # runtimeData.run_status = RUN_STATUS key (0=Standby, 1=Chg, 2=Dis, etc.)
+        #
+        # Priority: tou_mode_desc (name) → VPP sentinel → work_mode_desc
+        _VPP_PROGRAMME_ID = 9
+        _mode_id = int(runtimedata_v2.get("mode", 0) or 0)
         _mode_name = runtimedata_v2.get("name", "") or ""
-        effective_mode = (_mode_name or RUN_STATUS[_VPP_RUN_STATUS]) if _mode_val == _VPP_RUN_STATUS else workMode_desc
+        if _mode_name:
+            effective_mode = _mode_name                          # e.g. "Ausgrid EA11 TOU", "VPP Mode"
+        elif _mode_id == _VPP_PROGRAMME_ID:
+            effective_mode = RUN_STATUS[_VPP_PROGRAMME_ID]      # "VPP mode" — name was empty but ID confirms VPP
+        else:
+            effective_mode = workMode_desc                       # "Time-Of-Use", "Self-Consumption", etc.
         offGridFlag = solarHaveVo.get("offGridFlag", runtimedata_v2.get("offGridFlag", 0))
         offgridreason = runtimedata_v2.get("offgridreason", solarHaveVo.get("offGridReason", 0))
         offGridReason = solarHaveVo.get("offGridReason", runtimedata_v2.get("offgridreason", 0))
