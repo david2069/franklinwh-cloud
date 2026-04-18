@@ -91,8 +91,8 @@ class Current:
     device_status: int               # result.deviceStatus
     tou_mode: int                    # runtimeData.mode  (TOU sub-mode)
     tou_mode_desc: str               # runtimeData.name
-    run_status: int                  # runtimeData.run_status  (0=Normal, 1=OG-Standby, 2=OG-Chg, 3=OG-Dis)
-    run_status_desc: str             # derived from RUN_STATUS[run_status]
+    run_status: int                  # runtimeData.run_status  (0=Standby, 1=Chg, 2=Dis, 9=VPP)
+    run_status_desc: str             # derived: RUN_STATUS[runtimeData.mode]  (NOT run_status — different field!)
 
     @property
     def run_status_dec(self) -> str:
@@ -188,6 +188,12 @@ class Current:
     switch_1_state: int = 0          # runtimeData.pro_load[0]  (0=OFF, 1=ON)
     switch_2_state: int = 0          # runtimeData.pro_load[1]
     switch_3_state: int = 0          # runtimeData.pro_load[2]
+
+    # ── Effective/display mode (derived) ─────────────────────────────────────
+    # Mirrors what the FranklinWH mobile app shows as the primary mode label:
+    # - run_status==9 (VPP) → tou_mode_desc (e.g. "VPP Mode")
+    # - all other run_status → work_mode_desc (e.g. "Time-Of-Use")
+    effective_mode: str = ""         # derived in get_stats()
 
     # ── APbox / MPPT config flags ─────────────────────────────────────────────
     # Enable flags — these are NOT relays; they are firmware feature-enable booleans.

@@ -178,7 +178,7 @@ def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
         f"🔋 {cur.battery_soc:>3.0f}% {batt_dir}{abs(cur.battery_use):>5.1f}kW  "
         f"⚡ {grid_sym} {cur.grid_use:>+5.1f}kW  "
         f"🏠 {cur.home_load:>5.1f}kW  "
-        f"│ {cur.work_mode_desc}  "
+        f"│ {cur.effective_mode}  "
         f"{DIM}{poll_time_ms:.0f}ms{RESET}"
     )
 
@@ -240,7 +240,7 @@ async def run(client, *, json_output: bool = False, interval: int = 30,
                 continue
 
             # Get mode description
-            mode_desc = getattr(stats.current, 'work_mode_desc', 'Unknown')
+            mode_desc = getattr(stats.current, 'effective_mode', '') or getattr(stats.current, 'work_mode_desc', 'Unknown')
 
             # Get metrics
             metrics = client.get_metrics()
