@@ -23,6 +23,8 @@ def main():
     
     # Safe lists
     ignore_emails = ["david2069@users.noreply.github.com", "user@example.com", "user@email.com", "nobody@example.invalid", "cli@test.com", "ini@test.com", "env@test.com", "your@email.com", "john.doe@anymail.com", "installer@company.com", "[REDACTED]", "david[redacted]", "franklinwh-cloud.git@v0.3.0", "a@b.com", "nobody@doesnotexist.invalid"]
+    # Pattern: skip false-positive version strings like python@3.14, setuptools@68.0
+    version_string_regex = re.compile(r'^[a-z][a-z0-9_-]+@\d+\.\d+', re.IGNORECASE)
     ignore_dirs = [".git", "node_modules", "venv", ".pytest_cache", ".cursor", "__pycache__", "site", ".gemini", "hars", "dist", ".github", "franklinwh_cloud.egg-info", "franklinwh_cloud_client.egg-info"]
     
     found = 0
@@ -57,9 +59,13 @@ def main():
                             # Check emails
                             for match in email_regex.finditer(line):
                                 email = match.group(0).lower()
-                                if email not in ignore_emails and "example.com" not in email:
-                                    print(f"PII Leak [Email {email}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
-                                    found += 1
+                                if email in ignore_emails or "example.com" in email:
+                                    continue
+                                # Skip software version strings: python@3.14, setuptools@68.0 etc.
+                                if version_string_regex.match(email):
+                                    continue
+                                print(f"PII Leak [Email {email}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                                found += 1
                                     
                             # Check coordinates
                             if geo_lat.search(line):
