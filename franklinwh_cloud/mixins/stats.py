@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, empty_stats
+from franklinwh_cloud.models import Stats, Current, Totals, GridStatus, GridConnectionState, empty_stats, MqttCmd
 from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
 
 logger = logging.getLogger("franklinwh_cloud")
@@ -15,28 +15,36 @@ class StatsMixin:
 
     async def _status(self):
         """Send a 203 — high-level device status query."""
-        payload = self._build_payload(203, {"opt": 1, "refreshData": 1})
+        payload = self._build_payload(MqttCmd.STATUS, {"opt": 1, "refreshData": 1})  # cmdType 203
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 
     async def _switch_status(self):
         """Send a 311 — more specific switch command."""
-        payload = self._build_payload(311, {"opt": 0, "order": self.gateway})
+        payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, {"opt": 0, "order": self.gateway})  # cmdType 311
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 
     async def _switch_usage(self):
         """Send a 353 — real-time smart-circuit load information."""
-        payload = self._build_payload(353, {"opt": 0, "order": self.gateway})
+        payload = self._build_payload(MqttCmd.ACCESSORY_LOADS, {"opt": 0, "order": self.gateway})  # cmdType 353
         data = (await self._mqtt_send(payload))["result"]["dataArea"]
         return json.loads(data)
 
-    async def get_stats(self) -> Stats:
+    async def get_stats(self, *, include_electrical: bool = False) -> Stats:
         """Get current statistics for the FranklinWH gateway.
 
         This includes instantaneous measurements for current power
         (solar, battery, grid, home load) as well as totals for today
         (in local time). Returns empty_stats() if the API call fails.
+
+        Parameters
+        ----------
+        include_electrical : bool, optional
+            When True, also calls get_power_info() (cmdType 211) to populate
+            voltage, current, frequency, and extended relay fields in Current.
+            This adds one extra MQTT round-trip. Use on a slow cadence (e.g.
+            every 5th poll) rather than on every tick. Default False.
 
         Returns
         -------
@@ -45,7 +53,15 @@ class StatsMixin:
         """
         res = await self.get_device_composite_info()
         data_v2 = res.get("result")
+        
+        # Intercept empty cloud API payload glitch (HTTP 200 with result: null)
+        # to prevent 0% telemetry passthrough.
         if not data_v2:
+            last_known = getattr(self, "_last_known_stats", None)
+            if last_known:
+                logger.warning("get_stats: API payload was empty. Returning last-known-good stats with is_stale=True.")
+                last_known.is_stale = True
+                return last_known
             return empty_stats()
 
         workMode = data_v2.get("currentWorkMode", 1)
@@ -58,18 +74,66 @@ class StatsMixin:
 
         run_status = int(runtimedata_v2.get("run_status", 0) or 0)
         run_desc = RUN_STATUS.get(run_status, "Unknown")
+
+        # effective_mode: mirrors the FranklinWH app's top-card dominant mode label.
+        #
+        # runtimeData.mode  = programme/schedule ID (any integer — NOT a RUN_STATUS key).
+        #                     VPP programme happens to use ID 9; other programmes use large
+        #                     IDs (e.g. 29287 for "Ausgrid EA11 TOU").
+        # runtimeData.name  = human-readable programme label from the cloud backend.
+        #                     May be empty (common during VPP).
+        # runtimeData.run_status = RUN_STATUS key (0=Standby, 1=Chg, 2=Dis, etc.)
+        #
+        # Priority: tou_mode_desc (name) → VPP sentinel → work_mode_desc
+        _VPP_PROGRAMME_ID = 9
+        _mode_id = int(runtimedata_v2.get("mode", 0) or 0)
+        _mode_name = runtimedata_v2.get("name", "") or ""
+        if _mode_name:
+            effective_mode = _mode_name                          # e.g. "Ausgrid EA11 TOU", "VPP Mode"
+        elif _mode_id == _VPP_PROGRAMME_ID:
+            effective_mode = RUN_STATUS[_VPP_PROGRAMME_ID]      # "VPP mode" — name was empty but ID confirms VPP
+        else:
+            effective_mode = workMode_desc                       # "Time-Of-Use", "Self-Consumption", etc.
         offGridFlag = solarHaveVo.get("offGridFlag", runtimedata_v2.get("offGridFlag", 0))
         offgridreason = runtimedata_v2.get("offgridreason", solarHaveVo.get("offGridReason", 0))
         offGridReason = solarHaveVo.get("offGridReason", runtimedata_v2.get("offgridreason", 0))
-        offgridState = 1 if offGridFlag else 0
-        logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}, offgridState={offgridState}")
-        grid_status: GridStatus = GridStatus.NORMAL
-        if "offgridreason" in runtimedata_v2 or "offGridReason" in solarHaveVo:
-            reason_val = int(offgridreason) if offgridreason is not None else 0
-            if reason_val > 0:
-                grid_status = GridStatus(min(2, int(reason_val)))
-            else:
-                grid_status = GridStatus.NORMAL
+        logger.debug(f"get_stats: offGridFlag={offGridFlag}, offGridReason={offGridReason}")
+
+        # Grid connection state — four-state enum, no ambiguity.
+        # Live-confirmed encoding (2026-04-10):
+        #   main_sw[0]=1=CLOSED=connected, 0=OPEN=disconnected
+        #   offgridreason=1 during SIMULATED_OFF_GRID (set before main_sw updates — API lag)
+        #   offGridFlag=1 = firmware-authoritative actual outage
+        #
+        # Dual-gate: trigger get_grid_status() when EITHER signal is present, because the
+        # API may report offgridreason before updating main_sw (observed live 2026-04-10).
+        main_sw_early = runtimedata_v2.get("main_sw", [])
+        grid_relay_raw = main_sw_early[0] if main_sw_early else 1  # 1=CLOSED=connected default
+        offgridreason_val = offgridreason if offgridreason is not None else 0
+
+        # Grid topology — integrator sets self._not_grid_tied at Client construction from DB.
+        # No get_entrance_info() call here. Zero overhead on every poll.
+        if self._not_grid_tied:
+            grid_connection_state = GridConnectionState.NOT_GRID_TIED
+        elif bool(offGridFlag):
+            # Firmware-authoritative: grid was lost (offGridFlag set by aGate, not user)
+            grid_connection_state = GridConnectionState.OUTAGE
+        elif grid_relay_raw == 0 or offgridreason_val:
+            # Dual-gate: relay OPEN OR offgridreason set (handles API reporting lag where
+            # offgridreason=1 arrives before main_sw updates — confirmed live 2026-04-10)
+            try:
+                gs = await self.get_grid_status()
+                gs_result = gs.get("result", gs) if isinstance(gs, dict) else {}
+                if gs_result.get("offgridState", 0) == 1:
+                    grid_connection_state = GridConnectionState.SIMULATED_OFF_GRID
+                else:
+                    # Relay open but not user-simulated — treat as outage
+                    grid_connection_state = GridConnectionState.OUTAGE
+            except Exception as e:
+                logger.warning(f"get_stats: get_grid_status() failed during gate check: {e}")
+                grid_connection_state = GridConnectionState.OUTAGE  # safe fallback
+        else:
+            grid_connection_state = GridConnectionState.CONNECTED
 
         v2lModeEnable = runtimedata_v2.get("v2lModeEnable", 0) or 0
         v2lRunState = runtimedata_v2.get("v2lRunState", 0) or 0
@@ -80,12 +144,7 @@ class StatsMixin:
             sw_data = await self._switch_usage()
         else:
             sw_data = None
-        if (v2lRunState or 0) >= 1 or (genEnable or 0) >= 1:
-            power_info = await self.get_power_info()
-        else:
-            power_info = None
 
-        unreadMsgCount = 0
         alarmsCount = 0
 
         if not sw_data:
@@ -95,26 +154,96 @@ class StatsMixin:
         sw2_pwr = sw_data.get("SW2ExpPower", 0.0)
         car_sw_pwr = sw_data.get("CarSWPower", 0.0)
 
-        if not power_info:
-            power_info = {}
+        # Primary relays — always from runtimeData.main_sw[]
+        # FW convention: main_sw is [Grid, Generator, Solar/load]
+        # get_power_info() (cmdType 211) is NOT called here — it duplicates these fields
+        # under different names and adds unnecessary MQTT overhead on every poll.
+        # Call get_power_info() explicitly when electrical metrics or extended relays
+        # (gridRelay2, blackStartRelay, pvRelay2, BFPVApboxRelay) are required.
+        main_sw = runtimedata_v2.get("main_sw", [])
+        grid_relay1  = main_sw[0] if len(main_sw) > 0 else 0
+        oil_relay    = main_sw[1] if len(main_sw) > 1 else 0
+        solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
 
-        grid_relay1 = power_info.get("gridRelayStat", 0)
-        oil_relay = power_info.get("oilRelayStat", 0)
-        solar_relay1 = power_info.get("solarRelayStat", 0)
-        grid_relay2 = power_info.get("gridRelay2", 0)
-        black_start_relay = power_info.get("blackStartRelay", 0)
-        pv_relay2 = power_info.get("pvRelay2", 0)
-        bfpv_apbox_relay = power_info.get("BFPVApboxRelay", 0)
-        grid_vol1 = power_info.get("gridVol1", 0.0)
-        grid_vol2 = power_info.get("gridVol2", 0.0)
-        grid_cur1 = power_info.get("gridCur1", 0.0)
-        grid_cur2 = power_info.get("gridCur2", 0.0)
-        grid_freq = power_info.get("gridFreq", 0.0)
-        grid_set_freq = power_info.get("gridSetFreq", 0.0)
-        grid_line_vol = power_info.get("gridLineVol", 0.0)
-        gen_vol = power_info.get("genVol", 0.0)
+        # ── 211 electrical fields — sticky via _last_electrical cache ────────────
+        # On fast polls (include_electrical=False) these vars are pre-loaded from
+        # the last successful get_power_info() result so FHAI never sees stale zeros
+        # overwriting its own cached values. Cache is updated on every successful
+        # include_electrical=True poll.
+        _ec = getattr(self, "_last_electrical", {})
+        grid_relay2       = _ec.get("grid_relay2", 0)
+        black_start_relay = _ec.get("black_start_relay", 0)
+        pv_relay2         = _ec.get("pv_relay2", 0)
+        bfpv_apbox_relay  = _ec.get("bfpv_apbox_relay", 0)
+        grid_vol1         = _ec.get("grid_vol1", 0.0)
+        grid_vol2         = _ec.get("grid_vol2", 0.0)
+        grid_cur1         = _ec.get("grid_cur1", 0.0)
+        grid_cur2         = _ec.get("grid_cur2", 0.0)
+        grid_freq         = _ec.get("grid_freq", 0.0)
+        grid_set_freq     = _ec.get("grid_set_freq", 0.0)
+        grid_line_vol     = _ec.get("grid_line_vol", 0.0)
+        gen_vol           = _ec.get("gen_vol", 0.0)
+        load_relay1       = _ec.get("load_relay1", 0)
+        load_relay2       = _ec.get("load_relay2", 0)
+        v2l_relay         = _ec.get("v2l_relay", 0)
+        load_solar_relay1 = _ec.get("load_solar_relay1", 0)
+        load_solar_relay2 = _ec.get("load_solar_relay2", 0)
+        load_current1     = _ec.get("load_current1", 0.0)
+        load_current2     = _ec.get("load_current2", 0.0)
+        dsp_run_status    = _ec.get("dsp_run_status", 0)
+        ibg_run_status    = _ec.get("ibg_run_status", 0)
+        electricity_type  = _ec.get("electricity_type", 0)
 
-        return Stats(
+        if include_electrical:
+            try:
+                pi = await self.get_power_info()
+                # gridLineVol is a raw integer in tenths of a volt (e.g. 2440 = 244.0V)
+                raw_line = pi.get("gridLineVol", 0)
+                grid_line_vol = round(float(raw_line) / 10, 1) if raw_line else 0.0
+                grid_vol1      = float(pi.get("gridVol1", 0.0) or 0.0)
+                grid_vol2      = float(pi.get("gridVol2", 0.0) or 0.0)
+                grid_cur1      = float(pi.get("gridCurr1", 0.0) or 0.0)
+                grid_cur2      = float(pi.get("gridCurr2", 0.0) or 0.0)
+                grid_freq      = float(pi.get("gridFreq", 0.0) or 0.0)
+                grid_set_freq  = float(pi.get("dspSetFreq", 0.0) or 0.0)
+                gen_vol        = float(pi.get("genVoltage", 0.0) or 0.0)
+                # Extended relays — raw firmware values (1=OPEN, 0=CLOSED)
+                grid_relay2       = int(pi.get("gridRelay2", 0) or 0)
+                black_start_relay = int(pi.get("blackStartRelay", 0) or 0)
+                pv_relay2         = int(pi.get("pvRelay2", 0) or 0)
+                bfpv_apbox_relay  = int(pi.get("BFPVApboxRelay", 0) or 0)
+                # Load & V2L relays (APBox / smart circuit contactors)
+                load_relay1       = int(pi.get("loadRelay1Stat", 0) or 0)
+                load_relay2       = int(pi.get("loadRelay2Stat", 0) or 0)
+                v2l_relay         = int(pi.get("evRelayStat", 0) or 0)
+                load_solar_relay1 = int(pi.get("loadSolarRelay1Stat", 0) or 0)
+                load_solar_relay2 = int(pi.get("loadSolarRelay2Stat", 0) or 0)
+                # Power measurements
+                load_current1     = float(pi.get("loadCurr1", 0.0) or 0.0)
+                load_current2     = float(pi.get("loadCurr2", 0.0) or 0.0)
+                dsp_run_status    = int(pi.get("dspRunStatus", 0) or 0)
+                ibg_run_status    = int(pi.get("ibgRunStatus", 0) or 0)
+                electricity_type  = int(pi.get("electricity_type", 0) or 0)
+                # Update sticky cache with fresh values
+                self._last_electrical = {
+                    "grid_relay2": grid_relay2, "black_start_relay": black_start_relay,
+                    "pv_relay2": pv_relay2, "bfpv_apbox_relay": bfpv_apbox_relay,
+                    "grid_vol1": grid_vol1, "grid_vol2": grid_vol2,
+                    "grid_cur1": grid_cur1, "grid_cur2": grid_cur2,
+                    "grid_freq": grid_freq, "grid_set_freq": grid_set_freq,
+                    "grid_line_vol": grid_line_vol, "gen_vol": gen_vol,
+                    "load_relay1": load_relay1, "load_relay2": load_relay2,
+                    "v2l_relay": v2l_relay,
+                    "load_solar_relay1": load_solar_relay1, "load_solar_relay2": load_solar_relay2,
+                    "load_current1": load_current1, "load_current2": load_current2,
+                    "dsp_run_status": dsp_run_status, "ibg_run_status": ibg_run_status,
+                    "electricity_type": electricity_type,
+                }
+                logger.debug("get_stats: 211 electrical cache updated")
+            except Exception as e:
+                logger.warning(f"get_stats: get_power_info() failed, using last-known-good 211 values: {e}")
+
+        stats_obj = Stats(
             Current(
                 runtimedata_v2.get("p_sun", 0.0),
                 runtimedata_v2.get("p_gen", 0.0),
@@ -123,7 +252,7 @@ class StatsMixin:
                 runtimedata_v2.get("p_load", 0.0),
                 runtimedata_v2.get("soc", 0.0),
                 sw1_pwr, sw2_pwr, car_sw_pwr,
-                grid_status,
+                grid_connection_state,
                 workMode,
                 workMode_desc,
                 data_v2.get("deviceStatus", 0),
@@ -169,6 +298,33 @@ class StatsMixin:
                 grid_freq, grid_set_freq,
                 grid_line_vol,
                 gen_vol,
+                switch_1_state=smart_circuits[0] if len(smart_circuits) > 0 else 0,
+                switch_2_state=smart_circuits[1] if len(smart_circuits) > 1 else 0,
+                switch_3_state=smart_circuits[2] if len(smart_circuits) > 2 else 0,
+                effective_mode=effective_mode,
+                # APBox / MPPT config flags
+                mppt_en_flag=bool(runtimedata_v2.get("mpptEnFlag", False)),
+                mppt_export_en=int(runtimedata_v2.get("mpptExportEn", 0) or 0),
+                install_pv1_port=int(runtimedata_v2.get("installPv1Port", 0) or 0),
+                install_pv2_port=int(runtimedata_v2.get("installPv2Port", 0) or 0),
+                remote_solar_mode=int(solarHaveVo.get("remoteSolarMode", 0) or 0),
+                # Hardware install config (static site topology)
+                pv_split_ct_en=int(runtimedata_v2.get("pvSplitCtEn", 0) or 0),
+                grid_split_ct_en=int(runtimedata_v2.get("gridSplitCtEn", 0) or 0),
+                install_proximal_solar=int(runtimedata_v2.get("installProximalsolar", 0) or 0),
+                is_three_phase_install=int(runtimedata_v2.get("isThreePhaseInstall", 0) or 0),
+                # Load & V2L relays (only populated when include_electrical=True)
+                load_relay1=locals().get("load_relay1", 0),
+                load_relay2=locals().get("load_relay2", 0),
+                v2l_relay=locals().get("v2l_relay", 0),
+                load_solar_relay1=locals().get("load_solar_relay1", 0),
+                load_solar_relay2=locals().get("load_solar_relay2", 0),
+                # Power measurements (only populated when include_electrical=True)
+                load_current1=locals().get("load_current1", 0.0),
+                load_current2=locals().get("load_current2", 0.0),
+                dsp_run_status=locals().get("dsp_run_status", 0),
+                ibg_run_status=locals().get("ibg_run_status", 0),
+                electricity_type=locals().get("electricity_type", 0),
             ),
             Totals(
                 runtimedata_v2.get("kwh_fhp_chg", 0.0),
@@ -190,6 +346,9 @@ class StatsMixin:
                 runtimedata_v2.get("mpanPv2Wh", 0.0),
             ),
         )
+
+        self._last_known_stats = stats_obj
+        return stats_obj
 
     async def get_runtime_data(self):
         """Get runtime data — similar to getDeviceCompositeInfo with extra relays.
@@ -221,7 +380,7 @@ class StatsMixin:
         dict
             Power details for the specified day
         """
-        url = self.url_base + "hes-gateway/api-energy/power/getFhpPowerByDay"
+        url = self.url_base + "api-energy/power/getFhpPowerByDay"
         params = {"gatewayId": self.gateway, "dayTime": f"{dayTime}"}
         data = await self._get(url, params=params)
         return data.get("result", data)
@@ -236,7 +395,7 @@ class StatsMixin:
         timeperiod : str
             Target date of the date range
         """
-        url = self.url_base + "hes-gateway/api-energy/electic/getFhpPowerData"
+        url = self.url_base + "api-energy/electric/getFhpElectricData"
         params = {"gatewayId": self.gateway, "type": type, "dayTime": f"{timeperiod}"}
         data = await self._get(url, params=params)
         return data.get("result", data)

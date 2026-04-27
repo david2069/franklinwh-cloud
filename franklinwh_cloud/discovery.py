@@ -235,6 +235,10 @@ class ElectricalInfo:
     soc: float = 0.0
     tou_status: int = 0              # TOU backend status (0 = ok)
     tou_dispatch_count: int = 0      # Number of active dispatches
+    # From getGatewayTouListV2 showType=1 — only supported modes returned
+    # Each entry: {id, name, workMode, soc, minSoc, maxSoc, editSocFlag,
+    #   socExceedTimerEndTime, complianceSoc, delayMinutes, energyIncentivesType}
+    supported_modes: List[dict] = field(default_factory=list)
 
 
 @dataclass

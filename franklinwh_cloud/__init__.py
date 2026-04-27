@@ -1,11 +1,11 @@
 """Helpers for interating with the FranklinWH Python Client Library"""
 
-__version__ = "0.4.6"
+__version__ = "0.4.7"
 
 from .client import Client
 from .wrapper import FranklinWHCloud
 from .auth import BaseAuth, PasswordAuth, TokenAuth, TokenFetcher
-from .models import Stats, Current, Totals, GridStatus, empty_stats
+from .models import Stats, Current, Totals, GridStatus, GridConnectionState, empty_stats
 from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
@@ -20,6 +20,10 @@ from .const import MODE_MAP, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_EMERG
 from .const import PCS_CONTROL, EMERGENCY_BACKUP_PERIODS
 # TOU Schedule dispatch codes and wave types (tariffs)
 from .const import dispatchCodeType, DISPATCH_CODES, WaveType, WAVE_TYPES
+
+# Method-level TTL cache — import DEFAULT_CACHE to enable recommended rate controls
+from .cache import DEFAULT_CACHE, MethodCache
+
 # NOTE: TOU Schedule presets (primarily for testing / examples)
 from .const.test_fixtures import (
     gap_schedule, export_to_grid_always, export_to_grid_peak2, 
@@ -38,6 +42,7 @@ __all__ = [
     "DeviceTimeoutException",
     "GatewayOfflineException",
     "GridStatus",
+    "GridConnectionState",
     "InvalidCredentialsException",
     "InvalidOperatingMode",
     "InvalidOperatingModeOption",
@@ -51,5 +56,7 @@ __all__ = [
     "UauthorizedRequest",
     "FranklinWHCloud",
     "empty_stats",
+    "DEFAULT_CACHE",
+    "MethodCache",
 ]
 

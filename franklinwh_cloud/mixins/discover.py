@@ -245,24 +245,37 @@ class DiscoverMixin:
             solar_vo = result.get("solarHaveVo", {}) if result else {}
             runtime = result.get("runtimeData", {}) if result else {}
 
+            # Install flags live in runtimeData; solarHaveVo is a fallback for older firmware
+            def _install(key, default="0"):
+                """Read install flag from runtimeData first, then solarHaveVo."""
+                return runtime.get(key, solar_vo.get(key, default))
+
+            if result:
+                pv1 = str(_install("installPv1Port")) == "1"
+                pv2 = str(_install("installPv2Port")) == "1"
+                proximal = str(_install("installProximalsolar")) == "1"
+                snap.flags.three_phase = str(_install("isThreePhaseInstall")) == "1"
+                snap.flags.ct_split_grid = bool(int(_install("gridSplitCtEn", 0) or 0))
+                snap.flags.ct_split_pv = bool(int(_install("pvSplitCtEn", 0) or 0))
+
             if solar_vo:
-                pv1 = str(solar_vo.get("installPv1Port", "0")) == "1"
-                pv2 = str(solar_vo.get("installPv2Port", "0")) == "1"
-                snap.flags.three_phase = str(solar_vo.get("isThreePhaseInstall", "0")) == "1"
-                snap.flags.ct_split_grid = bool(int(solar_vo.get("gridSplitCtEn", 0) or 0))
-                snap.flags.ct_split_pv = bool(int(solar_vo.get("pvSplitCtEn", 0) or 0))
                 snap.flags.remote_solar = bool(int(solar_vo.get("remoteSolarEn", 0) or 0))
                 if not snap.flags.mppt_enabled:
-                    snap.flags.mppt_enabled = str(solar_vo.get("mpptEnFlag", "0")) == "1"
-                # Solar detail string
-                if pv1 and pv2:
-                    snap.flags.solar_detail = "PV1 + PV2"
-                elif pv1:
-                    snap.flags.solar_detail = "PV1 only"
-                elif pv2:
-                    snap.flags.solar_detail = "PV2 only"
+                    snap.flags.mppt_enabled = str(_install("mpptEnFlag", "0")) == "1"
+
+                # Solar detail string — combine DC ports with AC-coupled proximal
+                detail_parts = []
+                if pv1:
+                    detail_parts.append("PV1")
+                if pv2:
+                    detail_parts.append("PV2")
+                if proximal:
+                    detail_parts.append("Proximal (AC-coupled)")
+                if detail_parts:
+                    snap.flags.solar_detail = " + ".join(detail_parts)
                 elif snap.flags.solar:
                     snap.flags.solar_detail = "Configured"
+
                 # Off-grid from composite
                 off_flag = solar_vo.get("offGridFlag", runtime.get("offGridFlag", 0))
                 if off_flag:
@@ -283,18 +296,18 @@ class DiscoverMixin:
                 snap.electrical.run_status_name = RUN_STATUS.get(run_st, f"Unknown ({run_st})")
                 snap.electrical.device_status = dev_st
                 snap.electrical.soc = runtime.get("soc", 0)
-                # Grid electrical
+                # Grid electrical (these fields don't exist in runtimeData — placeholder for 211 data)
                 snap.electrical.v_l1 = runtime.get("gridV1", runtime.get("v_l1"))
                 snap.electrical.v_l2 = runtime.get("gridV2", runtime.get("v_l2"))
                 snap.electrical.i_l1 = runtime.get("gridA1", runtime.get("i_l1"))
                 snap.electrical.i_l2 = runtime.get("gridA2", runtime.get("i_l2"))
                 snap.electrical.frequency = runtime.get("gridFreq", runtime.get("frequency"))
-                # Relays — main_sw: [Grid 1, Generator, Solar PV 1]
+                # Relays — main_sw: [Grid 1, Generator, Solar PV 1] — encoding: 1=OPEN, 0=CLOSED
                 main_sw = runtime.get("main_sw", [])
                 relay_names = ["grid_1", "generator", "solar_pv_1"]
                 for i in range(len(relay_names)):
                     val = main_sw[i] if i < len(main_sw) else 0
-                    snap.electrical.relays[relay_names[i]] = bool(val)
+                    snap.electrical.relays[relay_names[i]] = not bool(val)  # 1=OPEN → store False
                 # aPBox digital I/O
                 di = runtime.get("di")
                 do_st = runtime.get("doStatus")
@@ -335,6 +348,93 @@ class DiscoverMixin:
                     snap.grid.connected = False
         except Exception as e:
             logger.warning(f"discover: get_grid_status failed: {e}")
+
+        # 7. Grid profile (Tier 1) — so Active Profile is populated before region quirks render
+        try:
+            gp = await self.get_grid_profile_info()
+            if isinstance(gp, dict):
+                profiles = gp.get("list", [])
+                current_id = gp.get("currentId", 0)
+                for p in profiles:
+                    if p.get("id") == current_id:
+                        snap.site.grid_profile = p.get("name", "")
+                        break
+        except Exception as e:
+            logger.warning(f"discover: get_grid_profile_info (Tier 1) failed: {e}")
+
+        # 8. Site info — siteId + siteName (gateway_name already set from get_equipment_location)
+        try:
+            site_data = await self.get_site_and_device_info()
+            sites = site_data.get("result", []) if isinstance(site_data, dict) else []
+            if sites:
+                site = sites[0]
+                snap.site.site_id = site.get("siteId", 0)
+                snap.site.site_name = site.get("siteName", "")
+                # gateway_name from nested device list (fallback if equipment_location failed)
+                devices = site.get("basicDeviceInfoVOList", [])
+                if devices and not snap.site.gateway_name:
+                    snap.site.gateway_name = devices[0].get("gatewayName", "")
+        except Exception as e:
+            logger.warning(f"discover: get_site_and_device_info (Tier 1) failed: {e}")
+
+        # 9. Smart circuit detection — direct probe avoids get_accessories() failures
+        try:
+            sc_info = await self.get_smart_circuits_info()
+            # SC is present if the response is a dict containing the Sw1Name key
+            if isinstance(sc_info, dict) and "Sw1Name" in sc_info:
+                snap.accessories.has_smart_circuits = True
+                sw_merged = sc_info.get("SwMerge", 0) == 1
+                if sw_merged:
+                    names = [
+                        (sc_info.get("Sw1Name", "") or "").strip(),
+                        (sc_info.get("Sw3Name", "") or "").strip(),
+                    ]
+                    modes = [
+                        SMART_CIRCUIT_MODE.get(sc_info.get("Sw1Mode", 0), str(sc_info.get("Sw1Mode", 0))),
+                        SMART_CIRCUIT_MODE.get(sc_info.get("Sw3Mode", 0), str(sc_info.get("Sw3Mode", 0))),
+                    ]
+                    count = 2
+                else:
+                    names = []
+                    modes = []
+                    for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
+                        name = sc_info.get(key, "") or ""
+                        names.append(name.strip())
+                        m = sc_info.get(mode_key, 0)
+                        modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
+                    count = 2  # default AU/US-V1; Tier 2 accessories may refine
+                    for acc_id, acc_info in catalog.get("accessories", {}).items():
+                        if (acc_info.get("type") == "smart_circuits"
+                                and acc_info.get("country_id") == snap.site.country_id):
+                            count = acc_info.get("circuit_count", 2)
+                            break
+                    names = names[:count]
+                    modes = modes[:count]
+                sc_version = 2 if snap.agate.generation == 2 else 1
+                snap.accessories.smart_circuits = SmartCircuitConfig(
+                    count=count,
+                    version=sc_version,
+                    merged=sw_merged,
+                    names=names,
+                    modes=modes,
+                    v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
+                    v2l_enabled=snap.flags.v2l_enabled,
+                )
+        except Exception as e:
+            logger.warning(f"discover: get_smart_circuits_info (Tier 1) failed: {e}")
+
+        # 10. Supported operating modes from getGatewayTouListV2 showType=1
+        # Only supported modes are returned; AU devices typically only show TOU.
+        # Also captures: socExceedTimerEndTime, complianceSoc, delayMinutes (new v2.0.0 fields)
+        try:
+            tou = await self.get_gateway_tou_list()
+            result = tou.get("result", {}) if isinstance(tou, dict) else {}
+            if result:
+                snap.electrical.supported_modes = result.get("list", [])
+                snap.electrical.tou_status = result.get("status", 0)
+                snap.electrical.tou_dispatch_count = len(result.get("dispatchList", []))
+        except Exception as e:
+            logger.warning(f"discover: get_gateway_tou_list (Tier 1 modes) failed: {e}")
 
     # ── Tier 2 ────────────────────────────────────────────────────
 
@@ -404,35 +504,58 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_accessories failed: {e}")
 
-        # 8. Smart circuits detail
-        if snap.accessories.has_smart_circuits:
+        # 8. Smart circuits detail — skip if already populated from Tier 1 probe
+        if snap.accessories.has_smart_circuits and snap.accessories.smart_circuits is None:
             try:
                 sc_info = await self.get_smart_circuits_info()
                 if isinstance(sc_info, dict):
-                    names = []
-                    modes = []
-                    for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
-                        name = sc_info.get(key, "") or ""
-                        names.append(name.strip() if name else "")
-                        m = sc_info.get(mode_key, 0)
-                        modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
+                    sw_merged = sc_info.get("SwMerge", 0) == 1
+
+                    if sw_merged:
+                        # US V2 V2L merge topology: physical SC1+SC2 → logical SC1 (240V),
+                        # physical SC3 → logical SC2. The firmware always returns all 3 Sw
+                        # slots; only Sw1 and Sw3 are meaningful to consumers when merged.
+                        # We preserve user-set names (Sw1Name, Sw3Name) — renaming is not
+                        # supported and would discard user intent. The merged=True flag on
+                        # SmartCircuitConfig signals to consumers that circuit[0] is the
+                        # merged 240V pair and circuit[1] is the standalone circuit.
+                        names = [
+                            (sc_info.get("Sw1Name", "") or "").strip(),
+                            (sc_info.get("Sw3Name", "") or "").strip(),
+                        ]
+                        modes = [
+                            SMART_CIRCUIT_MODE.get(sc_info.get("Sw1Mode", 0), str(sc_info.get("Sw1Mode", 0))),
+                            SMART_CIRCUIT_MODE.get(sc_info.get("Sw3Mode", 0), str(sc_info.get("Sw3Mode", 0))),
+                        ]
+                        count = 2  # logical — always 2 when merged regardless of hw
+                    else:
+                        # Standard topology: Sw1, Sw2, [Sw3] — firmware always returns all
+                        # 3 slots; trim to actual hardware circuit count from catalog.
+                        names = []
+                        modes = []
+                        for key, mode_key in [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode"), ("Sw3Name", "Sw3Mode")]:
+                            name = sc_info.get(key, "") or ""
+                            names.append(name.strip() if name else "")
+                            m = sc_info.get(mode_key, 0)
+                            modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
+                        # Determine hardware circuit count from catalog
+                        # AU SC (302) = 2 circuits, US V1 SC (202) = 2, US V2 SC (204) = 3
+                        count = 2  # default
+                        for acc_id, acc_info in catalog.get("accessories", {}).items():
+                            if (acc_info.get("type") == "smart_circuits"
+                                    and acc_info.get("country_id") == snap.site.country_id):
+                                count = acc_info.get("circuit_count", 2)
+                                break
+                        # Trim to actual hardware count (firmware always returns 3 slots)
+                        names = names[:count]
+                        modes = modes[:count]
+
                     # Determine SC version from aGate generation
                     sc_version = 2 if snap.agate.generation == 2 else 1
-                    # Determine circuit count from catalog (hardware truth)
-                    # AU SC (302) = 2 circuits, US V1 SC (202) = 2, US V2 SC (204) = 3
-                    count = 2  # default
-                    for acc_id, acc_info in catalog.get("accessories", {}).items():
-                        if (acc_info.get("type") == "smart_circuits"
-                                and acc_info.get("country_id") == snap.site.country_id):
-                            count = acc_info.get("circuit_count", 2)
-                            break
-                    # Trim arrays to actual circuit count
-                    names = names[:count]
-                    modes = modes[:count]
                     snap.accessories.smart_circuits = SmartCircuitConfig(
                         count=count,
                         version=sc_version,
-                        merged=sc_info.get("SwMerge", 0) == 1,
+                        merged=sw_merged,
                         names=names,
                         modes=modes,
                         v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
@@ -441,16 +564,18 @@ class DiscoverMixin:
             except Exception as e:
                 logger.warning(f"discover: get_smart_circuits_info failed: {e}")
 
-        # 9. Grid profile
+
+        # 9. Grid profile — now fetched in Tier 1; skip if already populated
         try:
-            gp = await self.get_grid_profile_info()
-            if isinstance(gp, dict):
-                profiles = gp.get("list", [])
-                current_id = gp.get("currentId", 0)
-                for p in profiles:
-                    if p.get("id") == current_id:
-                        snap.site.grid_profile = p.get("name", "")
-                        break
+            if not snap.site.grid_profile:
+                gp = await self.get_grid_profile_info()
+                if isinstance(gp, dict):
+                    profiles = gp.get("list", [])
+                    current_id = gp.get("currentId", 0)
+                    for p in profiles:
+                        if p.get("id") == current_id:
+                            snap.site.grid_profile = p.get("name", "")
+                            break
         except Exception as e:
             logger.warning(f"discover: get_grid_profile_info failed: {e}")
 
@@ -490,18 +615,29 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_warranty_info failed: {e}")
 
-        # 12. Extended relays from get_stats (powerInfo)
+        # 12. Extended relays from get_stats(include_electrical=True)
         try:
-            stats = await self.get_stats()
-            if hasattr(stats, 'grid_relay2'):
-                snap.electrical.relays["grid_2"] = bool(stats.grid_relay2)
-                snap.electrical.relays["black_start"] = bool(stats.black_start_relay)
-                snap.electrical.relays["solar_pv_2"] = bool(stats.pv_relay2)
-                snap.electrical.relays["apbox"] = bool(stats.bfpv_apbox_relay)
+            stats = await self.get_stats(include_electrical=True)
+            if hasattr(stats.current, 'grid_relay2'):
+                snap.electrical.relays["grid_2"] = not bool(stats.current.grid_relay2)
+                snap.electrical.relays["black_start"] = not bool(stats.current.black_start_relay)
+                snap.electrical.relays["solar_pv_2"] = not bool(stats.current.pv_relay2)
+                snap.electrical.relays["apbox"] = not bool(stats.current.bfpv_apbox_relay)
+                # Also populate electrical measurements from the fresh 211 poll
+                if stats.current.grid_voltage1:
+                    snap.electrical.v_l1 = stats.current.grid_voltage1
+                if stats.current.grid_voltage2:
+                    snap.electrical.v_l2 = stats.current.grid_voltage2
+                if stats.current.grid_current1:
+                    snap.electrical.i_l1 = stats.current.grid_current1
+                if stats.current.grid_current2:
+                    snap.electrical.i_l2 = stats.current.grid_current2
+                if stats.current.grid_frequency:
+                    snap.electrical.frequency = stats.current.grid_frequency
         except Exception as e:
-            logger.warning(f"discover: get_stats (extended relays) failed: {e}")
+            logger.warning(f"discover: get_stats (extended relays/electrical) failed: {e}")
 
-        # 13. TOU dispatch status — flags backend issues
+        # 13. TOU dispatch status — skip supported_modes if already fetched in Tier 1
         try:
             tou = await self.get_gateway_tou_list()
             result = tou.get("result", {}) if isinstance(tou, dict) else {}
@@ -509,6 +645,8 @@ class DiscoverMixin:
                 snap.electrical.tou_status = result.get("status", 0)
                 dispatch = result.get("dispatchList", [])
                 snap.electrical.tou_dispatch_count = len(dispatch)
+                if not snap.electrical.supported_modes:
+                    snap.electrical.supported_modes = result.get("list", [])
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list (Tier 2) failed: {e}")
 
@@ -561,16 +699,17 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_agate_info failed: {e}")
 
-        # 13. Site and device info
+        # 13. Site and device info — skip if already populated from Tier 1
         try:
-            site_data = await self.get_site_and_device_info()
-            sites = site_data.get("result", []) if isinstance(site_data, dict) else []
-            if sites:
-                site = sites[0]
-                snap.site.site_id = site.get("siteId", 0)
-                snap.site.site_name = site.get("siteName", "")
-                if not snap.site.address:
-                    snap.site.address = site.get("completeAddress", "")
+            if not snap.site.site_id:
+                site_data = await self.get_site_and_device_info()
+                sites = site_data.get("result", []) if isinstance(site_data, dict) else []
+                if sites:
+                    site = sites[0]
+                    snap.site.site_id = site.get("siteId", 0)
+                    snap.site.site_name = site.get("siteName", "")
+                    if not snap.site.address:
+                        snap.site.address = site.get("completeAddress", "")
         except Exception as e:
             logger.warning(f"discover: get_site_and_device_info failed: {e}")
 

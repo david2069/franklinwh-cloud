@@ -1,0 +1,53 @@
+═══════════════════════════════════════════════════════════
+ TEST RESULTS — DEF-BMS-STATE-SWAP
+ Date:    2026-04-10 13:42:49 AEST
+ Branch:  feat/openapi-stubs
+ Commit:  9484d71 (pre-commit)
+ Result:  PARTIAL ⚠️
+═══════════════════════════════════════════════════════════
+
+........................................................................ [ 20%]
+........................................................................ [ 40%]
+........................................................................ [ 60%]
+..........................................F...F............F............ [ 80%]
+.......................................................................  [100%]
+=================================== FAILURES ===================================
+_________________________ TestRedactEmail.test_partial _________________________
+tests/test_support.py:24: in test_partial
+    assert _redact_email("[REDACTED]@gmail.com", "partial") == "d***@g***.com"
+E   AssertionError: assert '[***@g***.com' == 'd***@g***.com'
+E     
+E     - d***@g***.com
+E     ? ^
+E     + [***@g***.com
+E     ? ^
+________________________ TestRedactSerial.test_partial _________________________
+tests/test_support.py:38: in test_partial
+    assert _redact_serial("10060006AXXXXXXXXX", "partial") == "1006***0091"
+E   AssertionError: assert '1006***XXXX' == '1006***0091'
+E     
+E     - 1006***0091
+E     + 1006***XXXX
+_______________ TestRedactSnapshot.test_partial_redacts_identity _______________
+tests/test_support.py:101: in test_partial_redacts_identity
+    assert result["identity"]["serial"] == "1006***0091"
+E   AssertionError: assert '1006***XXXX' == '1006***0091'
+E     
+E     - 1006***0091
+E     + 1006***XXXX
+=============================== warnings summary ===============================
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
+  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_support.py::TestRedactEmail::test_partial - AssertionError:...
+FAILED tests/test_support.py::TestRedactSerial::test_partial - AssertionError...
+FAILED tests/test_support.py::TestRedactSnapshot::test_partial_redacts_identity
+3 failed, 356 passed, 38 deselected, 2 warnings in 4.49s
+
+═══════════════════════════════════════════════════════════
+ Summary: 3 failed, 356 passed, 38 deselected, 2 warnings in 4.49s
+═══════════════════════════════════════════════════════════

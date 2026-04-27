@@ -245,21 +245,29 @@ class AccountMixin:
         data = await self._get(url, params=params)
         return data["result"]
 
-    async def get_grid_profile_info(self, requestType=1):
+    async def get_grid_profile_info(self, requestType=1, systemId=None):
         """Get utility grid compliance information.
 
         Parameters
         ----------
         requestType : int
             1 = Compliance list, 2 = Active compliance details
+        systemId : int, optional
+            The ID of the compliance profile to fetch details for.
+            If requestType=2 and systemId is not provided, the active profile's currentId is used.
         """
-        match requestType:
+        match int(requestType):
             case 1:
                 url = self.url_base + "hes-gateway/terminal/newCompliance/getComplianceNameList"
                 params = {"gatewayId": self.gateway}
             case 2:
+                if systemId is None:
+                    # Fetch the active profile to get its ID
+                    list_data = await self.get_grid_profile_info(requestType=1)
+                    systemId = list_data.get("currentId", 0)
+
                 url = self.url_base + "hes-gateway/terminal/newCompliance/getComplianceDetailById"
-                params = {"gatewayId": self.gateway, "systemId": 0}
+                params = {"gatewayId": self.gateway, "systemId": systemId}
 
         try:
             data = await self._get(url, params=params)

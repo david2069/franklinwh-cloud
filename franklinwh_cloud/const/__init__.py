@@ -61,7 +61,9 @@ from .states import (
     GENERATOR_STATE,
     V2L_RUN_STATE,
     PCS_STATE,
-    BMS_STATE
+    BMS_STATE,
+    BMS_WORK_OFFSET,
+    DCDC_STATE
 )
 
 # Test fixtures - re-exported for backward compatibility (used by cli.py)
@@ -97,6 +99,7 @@ __all__ = [
     # States
     "APBOX_IO_STATE", "SMART_CIRCUIT_RELAY", "SMART_CIRCUIT_MODE",
     "GENERATOR_STATE", "V2L_RUN_STATE", "PCS_STATE", "BMS_STATE",
+    "BMS_WORK_OFFSET", "DCDC_STATE",
     # Test fixtures (exported for cli.py)
     "tou_predefined_builtin",
     "gap_schedule", "export_to_grid_always", "export_to_grid_peak2",

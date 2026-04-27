@@ -1,0 +1,70 @@
+═══════════════════════════════════════════════════════════
+ TEST RESULTS — FEAT-TTL-CACHE
+ Date:    2026-04-06 00:56:20 AEST
+ Branch:  feat/openapi-stubs
+ Commit:  c41c614 (pre-commit)
+ Result:  PARTIAL ⚠️
+═══════════════════════════════════════════════════════════
+
+........................................................................ [ 20%]
+........................................................................ [ 40%]
+.....................................F.................................. [ 60%]
+.........................................F...F............F............. [ 80%]
+....................................................................F.   [100%]
+=================================== FAILURES ===================================
+________________ TestMethodCacheMetrics.test_hit_miss_counters _________________
+tests/test_method_cache.py:88: in test_hit_miss_counters
+    assert snap["misses"] == 1
+E   assert 0 == 1
+_________________________ TestRedactEmail.test_partial _________________________
+tests/test_support.py:24: in test_partial
+    assert _redact_email("[REDACTED]@gmail.com", "partial") == "d***@g***.com"
+E   AssertionError: assert '[***@g***.com' == 'd***@g***.com'
+E     
+E     - d***@g***.com
+E     ? ^
+E     + [***@g***.com
+E     ? ^
+________________________ TestRedactSerial.test_partial _________________________
+tests/test_support.py:38: in test_partial
+    assert _redact_serial("10060006AXXXXXXXXX", "partial") == "1006***0091"
+E   AssertionError: assert '1006***XXXX' == '1006***0091'
+E     
+E     - 1006***0091
+E     + 1006***XXXX
+_______________ TestRedactSnapshot.test_partial_redacts_identity _______________
+tests/test_support.py:101: in test_partial_redacts_identity
+    assert result["identity"]["serial"] == "1006***0091"
+E   AssertionError: assert '1006***XXXX' == '1006***0091'
+E     
+E     - 1006***0091
+E     + 1006***XXXX
+________________________ test_wrapper_explicit_gateway _________________________
+tests/test_wrapper.py:50: in test_wrapper_explicit_gateway
+    mock_client.assert_called_once_with(mock_password_auth.return_value, "SPECIFIC_SERIAL")
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:997: in assert_called_once_with
+    return self.assert_called_with(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:985: in assert_called_with
+    raise AssertionError(_error_message()) from cause
+E   AssertionError: expected call not found.
+E   Expected: Client(<MagicMock name='PasswordAuth()' id='4558549216'>, 'SPECIFIC_SERIAL')
+E     Actual: Client(<MagicMock name='PasswordAuth()' id='4558549216'>, 'SPECIFIC_SERIAL', cache=None)
+=============================== warnings summary ===============================
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
+  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_method_cache.py::TestMethodCacheMetrics::test_hit_miss_counters
+FAILED tests/test_support.py::TestRedactEmail::test_partial - AssertionError:...
+FAILED tests/test_support.py::TestRedactSerial::test_partial - AssertionError...
+FAILED tests/test_support.py::TestRedactSnapshot::test_partial_redacts_identity
+FAILED tests/test_wrapper.py::test_wrapper_explicit_gateway - AssertionError:...
+5 failed, 353 passed, 38 deselected, 2 warnings in 4.63s
+
+═══════════════════════════════════════════════════════════
+ Summary: 5 failed, 353 passed, 38 deselected, 2 warnings in 4.63s
+═══════════════════════════════════════════════════════════

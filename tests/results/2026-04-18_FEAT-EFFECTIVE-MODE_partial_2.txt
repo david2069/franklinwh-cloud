@@ -1,0 +1,136 @@
+═══════════════════════════════════════════════════════════
+ TEST RESULTS — FEAT-EFFECTIVE-MODE
+ Date:    2026-04-18 12:02:29 AEST
+ Branch:  feat/openapi-stubs
+ Commit:  12d334d (pre-commit)
+ Result:  PARTIAL ⚠️
+═══════════════════════════════════════════════════════════
+
+........................................................................ [ 19%]
+........................................................................ [ 38%]
+................FF...................................................... [ 58%]
+........................................................................ [ 77%]
+........................................................................ [ 97%]
+..........                                                               [100%]
+=================================== FAILURES ===================================
+________ TestGetStatsResponseParsing.test_get_power_details_strict_url _________
+tests/test_get_stats.py:226: in test_get_power_details_strict_url
+    res = await mock_client.get_power_details(type=1, timeperiod="2026-03-26")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+franklinwh_cloud/mixins/stats.py:390: in get_power_details
+    data = await self._get(url, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+franklinwh_cloud/client.py:540: in _get
+    final_res = await instrumented_retry(
+franklinwh_cloud/metrics.py:558: in instrumented_retry
+    res = await func()
+          ^^^^^^^^^^^^
+franklinwh_cloud/client.py:521: in __get
+    resp = await self.session.get(
+venv/lib/python3.14/site-packages/httpx/_client.py:1768: in get
+    return await self.request(
+venv/lib/python3.14/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+venv/lib/python3.14/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+venv/lib/python3.14/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/mocks.py:190: in amock
+    response = await cls._send_async_request(
+venv/lib/python3.14/site-packages/respx/mocks.py:224: in _send_async_request
+    httpx_response = await cls.async_handler(httpx_request)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/mocks.py:136: in async_handler
+    raise assertion_error
+venv/lib/python3.14/site-packages/respx/mocks.py:129: in async_handler
+    httpx_response = await router.async_handler(httpx_request)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/router.py:318: in async_handler
+    resolved = await self.aresolve(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/router.py:291: in aresolve
+    with self.resolver(request) as resolved:
+         ^^^^^^^^^^^^^^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py:148: in __exit__
+    next(self.gen)
+venv/lib/python3.14/site-packages/respx/router.py:250: in resolver
+    raise AllMockedAssertionError(f"RESPX: {request!r} not mocked!")
+E   respx.models.AllMockedAssertionError: RESPX: <Request('GET', 'https://energy.franklinwh.com/api-energy/electric/getFhpElectricData?gatewayId=TEST-GW-001&type=1&dayTime=2026-03-26&lang=en_US')> not mocked!
+_________ TestGetStatsResponseParsing.test_get_power_by_day_strict_url _________
+tests/test_get_stats.py:240: in test_get_power_by_day_strict_url
+    res = await mock_client.get_power_by_day(dayTime="2026-03-26")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+franklinwh_cloud/mixins/stats.py:375: in get_power_by_day
+    data = await self._get(url, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+franklinwh_cloud/client.py:540: in _get
+    final_res = await instrumented_retry(
+franklinwh_cloud/metrics.py:558: in instrumented_retry
+    res = await func()
+          ^^^^^^^^^^^^
+franklinwh_cloud/client.py:521: in __get
+    resp = await self.session.get(
+venv/lib/python3.14/site-packages/httpx/_client.py:1768: in get
+    return await self.request(
+venv/lib/python3.14/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+venv/lib/python3.14/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+venv/lib/python3.14/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/mocks.py:190: in amock
+    response = await cls._send_async_request(
+venv/lib/python3.14/site-packages/respx/mocks.py:224: in _send_async_request
+    httpx_response = await cls.async_handler(httpx_request)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/mocks.py:136: in async_handler
+    raise assertion_error
+venv/lib/python3.14/site-packages/respx/mocks.py:129: in async_handler
+    httpx_response = await router.async_handler(httpx_request)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/router.py:318: in async_handler
+    resolved = await self.aresolve(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+venv/lib/python3.14/site-packages/respx/router.py:291: in aresolve
+    with self.resolver(request) as resolved:
+         ^^^^^^^^^^^^^^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py:148: in __exit__
+    next(self.gen)
+venv/lib/python3.14/site-packages/respx/router.py:250: in resolver
+    raise AllMockedAssertionError(f"RESPX: {request!r} not mocked!")
+E   respx.models.AllMockedAssertionError: RESPX: <Request('GET', 'https://energy.franklinwh.com/api-energy/power/getFhpPowerByDay?gatewayId=TEST-GW-001&dayTime=2026-03-26&lang=en_US')> not mocked!
+=============================== warnings summary ===============================
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
+  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_get_stats.py::TestGetStatsResponseParsing::test_get_power_details_strict_url
+FAILED tests/test_get_stats.py::TestGetStatsResponseParsing::test_get_power_by_day_strict_url
+2 failed, 368 passed, 39 deselected, 2 warnings in 4.53s
+
+═══════════════════════════════════════════════════════════
+ Summary: 2 failed, 368 passed, 39 deselected, 2 warnings in 4.53s
+═══════════════════════════════════════════════════════════

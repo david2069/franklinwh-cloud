@@ -2,8 +2,14 @@
 
 > [!CAUTION]
 > **API Maintenance & Schema Drift**
-> The `franklinwh-cloud` library relies on actively mimicking the FranklinWH mobile app. The cloud servers dynamically shift the JSON payload structures returned (e.g., hiding new fields like `offGridFlag` or v2 metadata) based entirely on the `softwareversion` HTTP Request Header.
-> Whenever a new major version of the official mobile app is released, developers must update `metrics.py` to spoof the latest header (e.g. `APP2.4.1`) to unlock the new API capabilities. Tracking this specific telemetry metric is the *only* way to formally monitor schema drift. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
+> The `franklinwh-cloud` library identifies itself to the FranklinWH Cloud API using a `softwareversion` request header (default: `APP2.4.1`). This value is sent with every request for the lifetime of the session.
+>
+> **What this header does:** It identifies the client as a known app version. Testing across versions `APP1.0.0` through `APP99.0.0` showed **identical responses** on all tested endpoints — the header does not appear to gate specific fields or alter payload structures in the current API. Its primary observed role is authentication token negotiation and likely server-side telemetry/analytics.
+>
+> **Schema drift detection:** The library runs a built-in canary trap (`Client._check_canary_trap`) that scans every response for a `softwareVersion` field and fires a warning + disk dump if a version newer than the certified baseline (`APP2.11.0`) is detected. This is the real mechanism for detecting upstream API changes. Always reference `docs/OPENAPI_GENERATOR.md` if payloads shift unexpectedly.
+>
+> To override the header for a single diagnostic call: `franklinwh-cli fetch --app-version APP2.11.0 ...`
+> To set it globally: pass `emulate_app_version="APP2.11.0"` to `Client(...)` or `PasswordAuth(...)`.
 
 Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
@@ -12,56 +18,603 @@ Practical recipes for the FranklinWH Cloud API. Each recipe is copy-paste ready.
 
 ---
 
-## Connection Preamble
+## 🚫 API Anti-Patterns & Polling Best Practices
 
-All recipes start with establishing an authenticated session and binding a physical aGate serial number.
+Before building automated dashboards or backend integrators (like the FranklinWH Energy Manager), you **must** separate your polling loops into two distinct pipelines. 
 
-### Single aGate (Happy Path)
-If you only have one aGate, the `.select_gateway()` method will auto-discover it for you natively. Copy once, paste at the top of your script:
+**What NOT To Do:**
+Do **not** poll static hardware data or compliance rules (`get_connectivity_overview`, `get_device_info`, `getComplianceDetailById`, `get_smart_circuits_info`) at the same frequency as power telemetry! Tying static fetches to your 5-10 second telemetry tick will aggressively throttle the aGate's internal MQTT relay, flood AWS with useless calls, and instantly cause `DeviceTimeoutException` API crashes.
+
+**What To Do (The Best Practice Architecture):**
+1. **The Fast Loop (`get_stats`)**: Poll `get_stats()` rapidly (e.g., every 5-15 seconds) for real-time power flow, SoC levels, and grid states. This endpoint is highly optimized for frequency.
+2. **The Slow Loop (Static/Network Data)**: Poll static/config endpoints **once on application startup**, and then refresh them on a slow, lazy timer (e.g., every 15-60 minutes), or exclusively when a user clicks a manual "Refresh" button.
+
+### Legacy Field Aliases (Relays)
+The cloud API often exposes duplicated attributes via different payload structures. Specifically for hardware relays, the legacy `gridRelayStat`, `oilRelayStat`, and `solarRelayStat` (from `get_power_info`) perfectly duplicate the array `main_sw` (from `get_device_composite_info` `runtimeData`).
+* `gridRelayStat` == `main_sw[0]`
+* `oilRelayStat` == `main_sw[1]` (Generator)
+* `solarRelayStat` == `main_sw[2]`
+**Recommendation:** Always consume the curated `client.get_stats()` → `Stats.current` object, which evaluates and normalizes these aliases automatically beneath the hood without making excessive API calls.
+
+### Native Library Cache & Rate Limiting
+
+The `franklinwh-cloud` library ships with built-in mechanisms to actively combat excessive polling and protect the fragile aGate MQTT boundaries. If your integrator tool (like an Admin Console) shows thousands of hits to static endpoints over just a few hours, your architecture is circumventing the internal cache boundaries! 
+
+**1. The Method TTL Cache (Proactive)**
+You can instruct the client to cache expensive, slow-changing static endpoints (like Smart Circuits or BMS data) natively for a fixed TTL. If you call `get_smart_circuits_info()` 10 times in a minute, only 1 actual API request will be sent to the cloud.
+
+```python
+from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.cache import DEFAULT_CACHE
+
+# Initialize with library-recommended TTL mapping
+client = FranklinWHCloud("YOUR_EMAIL", "YOUR_PASSWORD", cache=DEFAULT_CACHE)
+
+# Or override specific TTLs (seconds)
+custom_cache = {
+    **DEFAULT_CACHE,
+    "get_bms_info": 120,    # Cache battery cell voltages for 2 mins
+    "get_device_info": 600, # Cache hardware serials for 10 mins
+}
+client = FranklinWHCloud("YOUR_EMAIL", "YOUR_PASSWORD", cache=custom_cache)
+```
+*(Any method that modifies state, e.g. `set_smart_switch_state`, automatically invalidates its relevant cache slot.)*
+
+**2. Stale Data Degradation (Reactive)**
+If the upstream FranklinWH Cloud encounters an outage or severely limits your account, you can enable `tolerate_stale_data`. The client will safely serve the last-known-good telemetry rather than throwing hard `TimeoutExceptions`.
+
+```python
+client = FranklinWHCloud(
+    email="YOUR_EMAIL", 
+    password="YOUR_PASSWORD", 
+    tolerate_stale_data=True, 
+    stale_cache_ttl=300 # Data is considered "stale but usable" for 5 minutes
+)
+```
+
+Always check `client.metrics.snapshot()` to audit your background thread discipline.
+
+---
+
+## 🚦 Transport Architecture: REST GET vs MQTT Relay
+
+Understanding the **two transport paths** in this library is essential before writing custom
+polling code or building your own API layer on top. The two mechanisms have fundamentally
+different cost and latency characteristics.
+
+### The Two Transport Paths
+
+| Transport | Mechanism | Cost | CloudFront-cacheable | Who uses it |
+|---|---|---|---|---|
+| **REST GET** → cloud aggregator | `HTTPS GET` to `/hes-gateway/terminal/getDeviceCompositeInfo` | **Cheapest** — cloud assembles response from its DB | ✅ Yes | `get_stats()`, `get_mode()`, `set_mode()` |
+| **REST GET/POST** → cloud REST API | Standard HTTPS to cloud REST endpoints | Low-medium | Partial | `get_gateway_tou_list()`, `get_tou_info()`, `set_mode()` POST |
+| **MQTT Relay** → physical aGate | `POST` to `/hes-gateway/terminal/sendMqtt` with `cmdType` in body | **Higher** — cloud relays over MQTT to aGate hardware, awaits response | ❌ No | `get_power_info()` (211), `get_smart_circuits_info()` (311), `_switch_usage()` (353) |
+
+> [!IMPORTANT]
+> **The MQTT relay path is a physical hardware round-trip.** Every `sendMqtt` call crosses:
+> Cloud → AWS IoT → aGate firmware → back. This is not a DB lookup. Overusing MQTT relay
+> calls on fast poll cycles is the primary cause of `DeviceTimeoutException` failures.
+
+### What the Schema `203/`, `211/`, `311/` Source Prefixes Mean
+
+The `franklinwh-cli schema` command's **Source** column uses `cmdType/sub-object` notation.
+**These prefixes describe which command produced the field — they are not transport cost labels.**
+
+| Source prefix | Transport path | When it fires |
+|---|---|---|
+| `203/runtimeData`, `203/result` | **REST GET** → `getDeviceCompositeInfo` | Every `get_stats()` call — the main poll (cheapest) |
+| `211/result` | **MQTT Relay** → `get_power_info()` (cmdType 211) | Only when `get_stats(include_electrical=True)` |
+| `311/runtimeData`, `311/sw_data` | **MQTT Relay** → `_switch_usage()` (cmdType 353) | Only when smart circuits are active (`pro_load[]` non-zero) |
+| `derived` | Local computation | Free — no API call |
+| `get_tou_info` | REST GET → TOU schedule endpoint | Only when `get_mode()` is in TOU mode |
+
+> [!NOTE]
+> `203/runtimeData` is **not** a `sendMqtt + cmdType 203` call. The private `_status()`
+> method (which does use `sendMqtt` with cmdType 203) is a legacy low-level method not called
+> by `get_stats()`. The `getDeviceCompositeInfo` REST GET is the production path.
+
+### The `get_stats()` Call Tree
+
+```
+get_stats()
+  │
+  ├─ get_device_composite_info()      ← 1x REST GET — all 203/ fields, cheap + CloudFront-cach'd
+  │    └─ result: runtimeData, currentWorkMode, solarHaveVo, deviceStatus, alarms, relays
+  │
+  ├─ get_operating_mode_name()        ← dict lookup (OPERATING_MODES const) — FREE
+  │
+  ├─ [conditional] _switch_usage()   ← MQTT relay cmdType 353 — only if pro_load[] non-zero
+  │    └─ triggers: smart circuit SW1/SW2/V2L present and active in runtimeData.pro_load
+  │
+  ├─ [conditional] get_grid_status() ← REST GET — only if relay OPEN or offgridreason set
+  │    └─ triggers: ~0.1% of normal polls (relay open or off-grid flag)
+  │
+  └─ [conditional] get_power_info()  ← MQTT relay cmdType 211 — only if include_electrical=True
+       └─ triggers: caller opts in explicitly (FHAI uses every Nth poll, not every tick)
+```
+
+**Normal poll (grid-connected, no smart circuits, no electrical): 1 REST GET. That's it.**
+
+### The `composite_hint` Pattern — Avoiding Redundant Fetches
+
+When your code calls `get_stats()` and then immediately calls `get_mode()` or `set_mode()`,
+you are paying for `getDeviceCompositeInfo` **twice** — once inside `get_stats()` and once
+inside the mode call. Use `composite_hint` to eliminate the duplicate:
+
+```python
+# ❌ Naive pattern — double REST GET:
+stats = await client.get_stats()       # calls getDeviceCompositeInfo internally
+mode  = await client.get_mode()        # calls getDeviceCompositeInfo AGAIN
+
+# ✅ Optimised pattern — single REST GET:
+composite = await client.get_device_composite_info()
+stats = await client.get_stats()        # NOTE: get_stats() calls composite internally;
+                                        # for a shared-cycle optimisation, call composite
+                                        # once and pass it to both:
+mode  = await client.get_mode(composite_hint=composite)
+
+# ✅ Simplest optimised pattern for a combined mode+stats read:
+composite = await client.get_device_composite_info()
+mode  = await client.get_mode(composite_hint=composite)
+# stats fields available directly in composite["result"]["runtimeData"]
+```
+
+The `composite_hint` accepts the **full response dict** returned by `get_device_composite_info()`
+(i.e. `{"code": 200, "result": {...}, "message": "success"}`). When provided, `get_mode()` and
+`set_mode()` skip their internal `getDeviceCompositeInfo` call entirely.
+
+> [!TIP]
+> `composite_hint` is keyword-only (after a bare `*`) so it cannot be passed positionally.
+> Existing call sites using positional args are 100% backward-compatible with zero changes.
+
+### Why You Should Not Write Your Own Transport Layer
+
+The library's transport paths have substantial hardening you would need to replicate:
+
+- **Auto-retry with token refresh**: `instrumented_retry` transparently catches `401`/code `10009`
+  responses, negotiates a new JWT via `TokenFetcher`, and replays the original request.
+- **MQTT multiplexing guard**: `sendMqtt` calls **cannot be concurrent** — the aGate MQTT broker
+  cannot multiplex simultaneous requests. The library sequences all `sendMqtt` calls carefully
+  (e.g. `get_bms_info()` type 2 then type 3 are sequential by design).
+- **Stale data fallback**: `get_stats()` returns the last-known-good `Stats` object when the
+  cloud returns an empty `result: null` glitch payload — a real observed cloud bug (not a crash).
+- **CloudFront edge tracking**: Every HTTP response is inspected for `X-Cache` / `x-amz-cf-pop`
+  headers to maintain a live `EdgeTracker` PoP map for diagnostic telemetry.
+- **Canary trap**: Every response is checked for an unrecognised `softwareVersion` field. If a
+  new firmware version is detected, the payload is dumped to disk for schema diffing.
+
+Reimplementing direct `sendMqtt` or `getDeviceCompositeInfo` calls outside this library means
+none of the above protections apply to those calls.
+
+---
+
+## 🔌 Grid Connection State
+
+> [!IMPORTANT]
+> `GridConnectionState` replaces the old `grid_outage: bool` field (removed 2026-04-10).
+> Any integrator reading `stats.current.grid_outage` must migrate to `stats.current.grid_connection_state`.
+
+The `GridConnectionState` enum provides unambiguous, four-state grid reporting covering all
+real-world FranklinWH site topologies — grid-tied homes, off-grid sites, active outages,
+and user-initiated simulation tests.
+
+### The Four States
+
+| Value | `.value` (str) | Meaning | When you see it |
+|-------|----------------|---------|-----------------|
+| `CONNECTED` | `"Connected"` | Grid relay CLOSED — utility power available | Normal daily operation |
+| `OUTAGE` | `"Outage"` | Firmware detected grid loss (`offGridFlag=1`) | Real grid failure — island mode |
+| `NOT_GRID_TIED` | `"NotGridTied"` | Site has no utility connection — permanent island | Off-grid solar/battery installs |
+| `SIMULATED_OFF_GRID` | `"SimulatedOffGrid"` | User-initiated island test | Commissioning, testing, drills |
+
+### Detection Strategy (Zero-Overhead on Normal Systems)
+
+The library derives state from data already fetched by `get_stats()`. No extra API calls
+are made on a normally-connected system:
+
+```
+startup:   get_entrance_info() → gridFlag=False → NOT_GRID_TIED cached forever (never re-checked)
+
+per poll:
+  offGridFlag == 1    → OUTAGE              (short-circuit, no extra call)
+  main_sw[0] == 1     → CONNECTED           (no extra call — covers 99.9% of polls)
+  main_sw[0] == 0  ─┐
+  offgridreason != 0 ─┼→ get_grid_status() → offgridState==1 → SIMULATED_OFF_GRID
+                      └→                   → offgridState==0 → OUTAGE
+```
+
+> [!NOTE]
+> The dual-gate (`main_sw[0]==0 OR offgridreason!=null`) handles a known firmware API
+> reporting lag (~5–10s) where `offgridreason` is set before `main_sw` updates after
+> a simulated off-grid activation. This is expected vendor behaviour — the grid contactor
+> is a mechanical relay. The library does not retry; it returns the correct state on the
+> first poll where API data is internally consistent.
+
+### Basic Usage
 
 ```python
 import asyncio
 from franklinwh_cloud import FranklinWHCloud
+from franklinwh_cloud.models import GridConnectionState
 
 async def main():
-    client = FranklinWHCloud(email="user@example.com", password="secret")
+    client = FranklinWHCloud.from_config("franklinwh.ini")
     await client.login()
-    await client.select_gateway()   # Natively fetches and binds the first gateway
+    await client.select_gateway()
 
-    # ... your recipe code here ...
+    stats = await client.get_stats()
+    state = stats.current.grid_connection_state
+
+    # .value gives the display string directly
+    print(f"Grid: {state.value}")
+    # Output: "Connected" | "Outage" | "SimulatedOffGrid" | "NotGridTied"
+
+    # Exact identity check
+    if state == GridConnectionState.CONNECTED:
+        print("✅ Grid available — normal operation")
+    elif state == GridConnectionState.OUTAGE:
+        print("❌ Grid outage — running on battery + solar")
+    elif state == GridConnectionState.SIMULATED_OFF_GRID:
+        print("⚡ Simulated off-grid — user-initiated island test")
+    elif state == GridConnectionState.NOT_GRID_TIED:
+        print("🏝️  Off-grid site — no utility connection")
 
 asyncio.run(main())
 ```
 
-### Multi-aGate (Iterative Binding)
-If you manage multiple gateways on a single account, you MUST explicitly iterate. If you do not pass a serial to `select_gateway()`, it will always bind the first one it finds. By substituting a temporary proxy client, you can securely execute the `get_home_gateway_list()` account API before touching hardware.
+### State-Gated Automation (Safe Pattern)
+
+Gate grid-dependent actions behind `CONNECTED`. This prevents dispatching grid charges
+or exports during outages, simulations, or on off-grid sites:
+
+```python
+from franklinwh_cloud.models import GridConnectionState
+from franklinwh_cloud.const import EMERGENCY_BACKUP
+
+stats = await client.get_stats()
+state = stats.current.grid_connection_state
+
+if state == GridConnectionState.CONNECTED:
+    # Safe to: import from grid, export to grid, run TOU schedules
+    await client.set_tou_schedule(touMode="SELF")
+
+elif state == GridConnectionState.OUTAGE:
+    # Grid is down — switch to Emergency Backup to maximise reserve
+    await client.set_mode(EMERGENCY_BACKUP, soc=100)
+    print("🚨 Grid outage detected — Emergency Backup activated")
+
+elif state == GridConnectionState.SIMULATED_OFF_GRID:
+    # User is running an island test — take no automated action
+    print("⚡ Simulation active — skipping scheduled dispatch")
+
+elif state == GridConnectionState.NOT_GRID_TIED:
+    # Permanent off-grid site — grid-dependent schedules never apply
+    print("🏝️  Off-grid site — TOU schedule skipped")
+```
+
+### Dashboard / Status Display
+
+```python
+# Colour-coded terminal output (ANSI)
+_COLORS = {
+    GridConnectionState.CONNECTED:          "\033[32mConnected\033[0m",      # green
+    GridConnectionState.OUTAGE:             "\033[31mOutage\033[0m",         # red
+    GridConnectionState.SIMULATED_OFF_GRID: "\033[33mSimulated\033[0m",     # yellow
+    GridConnectionState.NOT_GRID_TIED:      "\033[36mNot Grid-Tied\033[0m", # cyan
+}
+
+state = stats.current.grid_connection_state
+print(f"Grid: {_COLORS.get(state, state.value)}")
+
+# JSON / MQTT telemetry payload — .value is always a str
+payload = {
+    "grid_status": state.value,                          # "Connected" etc.
+    "grid_ok":     state == GridConnectionState.CONNECTED,  # bool shortcut
+    "solar_kw":    stats.current.solar_production,
+    "battery_soc": stats.current.battery_soc,
+}
+```
+
+### FHAI / Home Assistant Integration
+
+The FHAI gateway service receives the flattened `Current` dataclass as a dict.
+`dataclasses.asdict()` serialises the enum to its `.value` string automatically:
+
+```python
+import dataclasses
+from franklinwh_cloud.models import GridConnectionState
+
+stats = await client.get_stats()
+d = dataclasses.asdict(stats.current)
+# grid_connection_state is now the .value string in the dict
+
+grid_status = d.get("grid_connection_state", "Connected")
+# → "Connected" | "Outage" | "SimulatedOffGrid" | "NotGridTied"
+
+status_payload = {
+    "grid_status": grid_status,   # forward directly to HA sensor
+    # ... other fields
+}
+```
+
+> [!TIP]
+> **FHAI handoff note:** `grid_connection_state` is always a string after `asdict()`.
+> No bool checks, no `if grid_outage` branches. Map each value to a Home Assistant
+> `sensor` state directly — e.g. HA `state_class: measurement` with `options` list.
+
+### Live Integration Test
+
+A destructive live test verifying the complete state cycle is included:
+
+```bash
+# Requires: franklinwh.ini with real credentials, SOC ≥ reserve + 10%
+pytest -m "live and destructive" tests/test_live.py::TestLiveGridConnectionState -s -v
+```
+
+Pre-flight checks enforced: SOC margin, current connection state, terminal `yes` confirmation.
+Guarantees: `try/finally` restore, poll-loop on reconnect (30s timeout).
+
+---
+
+## ⚙️ Operating Mode & Run Status — Field Guide
+
+> [!WARNING]
+> **FranklinWH Naming Collision.** The `runtimeData` payload contains two similarly-named integer
+> fields with completely different semantics. Previous agents got this wrong multiple times.
+> Read this section carefully before writing any mode-display or VPP detection logic.
+
+### The Two Raw Fields — What They Actually Mean
+
+The raw API response (`getDeviceCompositeInfo`, cmdType 203, `result.runtimeData`) includes:
+
+| Raw API key | Python field | Semantics | Live examples |
+|---|---|---|---|
+| `runtimeData.run_status` | `run_status` (int) | **RUN_STATUS key** — what the battery hardware is physically doing. Maps directly to `RUN_STATUS` dict. | `1`=Charging, `2`=Discharging |
+| `runtimeData.mode` | `tou_mode` (int) | **Programme/schedule ID** — an arbitrary backend ID for the active programme. **NOT a RUN_STATUS key.** VPP happens to use ID 9; normal TOU programmes use large IDs like `29287`. | `9`=VPP, `29287`=Ausgrid EA11 TOU |
+| `runtimeData.name` | `tou_mode_desc` (str) | **Programme label** — the human-readable name for the active programme. Often empty during VPP — always fall back to `RUN_STATUS[9]` in that case. | `"Ausgrid EA11 TOU"`, `""` |
+
+> [!CAUTION]
+> **The key mistake to avoid:** `runtimeData.mode` is **not** a `RUN_STATUS` key. Doing
+> `RUN_STATUS[runtimeData.mode]` will return `"Unknown"` for any normal TOU programme (e.g. `29287`).
+> Only `runtimeData.run_status` maps to `RUN_STATUS`. FranklinWH's naming is genuinely misleading.
+
+### RUN_STATUS Value Table (keyed by `runtimeData.run_status`, not `runtimeData.mode`)
+
+```python
+from franklinwh_cloud.const import RUN_STATUS
+
+# RUN_STATUS = {
+#     0: "Standby",              # Inactive / idle
+#     1: "Charging",
+#     2: "Discharging",
+#     3: "Unknown 3",            # Reserved
+#     4: "Unknown 4",            # Reserved
+#     5: "Off-Grid Standby",     # Island mode — battery idle, no grid
+#     6: "Off-Grid Charging",    # Island mode — solar charging battery
+#     7: "Off-Grid Discharging", # Island mode — battery powering home
+#     8: "Debug Mode",           # Franklin Remote Support session active
+#     9: "VPP mode",             # Virtual Power Plant — utility/aggregator controlled
+# }
+```
+
+### The Three Derived Fields on `stats.current`
+
+| Python field | Derived from | What it shows |
+|---|---|---|
+| `run_status_desc` | `RUN_STATUS[runtimeData.run_status]` | What the battery is physically doing — `"Charging"`, `"Discharging"`, `"Standby"` |
+| `tou_mode_desc` | `runtimeData.name` (raw) | Active programme label from the cloud — `"Ausgrid EA11 TOU"`, `""` during VPP |
+| `effective_mode` | derived (priority order below) | **App-matching dominant mode label** — the single best label to show users |
+
+**`effective_mode` priority order:**
+1. `tou_mode_desc` if non-empty → e.g. `"Ausgrid EA11 TOU"`, covers named programmes
+2. `RUN_STATUS[9]` = `"VPP mode"` if `tou_mode == 9` and name is empty → VPP fallback
+3. `work_mode_desc` → `"Time-Of-Use"`, `"Self-Consumption"`, `"Emergency Backup"`
+
+### VPP Mode (Virtual Power Plant)
+
+VPP mode means your gateway is under utility/aggregator control. The gateway dispatches
+autonomously to external signals — your personal TOU schedule is suspended.
+
+**Detection:**
+
+```python
+stats = await client.get_stats()
+cur = stats.current
+
+# Recommended: use tou_mode (programme ID 9 = VPP)
+is_vpp = cur.tou_mode == 9
+
+# Or check the pre-derived effective_mode label
+is_vpp = cur.effective_mode == "VPP mode"
+```
+
+**What the FranklinWH mobile app shows during VPP:**
+
+```
+● Discharging    ← runtimeData.run_status → RUN_STATUS[2] → hardware action
+⊙ VPP Mode      ← runtimeData.name (or RUN_STATUS[9] fallback when name is empty)
+```
+
+The bullet-dot (●) line = what the battery is *doing*. The gear (⊙) line = *what controls it*.
+
+### Recommended Display Recipe
+
+```python
+stats = await client.get_stats()
+cur = stats.current
+
+# Single dominant label — matches the app's top-card display
+print(f"Mode:     {cur.effective_mode}")
+# → "Ausgrid EA11 TOU" | "VPP mode" | "Time-Of-Use" | "Self-Consumption"
+
+# Hardware action — what the battery is physically doing right now
+print(f"Action:   {cur.run_status_desc}")
+# → "Charging" | "Discharging" | "Standby"
+```
+
+Exactly reproducing the app's two-line display:
+
+```python
+from franklinwh_cloud.const import RUN_STATUS
+
+cur = stats.current
+
+# Line 1 (● bullet) — hardware physical action
+print(f"● {cur.run_status_desc}")    # RUN_STATUS[runtimeData.run_status]
+
+# Line 2 (⊙ gear) — controlling programme
+print(f"⊙ {cur.effective_mode}")     # tou_mode_desc | "VPP mode" | work_mode_desc
+```
+
+### Home Assistant / MQTT Payload
+
+```python
+stats = await client.get_stats()
+cur = stats.current
+
+payload = {
+    # Primary display sensor — matches the app's dominant label
+    "effective_mode":   cur.effective_mode,
+    # → "Ausgrid EA11 TOU" | "VPP mode" | "Time-Of-Use" | "Self-Consumption"
+
+    # Hardware action sensor — what the battery is physically doing
+    "hardware_action":  cur.run_status_desc,
+    # → "Charging" | "Discharging" | "Standby"
+
+    # Base operating mode (unchanged by VPP)
+    "work_mode":        cur.work_mode_desc,    # "Time-Of-Use" | "Self-Consumption" | "Emergency Backup"
+    "work_mode_int":    cur.work_mode,         # 1=TOU, 2=Self, 3=EmgBkp
+
+    # Raw programme ID — useful for automation triggers
+    "programme_id":     cur.tou_mode,          # runtimeData.mode — arbitrary int (9=VPP, 29287=Ausgrid etc.)
+    "programme_label":  cur.tou_mode_desc,     # runtimeData.name — may be empty
+
+    # Hardware state int — for history graphs
+    "run_status_int":   cur.run_status,        # runtimeData.run_status — RUN_STATUS key
+
+    # Convenience flag
+    "vpp_active":       cur.tou_mode == 9,     # bool
+}
+```
+
+> [!TIP]
+> **When `tou_mode_desc` is empty** (common during VPP): the library automatically falls back
+> to `RUN_STATUS[9]` = `"VPP mode"` in `effective_mode`. You never need to null-check
+> `tou_mode_desc` yourself — just read `effective_mode`.
+
+---
+
+## 🏛️ Roles & Responsibilities: Integrator vs Library
+
+
+When integrating this library into an end-user application (like Home Assistant), you must maintain a strict conceptual boundary between what the library does and what your application is responsible for.
+
+### The Facade Pattern
+The `franklinwh-cloud` library is a rigid facade. Its only job is to abstract away the undocumented, unstable, and volatile FranklinWH cloud endpoints so you never have to care if they rename an internal variable tomorrow. The library guarantees that `stats.current.grid_relay` will always be available, regardless of how many endpoints it had to secretly query to construct that value.
+
+### Accessory Impact & Upstream Limitations
+The FranklinWH Cloud API is heavily un-optimized for systems with optional accessories. If an aGate has a Generator mapped or V2L enabled, the cloud backend *physically requires* the library to query secondary, non-cached endpoints (like `cmdType 211`) to assemble a complete telemetry snapshot. 
+
+This doubles or triples the API footprint per refresh tick. 
+**This is an upstream cloud limitation, not a library deficiency.**
+
+As the Integrator/App Developer, it is **your responsibility** to inform your users of the performance hit. Your application should proactively warn users: *"Because you have a Generator installed your telemetry requires multiple API cycles; you may experience higher latency or aggressive rate limiting if poll rates are set too aggressively."* Do not attempt to force the library to mask upstream latency.
+
+### Infinite Session Persistence (Transparent Auto-Renewal)
+Users of the official FranklinWH Mobile App often experience "Idle Timeouts" or "Session Expired — Please log back in" prompts. The official app pushes the burden of session management onto the user.
+
+By design, the `franklinwh-cloud` library entirely subverts this. The library embeds an `instrumented_retry` loop at the core HTTP boundaries. If the cloud servers invalidate the JWT token (HTTP 401 or Code `10009`), the library will **silently catch the rejection, automatically negotiate a new token via the `TokenFetcher`, and replay the original API request identically.** 
+
+Downstream clients (like Home Assistant) therefore benefit from infinite session persistence and will **never** receive an expired session exception unless the underlying master credentials have been permanently revoked.
+
+If your integration requires auditing these transparent rotations natively (e.g., to draw a "Session Uptime" metric on a dashboard), you can easily poll the built-in tracking metric:
+
+```python
+# Returns elapsed seconds since the last silent JWT refresh, 
+# or None if the original token is still valid.
+s_ago = client.get_metrics().get("last_token_refresh_s_ago")
+
+if s_ago is not None:
+    print(f"Library transparently negotiated a fresh token {s_ago} seconds ago.")
+```
+
+---
+
+## Connection Preamble
+
+All recipes start with establishing an authenticated session and binding a physical aGate serial number.
+
+### Modern Transparent Auth (The Future)
+The modern `Client` boundary provides absolute control over the emulation footprint (e.g., passing a specific `emulate_app_version` API header) and decouples the authentication lifecycle from the command executor. **This is the recommended approach for all new integrations.**
+
+```python
+import asyncio
+from franklinwh_cloud.auth import PasswordAuth
+from franklinwh_cloud.client import Client
+
+async def main():
+    # 1. Fetch token and dictate the exact mobile emulation string
+    auth = PasswordAuth("user@example.com", "secret", emulate_app_version="APP2.11.0")
+    await auth.get_token()
+
+    # 2. Bind the active session to a specific physical aGate
+    #    (Required for multi-aGate environments!)
+    gateway_serial = "10060006AXXXXXXXXX" 
+    client = Client(auth, gateway=gateway_serial, emulate_app_version="APP2.11.0")
+
+    # ... your recipe code here ...
+    stats = await client.get_stats()
+    print(f"Battery SoC: {stats.current.battery_pct}%")
+
+asyncio.run(main())
+```
+
+### Legacy Wrapper (Single aGate Happy Path)
+If you have an older script or only manage a single aGate on your account, the legacy `FranklinWHCloud` orchestrator will automatically guess your credentials and auto-discover the serial number for you.
 
 ```python
 import asyncio
 from franklinwh_cloud import FranklinWHCloud
+
+async def main():
+    # Will automatically fetch CLI or .ini credentials if omitted
+    client = FranklinWHCloud(email="user@example.com", password="secret")
+    await client.login()
+    await client.select_gateway()   # Natively fetches and binds the first gateway it finds
+
+    # ... your recipe code here ...
+    stats = await client.get_stats()
+    print(f"Battery SoC: {stats.current.battery_pct}%")
+
+asyncio.run(main())
+```
+
+### Multi-aGate Discovery (Account-Level APIs)
+If you manage multiple gateways on a single account and don't know their serial numbers natively, you MUST iteratively discover them before pushing commands. By substituting a temporary proxy client, you can securely execute the `get_home_gateway_list()` account API before touching hardware.
+
+```python
+import asyncio
+from franklinwh_cloud.auth import PasswordAuth
 from franklinwh_cloud.client import Client
 
 async def main():
-    fwh = FranklinWHCloud(email="user@example.com", password="secret")
-    await fwh.login()
+    auth = PasswordAuth("user@example.com", "secret")
     
     # 1. Instantiate a proxy client to unlock Account-level APIs
-    proxy = Client(fwh._auth, "placeholder")
+    proxy = Client(auth, "placeholder")
+    gateways_raw = await proxy.get_home_gateway_list()
     
-    # 2. Fetch the account's entire physical inventory
-    gateways = await proxy.get_home_gateway_list()
-    
-    # 3. Iterate and bind explicitly
-    for gw in gateways:
+    # 2. Iterate and bind explicitly
+    for gw in gateways_raw.get("result", []):
         serial = gw.get("id")
         print(f"\\n--- Binding to aGate {serial} ---")
         
-        # Bind the primary wrapper to this exact serial
-        await fwh.select_gateway(serial=serial)
+        # 3. Create a dedicated client purely for this physical aGate 
+        agate_client = Client(auth, gateway=serial)
         
         # Now hardware calls are safely routed to this target
-        stats = await fwh.get_stats()
-        print(f"Battery SoC: {stats.current.battery_pct}%")
+        stats = await agate_client.get_stats()
+        print(f"[{serial}] Battery SoC: {stats.current.battery_pct}%")
 
 asyncio.run(main())
 ```
@@ -104,15 +657,20 @@ stats = await client.get_stats()
 
 # Instantaneous power (kW)
 solar_kw     = stats.current.solar_production    # p_sun
-battery_kw   = stats.current.battery_power       # p_fhp (negative = charging)
-grid_kw      = stats.current.grid_power          # p_uti
-home_kw      = stats.current.home_consumption    # p_load
-soc          = stats.current.soc                 # Battery %
+battery_kw   = stats.current.battery_use         # p_fhp (negative = charging)
+grid_kw      = stats.current.grid_use            # p_uti
+home_kw      = stats.current.home_load           # p_load
+soc          = stats.current.battery_soc         # Battery %
 
 # Operating state
 mode_name    = stats.current.work_mode_desc      # "Self Consumption"
-run_status   = stats.current.run_status_desc     # "Normal operation"
-grid_status  = stats.current.grid_status         # GridStatus.NORMAL
+run_status   = stats.current.run_status_desc      # "Normal operation"
+
+# Grid connection state (four-state enum — see GridConnectionState section below)
+from franklinwh_cloud.models import GridConnectionState
+grid_state   = stats.current.grid_connection_state  # GridConnectionState.CONNECTED
+grid_label   = grid_state.value                      # "Connected" / "Outage" / ...
+grid_ok      = grid_state == GridConnectionState.CONNECTED
 
 # Daily totals (kWh)
 solar_kwh    = stats.totals.solar                # kwh_sun
@@ -120,37 +678,52 @@ grid_in_kwh  = stats.totals.grid_import          # kwh_uti_in
 grid_out_kwh = stats.totals.grid_export          # kwh_uti_out
 bat_chg_kwh  = stats.totals.battery_charge       # kwh_fhp_chg
 bat_dis_kwh  = stats.totals.battery_discharge    # kwh_fhp_di
-home_kwh     = stats.totals.home                 # kwh_load
+home_kwh     = stats.totals.home_use             # kwh_load
 ```
 
-### Operating Mode
+### Operating Mode & System Limiters (Global SOC Configs)
+
+The `getGatewayTouListV2` endpoint serves not just TOU schedules, but acts as a global **Operating Mode Configuration** blob. Recent updates have exposed several programmatic SOC (State of Charge) limiters:
+
+*   `soc`: The global backup reserve buffer (Emergency Reserve).
+*   `maxSoc`: The maximum allowed charging limit (e.g., protecting degraded cells).
+*   `complianceSoc`: The regulatory/utility-mandated minimum reserve.
+*   `dischargeDepthSoc`: The lowest permissible physical discharge limit (often 5% or 10%).
 
 ```python
 from franklinwh_cloud.const import (
     TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP,  # 1, 2, 3
 )
 
-# Get current mode
+# 1. View Global Configurations (Including SOC parameters)
+config = await client.get_tou_dispatch_detail()
+
+print(f"Current Reserve SOC: {config.get('soc')}%")
+print(f"Maximum Charge Limit (maxSoc): {config.get('maxSoc', 'Unrestricted')}%")
+print(f"Compliance Reserve (complianceSoc): {config.get('complianceSoc', 'None')}%")
+print(f"Discharge Depth Threshold: {config.get('dischargeDepthSoc', 'None')}%")
+
+# 2. Get current mode specifically
 mode = await client.get_mode()
 print(f"Mode: {mode['modeName']}, Run: {mode['run_desc']}")
 
-# Get reserve SoC for all modes
+# 3. Get reserve SoC for all modes
 soc_all = await client.get_all_mode_soc()
 # Returns: [{'workMode': 1, 'name': 'Time of Use', 'soc': 7.0, ...}, ...]
 
-# Switch to Self-Consumption, keep current SoC
+# 4. Switch to Self-Consumption, keep current SoC
 await client.set_mode(SELF_CONSUMPTION, None, None, None, None)
 #                     workMode=2        soc  forever nextMode duration
 
-# Switch to Emergency Backup — indefinite
+# 5. Switch to Emergency Backup — indefinite
 await client.set_mode(EMERGENCY_BACKUP, None, 1, SELF_CONSUMPTION, None)
 #                     workMode=3        soc  forever=1 nextMode=2   duration
 
-# Switch to Emergency Backup — 2 hours, then revert to Self-Consumption
+# 6. Switch to Emergency Backup — 2 hours, then revert to Self-Consumption
 await client.set_mode(EMERGENCY_BACKUP, None, 2, SELF_CONSUMPTION, 120)
 #                     workMode=3        soc  timed=2  nextMode=2    mins
 
-# Update backup reserve SoC to 20% for Self-Consumption mode
+# 7. Update backup reserve SoC to 20% for Self-Consumption mode
 await client.update_soc(requestedSOC=20, workMode=SELF_CONSUMPTION)
 #                                        workMode=2
 ```
@@ -196,7 +769,7 @@ await client.set_tou_schedule_multi(strategy_list)
 ### Power Control (PCS)
 
 ```python
-from franklinwh_cloud.models import GridStatus
+from franklinwh_cloud.models import GridStatus, GridConnectionState
 
 # Get current grid import/export limits
 pcs = await client.get_power_control_settings()
@@ -208,8 +781,9 @@ await client.set_power_control_settings(
 )
 
 # Go off-grid (simulate outage — opens grid contactor)
+# NOTE: this changes grid_connection_state → SIMULATED_OFF_GRID
 await client.set_grid_status(GridStatus.OFF, soc=5)
-#                            GridStatus.OFF=2  minimum SoC
+#                            GridStatus.OFF=2  minimum SoC before auto-restore
 
 # Restore grid connection
 await client.set_grid_status(GridStatus.NORMAL)
@@ -272,6 +846,35 @@ print(answer)
 ```
 
 > ⚠️ Some AI commands may only execute on the mobile app.
+
+### Monitoring Network Connectivity
+
+Instead of relying solely on tracking `network_connection` via `get_stats()`, you can pull a definitive snapshot of the active connections and their IPs using `get_connectivity_overview()`.
+
+> [!TIP]
+> **Best Practice for API Clients / UI Dashboards:**
+> To minimize polling overhead on the hardware, call the default (essential) view periodically (e.g. every 5 minutes / on startup). Only pass `deep_scan=True` if you explicitly need to re-verify the SPAN integration or ping the local Modbus TCP `502` port.
+
+```python
+# 1. Essential View (Fast, lightweight polling for UIs)
+# Fetches active/backup links, AWS cloud connection, and router status.
+net = await client.get_connectivity_overview()
+
+primary = net["primary"]
+print(f"Cloud Connected: {net['cloud_connected']}")
+print(f"Primary Link:    {primary['name']} (ID: {primary['id']})")
+print(f"Gateway & IP:    IP: {primary['ip']}, Gateway: {primary['gateway']}")
+
+for backup in net["backups"]:
+    print(f"Backup Link:     {backup['name']} (ID: {backup['id']})")
+
+# 2. Deep Diagnostic View (Slower, use only when necessary)
+# Pings Modbus 502 on the local IP and checks external SPAN flags.
+deep_net = await client.get_connectivity_overview(deep_scan=True)
+
+if deep_net["modbus_tcp_502_open"]:
+    print("Modbus polling is available locally!")
+```
 
 ### Historical Energy Data
 
@@ -388,10 +991,10 @@ async def main():
     print()
 
     # ── Status ──
-    print(f"🔋 Battery: {c.soc:.0f}%")
+    print(f"🔋 Battery: {c.battery_soc:.0f}%")
     print(f"📋 Mode:    {c.work_mode_desc}")
     print(f"🏃 Status:  {c.run_status_desc}")
-    print(f"🔌 Grid:    {c.grid_status.name}")
+    print(f"🔌 Grid:    {c.grid_connection_state.value}")
     print()
 
     # ── SoC Time Estimation ──
@@ -439,7 +1042,7 @@ asyncio.run(main())
 🔋 Battery: 72%
 📋 Mode:    Self Consumption
 🏃 Status:  Normal operation
-🔌 Grid:    NORMAL
+🔌 Grid:    Connected
 
 ⏱️  Estimated ~1h 49m to 100%  (at 2.1 kW)
 
@@ -629,8 +1232,9 @@ and the SoC target has been reached.
                 break
 
             # ── 3b. Grid check — still connected? ──
-            if grid_status != GridStatus.NORMAL:
-                print(f"⚠️  Grid status: {grid_status.name} — cannot charge from grid while off-grid!")
+            grid_state = stats.current.grid_connection_state
+            if grid_state != GridConnectionState.CONNECTED:
+                print(f"⚠️  Grid state: {grid_state.value} — cannot charge from grid while not connected!")
                 break
 
             # ── 3c. Power flow direction ──
@@ -1038,6 +1642,49 @@ All library-specific exceptions inherit from `FranklinWHError`. Below are the pr
 | `TokenExpiredException` | JWT session rotation required. | Invoke `client.login()` or `client.get_token()` to renew. |
 | `InvalidCredentialsException` | 401 Unauthorized (`Code 10009`). | Verify username/password or `LOGIN_TYPE` flag. |
 | `BadRequestParsingError` | JSON blob abruptly mutated (V1 to V2). | Ensure dependencies are tracking the latest PyPI distribution. |
+
+## Raw Cloud Endpoints vs Pythonic Aliases
+
+The `franklinwh-cloud` library internally negotiates with a series of undocumented REST and MQTT endpoints. To keep abstractions clean, it provides simplified `snake_case` wrappers (e.g. `get_device_info()`, `get_stats()`) around these raw endpoints.
+
+If you are inspecting or reverse-engineering the native Cloud API, you can hit the raw endpoints directly via `client._get()` and `client._post()`. This bypasses the dataclass parsing and returns the raw JSON.
+
+```python
+# The Pythonic Wrapper (Recommended)
+# Safely parses the response, resolves typologies, and returns a Stats dataclass
+stats = await client.get_stats()
+
+# The Raw Cloud API equivalent (For reverse-engineering)
+# Using the internal protected method to hit the endpoint exactly as the mobile app does.
+url = "https://energy.franklinwh.com/hes-gateway/terminal/getDeviceCompositeInfo"
+# Must dynamically include gateway ID for most terminal operations
+raw_json = await client._get(url, params={"gatewayId": client.gateway})
+print(f"Raw Firmware string: {raw_json['result']['runtimeData']['fhpVersions']}")
+```
+
+## Extracting CloudFront Edge Failovers (Log Analysis)
+
+The library actively tracks CloudFront PoP (Point of Presence) edge routing nodes by automatically reading the `x-amz-cf-pop` headers returned by AWS. A transition event is raised when AWS dynamically shifts your active internet session to a different geographical edge location (for example: `SYD62-P1` → `MEL50-C1`).
+
+The edge tracker mechanism automatically emits a standard application `WARN` log whenever your active session shifts. You can extract these failover events directly from your historical application logs (e.g., if you pipe them via standard out or text logging files) using basic log analysis.
+
+**Example Command (grep):**
+```bash
+# Search historical logs for edge failover warnings
+grep "CloudFront edge transition" app.log
+
+# Expected Terminal Output:
+# [WARN] ☁️ CloudFront edge transition: SYD62-P1 → MEL50-C1
+# [WARN] ☁️ CloudFront edge transition: MEL50-C1 → SYD62-P1
+```
+
+If you wish to view your active routing map natively inside your Python code via Edge Tracker API logic, you can generate a snapshot:
+```python
+edge_data = client.get_metrics()['edge'] # or via client.get_edge_tracker().snapshot() if exposed
+if getattr(client, "get_metrics", None):
+    # Depending on client abstraction layer
+    pass
+```
 ## Wave Type (Pricing Tier) Reference
 
 | Code | `WaveType` Enum | Description |

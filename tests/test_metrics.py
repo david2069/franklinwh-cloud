@@ -96,11 +96,69 @@ class TestClientMetrics:
         assert snap["total_api_calls"] == 1
         assert snap["calls_by_method"] == {"GET": 1}
         assert snap["calls_by_endpoint"] == {"getStats": 1}
+        assert "calls_by_python_method" in snap          # new field always present
+        assert snap["calls_by_python_method"] == {}       # empty when not used
         assert snap["total_errors"] == 1
         assert snap["retry_count"] == 0
         assert snap["token_refresh_count"] == 1
         assert snap["login_count"] == 1
         assert isinstance(snap["avg_response_time_s"], float)
+
+
+# ---------------------------------------------------------------------------
+# Python-method call tracking
+# ---------------------------------------------------------------------------
+
+class TestPythonMethodTracking:
+    """Tests for calls_by_python_method counter and record_python_call()."""
+
+    def test_record_python_call_increments(self):
+        m = ClientMetrics()
+        m.record_python_call("get_stats")
+        assert m.calls_by_python_method == {"get_stats": 1}
+
+    def test_record_python_call_accumulates(self):
+        m = ClientMetrics()
+        m.record_python_call("get_stats")
+        m.record_python_call("get_stats")
+        m.record_python_call("get_stats")
+        assert m.calls_by_python_method["get_stats"] == 3
+
+    def test_record_python_call_multiple_methods(self):
+        m = ClientMetrics()
+        m.record_python_call("get_stats")
+        m.record_python_call("set_mode")
+        m.record_python_call("update_soc")
+        m.record_python_call("set_mode")
+        assert m.calls_by_python_method == {
+            "get_stats": 1,
+            "set_mode": 2,
+            "update_soc": 1,
+        }
+
+    def test_snapshot_includes_python_methods(self):
+        m = ClientMetrics()
+        m.record_python_call("get_stats")
+        m.record_python_call("set_mode")
+        snap = m.snapshot()
+        assert "calls_by_python_method" in snap
+        assert snap["calls_by_python_method"] == {"get_stats": 1, "set_mode": 1}
+
+    def test_snapshot_empty_when_no_calls(self):
+        m = ClientMetrics()
+        snap = m.snapshot()
+        assert snap["calls_by_python_method"] == {}
+
+    def test_calls_by_method_http_verbs_unchanged(self):
+        """calls_by_method must remain HTTP verbs — record_python_call must not touch it."""
+        m = ClientMetrics()
+        m.record_call("GET", "getDeviceCompositeInfo", 0.3)
+        m.record_python_call("get_stats")
+        # HTTP verb dict unaffected by Python-level call
+        assert m.calls_by_method == {"GET": 1}
+        assert m.calls_by_endpoint == {"getDeviceCompositeInfo": 1}
+        # Python dict unaffected by HTTP-level call
+        assert m.calls_by_python_method == {"get_stats": 1}
 
 
 # ---------------------------------------------------------------------------

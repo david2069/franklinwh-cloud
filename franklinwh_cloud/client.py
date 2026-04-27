@@ -231,6 +231,10 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         rate_limiter=None,
         tolerate_stale_data: bool = False,
         stale_cache_ttl: float = 300,
+        emulate_app_version: str = "APP2.4.1",
+        cache: dict | None = None,
+        not_grid_tied: bool = False,
+        track_python_methods: bool = False,
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -249,6 +253,15 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         stale_cache_ttl : float
             Max age of cached data in seconds. Default 300s (5 minutes).
             Only used when tolerate_stale_data=True.
+        cache : dict | None
+            Per-method TTL cache configuration. None (default) = no caching.
+            Pass ``franklinwh_cloud.cache.DEFAULT_CACHE`` for library-recommended
+            TTLs, or a custom ``{method_name: seconds}`` dict to override.
+            TTL of 0 for a specific method disables caching for that method.
+            Example::
+
+                from franklinwh_cloud.cache import DEFAULT_CACHE
+                client = FranklinWHCloud(email, password, cache=DEFAULT_CACHE)
         """
         from franklinwh_cloud.metrics import ClientMetrics, DISCLAIMER, EdgeTracker, RateLimiter, StaleDataCache, get_default_client_headers
 
@@ -285,6 +298,28 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         self._dynamic_modes_cache: dict[int, str] | None = None
         self._canary_baseline_version = "APP2.11.0"
         self._canary_tripped = False
+        self._emulate_app_version = emulate_app_version  # outbound softwareversion header value
+
+        # Static site topology — set by the integrator at construction time from DB or config.
+        # True = this site has no utility connection (permanent island, e.g. off-grid solar).
+        # Default False (grid-tied) covers the vast majority of FranklinWH installations.
+        # FHAI reads this from its static_site_data DB table on startup — no API call needed.
+        # get_entrance_info() is never called by the library for this purpose.
+        self._not_grid_tied: bool = not_grid_tied
+
+
+        # Method-level TTL cache — opt-in, zero overhead when disabled
+        if cache is not None:
+            from franklinwh_cloud.cache import MethodCache
+            self.method_cache = MethodCache(cache)
+            self._apply_method_cache()
+        else:
+            self.method_cache = None
+
+        # Python-method call tracking — opt-in, must run AFTER _apply_method_cache
+        # so the tracker wraps the cache layer (tracker fires on cache hits too)
+        if track_python_methods:
+            self._apply_method_tracking()
 
         # Client identity headers — good API citizenship
         default_headers = {}
@@ -434,7 +469,15 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
 
-            json_resp = resp.json()
+            if not resp.text.strip():
+                # Some API endpoints (e.g. smart circuit toggles) return 200 with an empty body
+                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
+            else:
+                try:
+                    json_resp = resp.json()
+                except Exception as e:
+                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
+                    raise
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -482,7 +525,14 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
                 
-            json_resp = resp.json()
+            if not resp.text.strip():
+                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
+            else:
+                try:
+                    json_resp = resp.json()
+                except Exception as e:
+                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
+                    raise
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -504,6 +554,90 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         """Refresh the authentication token using the TokenFetcher."""
         self.metrics.record_token_refresh()
         self.token = await self.fetcher.get_token(force_refresh=True)
+        # Telemetry: capture the backend echoed software version
+        if getattr(self.fetcher, "info", None):
+            sv = self.fetcher.info.get("_backend_software_version")
+            if sv:
+                self.metrics._latest_backend_software_version = sv
+
+    def _apply_method_tracking(self) -> None:
+        """Wrap all public async methods with Python-level call counters.
+
+        Must be called AFTER _apply_method_cache() so the tracker sits OUTSIDE
+        the cache layer. Call chain:
+            tracker → [cache wrapper if active] → original method
+
+        This guarantees cache hits are counted, not just cache misses.
+        Only public async methods (no leading underscore) are tracked.
+        """
+        import inspect
+        import functools
+
+        for name in list(dir(type(self))):
+            if name.startswith("_"):
+                continue
+            # Resolve the current binding — may be a cache wrapper (instance attr)
+            # or an unbound class method; getattr binds it to self either way.
+            fn = getattr(self, name, None)
+            if fn is None:
+                continue
+            if not inspect.iscoroutinefunction(fn):
+                continue
+
+            def _make_tracker(method_name: str, bound_fn):
+                @functools.wraps(bound_fn)
+                async def _tracked(*args, **kwargs):
+                    self.metrics.record_python_call(method_name)
+                    return await bound_fn(*args, **kwargs)
+                return _tracked
+
+            setattr(self, name, _make_tracker(name, fn))
+
+    def _apply_method_cache(self) -> None:
+        """Wrap configured methods with TTL caching at init time.
+
+        Applied once per Client instance. Uses instance-level binding so the
+        original class methods are never mutated — safe for multiple Client
+        instances with different cache configurations in the same process.
+        """
+        import functools
+
+        for method_name in self.method_cache._config:
+            original_fn = getattr(type(self), method_name, None)
+            if original_fn is None:
+                continue  # method name not found on this client — skip silently
+
+            # Capture loop variables in closure
+            def _make_wrapper(name, fn):
+                @functools.wraps(fn)
+                async def _cached_wrapper(self_inner, *args, **kwargs):
+                    args_hash = hash((args, tuple(sorted(kwargs.items()))))
+                    cached = self_inner.method_cache.get(name, args_hash)
+                    if cached is not None:
+                        return cached
+                    result = await fn(self_inner, *args, **kwargs)
+                    self_inner.method_cache.set(name, args_hash, result)
+                    return result
+                return _cached_wrapper
+
+            # Bind the wrapper to this instance only (not the class)
+            wrapped = _make_wrapper(method_name, original_fn)
+            setattr(self, method_name, wrapped.__get__(self, type(self)))
+
+    def invalidate_cache(self, method: str | None = None) -> None:
+        """Invalidate the method-level TTL cache.
+
+        Call this after write operations that change data returned by a cached
+        method. For example, after ``set_smart_circuit_state()``, call
+        ``client.invalidate_cache('get_smart_circuits_info')``.
+
+        Parameters
+        ----------
+        method : str | None
+            Method name to invalidate, or ``None`` to clear the entire cache.
+        """
+        if self.method_cache:
+            self.method_cache.invalidate(method)
 
     def get_metrics(self) -> dict:
         """Return a snapshot of all API call metrics.
@@ -514,14 +648,29 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             Metrics including uptime, call counts, timing, errors,
             retries, and token refresh counts, as well as CloudFront 
             edge tracking and caching telemetry.
+
+            ``session.emulate_app_version`` — the ``softwareversion`` header
+            value sent with every request (our outbound identity).
+
+            ``session.latest_backend_software_version`` — the version string
+            the server echoed back on last login/refresh. ``None`` until the
+            first token refresh. Used by the canary trap for schema drift
+            detection.
         """
         payload = self.metrics.snapshot()
         payload["edge"] = self.edge_tracker.snapshot()
         if hasattr(self, "stale_cache"):
             payload["cache"] = self.stale_cache.snapshot()
+        if self.method_cache:
+            payload["method_cache"] = self.method_cache.snapshot()
         if self.rate_limiter:
             payload["rate_limits"] = self.rate_limiter.snapshot()
-            
+        # Surface both sides of the version handshake in a single block
+        payload["session"] = {
+            "emulate_app_version": self._emulate_app_version,
+            "latest_backend_software_version": self.metrics._latest_backend_software_version,
+            "canary_tripped": self._canary_tripped,
+        }
         return payload
 
     def next_snno(self):

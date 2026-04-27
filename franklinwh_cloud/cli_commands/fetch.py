@@ -37,7 +37,8 @@ async def run(client, method: str, path: str, *,
               output_file: str | None = None,
               json_output: bool = False,
               inject_gateway: bool = True,
-              inject_user: bool = False):
+              inject_user: bool = False,
+              app_version: str | None = None):
     """Execute an arbitrary API call."""
     method = method.upper()
     if method not in ("GET", "POST"):
@@ -112,6 +113,13 @@ async def run(client, method: str, path: str, *,
     # Make the request using client.session (the authenticated httpx.AsyncClient)
     try:
         headers = {"loginToken": client.token}
+
+        # Per-call softwareversion override — does NOT mutate session defaults
+        if app_version:
+            headers["softwareversion"] = app_version
+            if not json_output:
+                from franklinwh_cloud.cli_output import print_warning
+                print_warning(f"softwareversion overridden → {app_version} (session default: APP2.4.1)")
 
         if method == "GET":
             response = await client.session.get(

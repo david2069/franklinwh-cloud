@@ -35,10 +35,14 @@ DISCLAIMER = (
 def get_default_client_headers() -> dict:
     """Return default client identification headers.
 
-    We spoof the 'softwareversion' to masquerade as the official mobile app
-    in order to unlock the latest JSON schema capabilities from the backend.
-    However, we still honestly identify as a third-party Python client via
-    the 'optsource' and 'optsystemversion' telemetry headers.
+    We send the certified baseline ``softwareversion`` (``APP2.4.1``) to
+    identify the client as a known-good app version. Empirical testing has
+    shown that varying this header does **not** alter JSON payload structure
+    on current endpoints — its primary role is authentication negotiation and
+    server-side telemetry/analytics.
+
+    We honestly identify as a third-party Python client via the ``optsource``
+    and ``optsystemversion`` telemetry headers ("good citizen" practice).
     """
     return {
         "softwareversion": "APP2.4.1",
@@ -394,8 +398,9 @@ class ClientMetrics:
 
     # API call counters
     total_calls: int = 0
-    calls_by_method: dict = field(default_factory=dict)
-    calls_by_endpoint: dict = field(default_factory=dict)
+    calls_by_method: dict = field(default_factory=dict)      # HTTP verbs: {"GET": N, "POST": M}
+    calls_by_endpoint: dict = field(default_factory=dict)    # Cloud endpoint names: {"getDeviceCompositeInfo": N, ...}
+    calls_by_python_method: dict = field(default_factory=dict)  # Python wrapper names: {"get_stats": N, ...} — opt-in via track_python_methods=True
 
     # Response timing
     total_time_s: float = 0.0
@@ -416,11 +421,17 @@ class ClientMetrics:
     # Retry & auth
     retry_count: int = 0
     token_refresh_count: int = 0
+    last_token_refresh_at: float = 0.0
     login_count: int = 0
 
     # Rate limiting
     total_rate_limits: int = 0
     total_throttle_waits: int = 0
+
+    # Backend version telemetry — populated on login and each token refresh.
+    # Contains the softwareVersion the server echoed back in its login response
+    # (e.g. "APP2.4.1"). None until the first token refresh completes.
+    _latest_backend_software_version: str | None = None
 
     def record_call(self, method: str, endpoint: str, elapsed: float) -> None:
         """Record a successful API call."""
@@ -434,6 +445,22 @@ class ClientMetrics:
         if elapsed > self.max_call_time_s:
             self.max_call_time_s = elapsed
 
+    def record_python_call(self, method_name: str) -> None:
+        """Record a Python-level API wrapper invocation.
+
+        Distinct from record_call() which records HTTP-level transport calls.
+        Incremented by _apply_method_tracking() wrappers bound at Client.__init__
+        time. Only populated when track_python_methods=True is passed to Client.
+
+        Parameters
+        ----------
+        method_name : str
+            Python method name, e.g. 'get_stats', 'set_mode'.
+        """
+        self.calls_by_python_method[method_name] = (
+            self.calls_by_python_method.get(method_name, 0) + 1
+        )
+
     def record_error(self, error_type: str) -> None:
         """Record an API error by category."""
         self.total_errors += 1
@@ -446,6 +473,7 @@ class ClientMetrics:
     def record_token_refresh(self) -> None:
         """Record a token refresh."""
         self.token_refresh_count += 1
+        self.last_token_refresh_at = time.time()
 
     def record_login(self) -> None:
         """Record a login attempt."""
@@ -476,6 +504,7 @@ class ClientMetrics:
             "total_api_calls": self.total_calls,
             "calls_by_method": dict(self.calls_by_method),
             "calls_by_endpoint": dict(self.calls_by_endpoint),
+            "calls_by_python_method": dict(self.calls_by_python_method),
             "avg_response_time_s": round(self.avg_call_time_s, 4),
             "min_response_time_s": round(self.min_call_time_s, 4) if self.total_calls > 0 else 0.0,
             "max_response_time_s": round(self.max_call_time_s, 4),
@@ -484,9 +513,13 @@ class ClientMetrics:
             "errors_by_type": dict(self.errors_by_type),
             "retry_count": self.retry_count,
             "token_refresh_count": self.token_refresh_count,
+            "last_token_refresh_s_ago": round(time.time() - self.last_token_refresh_at, 1) if self.last_token_refresh_at > 0 else None,
             "login_count": self.login_count,
             "total_rate_limits": self.total_rate_limits,
             "total_throttle_waits": self.total_throttle_waits,
+            # Backend version echoed by the server on login/refresh.
+            # None until first token refresh. Used by the canary trap.
+            "latest_backend_software_version": self._latest_backend_software_version,
         }
 
 

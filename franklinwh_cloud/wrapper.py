@@ -10,10 +10,13 @@ class FranklinWHCloud:
     Acts as an orchestration layer on top of the modern API structs.
     """
 
-    def __init__(self, email: str = None, password: str = None, gateway: str = None):
+    def __init__(self, email: str = None, password: str = None, gateway: str = None,
+                 cache: dict | None = None, track_python_methods: bool = False):
         self.email = email
         self.password = password
         self.gateway = gateway
+        self._cache = cache
+        self._track_python_methods = track_python_methods
         self._auth = None
         self._client = None
 
@@ -81,7 +84,8 @@ class FranklinWHCloud:
             
             target_gateway = gw_list[0].get("id", "")
 
-        self._client = Client(self._auth, target_gateway)
+        self._client = Client(self._auth, target_gateway, cache=self._cache,
+                               track_python_methods=self._track_python_methods)
 
     def __getattr__(self, name):
         """Proxy all API method calls directly to the modern Client instance."""

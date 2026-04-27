@@ -13,7 +13,22 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
-| FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. | 2026-03-26 |
+| FEAT-MODE-DYNAMIC-LIST | Mixins | `get_gateway_tou_list` returns gateway-specific modes (e.g. `peak` instead of `Time of Use`). Client should retrieve and use this dynamic list instead of hardcoded `OPERATING_MODES`. **⏸ ON HOLD — client impact assessment required.** | 2026-03-26 |
+| DEF-SCHEMA-TOTALS-POWER-FILTER | CLI / `cli_commands/schema.py` | `franklinwh-cli schema --filter power --live` renders the `stats.totals` section header but zero rows. Root cause: the totals filter check at L337 tests `filter_group.lower() not in group.lower()`. `TOTALS_SCHEMA` groups are `"Battery"`, `"Grid"`, `"Generation"`, `"Smart Circuits"`, `"V2L"`, `"Load Breakdown"`, `"APbox/MPPT"` — none contain the substring `"power"`. By contrast `CURRENT_SCHEMA` has `"Power Flow"` and `"Power Measurements (211)"` which do match. **Fix:** extend the totals filter to also pass rows through when `filter_group == "power"` AND the group is a known energy/totals group (e.g. Battery, Grid, Generation, Load Breakdown) — OR alias `--filter power` to additionally show all totals groups. | 2026-04-14 |
+
+> **Design Notes (FEAT-MODE-DYNAMIC-LIST — ON HOLD)**
+>
+> The mobile app pattern: on startup it fetches the gateway's active mode list dynamically via `get_gateway_tou_list`, then only presents modes that are supported by that specific hardware configuration (e.g. AU grid may not expose `peak`, commercial gateways may expose additional modes).
+>
+> **Breaking change risk:** Downstream clients (HA integrator, automations) that call `set_mode("peak")` or compare against hardcoded `OPERATING_MODES` keys will break silently if the gateway returns a different mode name than expected.
+>
+> **Open design questions before execution:**
+> 1. **Graceful degradation**: If a client requests a mode not in the gateway's dynamic list, should we: (a) raise `InvalidModeException`, (b) silently no-op with a warning, or (c) attempt the set and let the API reject it?
+> 2. **Mode name normalisation**: The gateway returns display strings (e.g. `"Time of Use"`, `"Self-Consumption"`). Do we expose these raw, or map them to the existing canonical slug keys (`tou`, `self_consumption`)?
+> 3. **Caching**: The mode list rarely changes (hardware config). Should it be fetched once on `Client.__init__`, or lazily on first `get_mode()`/`set_mode()` call?
+> 4. **Emulator support**: The emulator needs a `get_gateway_tou_list` synthetic endpoint before live testing can safely proceed.
+> 5. **Documentation**: [COMPLETED] Downstream UI constraint handling and fallback states are now fully specified in `docs/OPERATING_MODES_GUIDE.md`.
+
 
 ### S4 — Low
 
@@ -21,8 +36,9 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 |----|------|-------------|----------|
 | FEAT-AUTH-ABSTRACT | Client / API Core | Auth strategy pattern (PasswordAuth → OAuthAuth → ApiKeyAuth) — ready for OAuth-day when FranklinWH introduces token-based auth | 2026-03-21 |
 | FEAT-DOCS-OPENAPI | Docs | Generate OpenAPI/Swagger spec from HAR capture of full app lifecycle | 2026-03-21 |
-| FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) to validate real API behaviour against mocked unit tests | 2026-03-26 |
-| FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator that validates requests against an OpenAPI spec before returning synthetic responses | 2026-03-26 |
+| DEF-TOU-NEXT-WAVE-OVERFLOW | CLI / `cli_commands/tou.py` | `franklinwh-cli tou --next` schedule table: WAVE column is `:<12` width but "Super Off-Peak" is 14 chars — overflows into DURATION column with no separator (renders as `Super Off-Peak10h 00m`). Full `tou` schedule table uses `:<15` for WAVE and renders correctly. **Fix:** change `_handle_next` header/row format string WAVE width from `:<12` to `:<15` to match. Line 862 and 883. | 2026-04-14 |
+| CI-TAG-BRANCH-GUARD | CI / `.github/workflows/publish.yml` | Publish workflow has no guard asserting the triggering tag is reachable from `origin/main`. Rogue agents can push tags from feature branches and trigger valid PyPI releases. **Fix:** add `verify-branch` job to `publish.yml` that runs `git merge-base --is-ancestor HEAD origin/main` and fails fast if not. | 2026-04-27 |
+| CI-VERSION-CONSISTENCY | CI / `.github/workflows/publish.yml` | No CI check verifies that `pyproject.toml version` and `franklinwh_cloud/__init__.py __version__` both match the pushed git tag name. The rogue agent bumped these in two separate commits 2 minutes apart. **Fix:** add a `verify-versions` step to the build job asserting `GITHUB_REF_NAME == pyproject version == __version__`. | 2026-04-27 |
 
 ---
 
@@ -30,6 +46,18 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
+| FHAI-ROGUE-SC-SWITCH-STATE | Mixins / `mixins/devices.py` | **[RETROACTIVE — Unauthorized Agent Change]** An FHAI agent self-authorized adding `set_smart_switch_state(circuit, state)` to `DevicesMixin` and bumping the package from `0.4.6 → 0.4.7` (commits `98fbb2e`, `4780404`, 2026-04-01) to satisfy an FHAI runtime dependency — without an approved ticket, implementation plan, or `"explicit declaration of break change"` authorization. **Post-hoc audit (2026-04-27):** Implementation reviewed and accepted as functionally correct (proper type coercion bool/str/int, correct MQTT cmdType 310 payload, no public API removal). The AP-1 violation is documented here for traceability. v0.4.7 is retained on PyPI. | v0.4.7 | `98fbb2e` |
+| OPT-MODE-COMPOSITE-HINT | Mixins / `mixins/modes.py` | `get_mode()` and `set_mode()` called `getDeviceCompositeInfo` unconditionally, duplicating `get_stats()` REST GET cost when called in the same tick. Added keyword-only `composite_hint: dict | None = None` to both methods — when supplied, the API call is skipped entirely. Fully backward-compatible (default None = original behaviour). Documented in `docs/API_COOKBOOK.md` Transport Architecture section. | Unreleased | pending |
+| DEF-TOU-CURRENT-COUNT | CLI / `cli_commands/tou.py` | `tou --current` footer used `len(strategies)` (total seasons) instead of rendered seasons count. Fixed + improved grammar (`1 season` not `1 seasons`). | 2026-04-14 | `f7d7042` |
+| FEAT-METRICS-PYTHON-METHOD-COUNTERS | Metrics / ClientMetrics | Added `calls_by_python_method` dict to `ClientMetrics` + `record_python_call()`. Instance-level `_apply_method_tracking()` on `Client` (runs after `_apply_method_cache` — tracker fires on cache hits). Opt-in via `track_python_methods=True`. CLI `metrics` updated. `API_METRICS_VISUALIZATION.md` corrected with agent warning. | 2026-04-14 | `638328c` |
+| DEF-BMS-STATE-SWAP | Constants / CLI | Fixed inverted BMS Charging/Discharging states and enforced dict lookup. | Unreleased | `27cfaf4` |
+| DEF-BLANK-STATS-PASSTHROUGH | Mixins / Models | Added `is_stale` caching to `get_stats()` to prevent API glitches sending zero-value payloads | Unreleased | `5b29114` |
+| DEF-GRID-STATE-ENUM | Models / Mixins / CLI / FHAI | Replaced `grid_outage: bool` with `GridConnectionState` enum (four states: `CONNECTED`, `OUTAGE`, `SIMULATED_OFF_GRID`, `NOT_GRID_TIED`). Startup cache for `NOT_GRID_TIED` via `get_entrance_info()`. Dual-gate on `main_sw[0]==0` OR `offgridreason!=null` before calling `get_grid_status()` — handles firmware relay reporting lag (~5–10s after go-off-grid). Live-verified: `CONNECTED → SIMULATED_OFF_GRID → CONNECTED` cycle. Full docs in `API_COOKBOOK.md §Grid Connection State`. | Unreleased | `76debfb` |
+| DEF-TOU-LOG-NOISE | Mixins | `get_tou_info()` emitted INFO-level logs on every poll cycle, flooding HA system logs | Unreleased | `pending` |
+| DEF-RELAY-INV | CLI / Mixin | Relay states inverted in `diag` and `discover`: firmware encodes `1=OPEN`, code displayed `1` as CLOSED. Fixed `fmt_relay`, `main_sw` index comment, `bool(val)→not bool(val)` storage, `stats.grid_relay2` attr path, and `ON/OFF→OPEN/CLOSED` labels. | Unreleased | `pending` |
+| DEF-GRID-PROFILE-DYNAMIC-ID | Mixins | `get_grid_profile_info(2)` hardcoded `systemId=0` returning empty payloads; CLI crashed with `UnboundLocalError` due to string `requestType` | Unreleased | `pending` |
+| FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) with JSON schema validation against `franklinwh_openapi.json` | Unreleased | `pending` |
+| FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator (`emulator/`) intercepting requests and returning synthetic responses for offline structural testing | Unreleased | `pending` |
 | DEF-STATS-DOUBLE-SLASH | Mixins | `get_power_details` and `get_power_by_day` prepend `/hes-gateway/` to `self.url_base` causing 404 from CloudFront due to double slash `//` | 2026-03-26 | `pending` |
 | DEF-CLIENT-URL-BASE | Client / API Core | 34 methods used hardcoded `DEFAULT_URL_BASE` instead of `self.url_base`; base URL not configurable | 2026-03-21 | `2b55919` |
 | DEF-AUTH-LOGIN-TYPE | Client / API Core | `_login()` hardcoded `type: 1` (installer) — should be `type: 0` (user) for homeowner accounts | 2026-03-21 | `cba2b6d` |
@@ -42,4 +70,4 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 | FEAT-CLI-DISCOVER-VERBOSE | CLI Commands | Enhanced `discover` with 3 verbosity tiers, feature flags, Hybrid A+B JSON catalog | 2026-03-23 | `multiple` |
 | DEF-CLIENT-TIMEOUT | Client / API Core | `httpx.TimeoutException` propagated raw; now caught in `__post`/`__get` → `ApiTimeoutError` with friendly CLI message | 2026-03-25 | `f38d456` |
 | FEAT-AUTH-CLI-OPTION | CLI Commands | `franklinwh-cli --installer` flag passes `LOGIN_TYPE_INSTALLER` to `TokenFetcher` | 2026-03-25 | `f38d456` |
-| DEF-CLI-TOU-PRICE | CLI Commands | `franklinwh-cli tou` and `--price` do not display actual pricing rates; should default to zero if none | 2026-03-27 |
+| DEF-CLI-TOU-PRICE | CLI Commands | `franklinwh-cli tou` and `--price` do not display actual pricing rates; should default to zero if none | 2026-03-27 | |

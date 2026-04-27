@@ -5,19 +5,19 @@ from enum import Enum
 
 class dispatchCodeType(Enum):
     """Dispatch mode codes for TOU scheduling."""
-    HOME = 2
-    HOME_LOADS = 2
-    STANDBY = 3
+    HOME = 1
+    HOME_LOADS = 1
+    STANDBY = 2
+    SOLAR = 3
+    SOLAR_CHARGE = 3
     SELF = 6
     SELF_CONSUMPTION = 6
-    SOLAR = 1
-    SOLAR_CHARGE = 1
-    GRID_CHARGE = 8
-    GRID_IMPORT = 8
-    FORCE_CHARGE = 8
     GRID_EXPORT = 7
     GRID_DISCHARGE = 7
     FORCE_DISCHARGE = 7
+    GRID_CHARGE = 8
+    GRID_IMPORT = 8
+    FORCE_CHARGE = 8
     CUSTOM = 0
     PREDEFINED = 0
 
@@ -58,10 +58,10 @@ DISPATCH_CODES = {
     "GRID_CHARGE": 8,
     "GRID_IMPORT": 8,
     "FORCE_CHARGE": 8,
-    1: "aPower to home (surplus solar to grid)",
-    2: "aPower on standby (surplus solar to grid)",
-    6: "Self-consumption (surplus solar to grid)",
+    1: "aPower to home",
+    2: "aPower on standby",
     3: "aPower charges from solar",
+    6: "Self-consumption",
     7: "aPower to home/grid",
     8: "aPower charges from solar/grid",
     "B": 2,

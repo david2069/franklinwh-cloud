@@ -4,7 +4,7 @@ Provides set_mode, get_mode, update_soc, and get_mode_info for controlling
 the FranklinWH aGate operating mode via the Cloud API.
 
 API URL parameter reference (from richo/franklinwh-python original):
-    Time of Use:        currendId=9322&gatewayId=___&lang=EN_US&oldIndex=3&soc=15&stromEn=1&workMode=1
+    Time-Of-Use:        currendId=9322&gatewayId=___&lang=EN_US&oldIndex=3&soc=15&stromEn=1&workMode=1
     Self Consumption:   currendId=9323&gatewayId=___&lang=EN_US&oldIndex=2&soc=20&stromEn=1&workMode=2
     Emergency Backup:   currendId=9324&gatewayId=___&lang=EN_US&oldIndex=1&soc=100&stromEn=1&workMode=3
 """
@@ -28,7 +28,7 @@ class ModesMixin:
     Controls the FranklinWH aGate operating mode via the Cloud API.
     Three modes are supported:
 
-        1 = Time of Use (TOU)        — schedule-based battery dispatch
+        1 = Time-Of-Use (TOU)        — schedule-based battery dispatch
         2 = Self Consumption          — maximise solar self-consumption
         3 = Emergency Backup          — reserve battery for grid outages
 
@@ -36,7 +36,7 @@ class ModesMixin:
     The API endpoint is ``hes-gateway/terminal/tou/updateTouModeV2``.
     """
 
-    async def set_mode(self, requestedOperatingMode, requestedSOC=None, reqbackupForeverFlag=None, reqnextWorkMode=None, reqdurationMinutes=None):
+    async def set_mode(self, requestedOperatingMode, requestedSOC=None, reqbackupForeverFlag=None, reqnextWorkMode=None, reqdurationMinutes=None, *, composite_hint: dict | None = None):
         """Set the Operating Work Mode.
 
         Switch from current to requestedOperatingMode value.
@@ -45,7 +45,7 @@ class ModesMixin:
         ----------
         requestedOperatingMode : int or str
             The requested operating mode:
-                1 = Time of Use
+                1 = Time-Of-Use
                 2 = Self Consumption
                 3 = Emergency Backup
 
@@ -69,10 +69,18 @@ class ModesMixin:
             2 = Fixed duration (requires reqdurationMinutes)
         reqnextWorkMode : int (MANDATORY)
             The next work mode after Emergency Backup ends:
-                1 = Time of Use
+                1 = Time-Of-Use
                 2 = Self Consumption
         reqdurationMinutes : int (MANDATORY if reqbackupForeverFlag=2)
             Duration in minutes for Emergency Backup (30–4320, i.e. 30 min to 3 days)
+
+        composite_hint : dict | None, optional
+            Raw response dict from a recent ``get_device_composite_info()`` call
+            (the full dict including ``code``, ``result``, ``message`` keys).
+            When provided, the function skips its own ``get_device_composite_info()``
+            REST GET and uses this data directly — eliminating a redundant round-trip
+            when the caller already holds fresh composite data (e.g. from ``get_stats()``
+            or a shared poll cycle). Default ``None`` preserves original behaviour.
 
         Returns
         -------
@@ -137,10 +145,15 @@ class ModesMixin:
                     raise InvalidOperatingModeOption(f"Invalid reserve SOC value requested: {requestedSOC}")
 
         logger.debug(f"set_mode: Validated requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
-        logger.debug(f"set_mode: calling get_device_composite_info to get TOU details and map target mode: {requestedOperatingMode}")
         logger.debug(f"set_mode: lookup MODE_MAP for {requestedOperatingMode} {MODE_MAP[requestedOperatingMode]}")
 
-        res = await self.get_device_composite_info()
+        # ── Composite info — use hint if caller already holds fresh data ──────
+        if composite_hint is not None:
+            logger.debug("set_mode: using composite_hint (skipping getDeviceCompositeInfo REST GET)")
+            res = composite_hint
+        else:
+            logger.debug(f"set_mode: calling get_device_composite_info to get TOU details and map target mode: {requestedOperatingMode}")
+            res = await self.get_device_composite_info()
         if res['code'] != 200:
             assert res['code'] == 200, f"set_mode: Error: getDeviceCompositeInfo: {res['code']}: {res['message']} "
         logger.debug("set_mode: getDeviceCompositeInfo successful response")
@@ -265,7 +278,7 @@ class ModesMixin:
 
         return result
 
-    async def get_mode(self, requestedMode=None):
+    async def get_mode(self, requestedMode=None, *, composite_hint: dict | None = None):
         """Return the current or requested operating mode details.
 
         Calls two required APIs (composite info + TOU list) and one optional
@@ -275,6 +288,13 @@ class ModesMixin:
         ----------
         requestedMode : int, optional
             Mode to query. If None, returns current mode details.
+        composite_hint : dict | None, optional
+            Raw response dict from a recent ``get_device_composite_info()`` call
+            (the full dict including ``code``, ``result``, ``message`` keys).
+            When provided, the function skips its own ``get_device_composite_info()``
+            REST GET and uses this data directly — eliminating a redundant round-trip
+            when the caller already holds fresh composite data (e.g. from a shared
+            poll cycle with ``get_stats()``). Default ``None`` preserves original behaviour.
 
         Returns
         -------
@@ -282,9 +302,13 @@ class ModesMixin:
             Mode details including workMode, soc, run_status, deviceStatus, etc.
             On failure returns dict with 'error' key.
         """
-        # ── Step 1: Composite info (required) ─────────────────────────
+        # ── Step 1: Composite info — use hint if caller already holds fresh data ──
         try:
-            composite = await self.get_device_composite_info()
+            if composite_hint is not None:
+                logger.debug("get_mode: using composite_hint (skipping getDeviceCompositeInfo REST GET)")
+                composite = composite_hint
+            else:
+                composite = await self.get_device_composite_info()
         except Exception as exc:
             logger.error(f"get_mode: get_device_composite_info failed: {exc}")
             return {"error": f"Failed to get composite info: {exc}"}
@@ -485,10 +509,14 @@ class ModesMixin:
         return results
 
     async def get_operating_mode_name(self, work_mode: int) -> str:
-        """Get the dynamic gateway-specific name for a working mode.
+        """Get the canonical name for a working mode.
 
-        Lazy-loads the mode mapping via get_gateway_tou_list and caches
-        it for the lifetime of the Client instance.
+        Returns the hardcoded canonical name from OPERATING_MODES to
+        guarantee a stable, client-safe value regardless of dealer
+        customisation on the gateway side.
+
+        Dynamic mode name fetching (FEAT-MODE-DYNAMIC-LIST) is ON HOLD
+        pending a design decision on graceful degradation — see defect_list.md.
 
         Parameters
         ----------
@@ -498,22 +526,8 @@ class ModesMixin:
         Returns
         -------
         str
-            The specific customized name set by the dealer/installer
-            (e.g., 'peak', 'Self-Consumption'). Falls back to the standard
-            hardcoded name if the API call fails or mode is not found.
+            Canonical mode name e.g. "Time-Of-Use", "Self-Consumption",
+            "Emergency Backup". Falls back to "Mode {N}" for unknown IDs.
         """
-        if getattr(self, "_dynamic_modes_cache", None) is None:
-            self._dynamic_modes_cache = {}
-            try:
-                res = await self.get_gateway_tou_list()
-                if res and res.get("code") == 200:
-                    tou_list = res.get("result", {}).get("list", [])
-                    for mode_entry in tou_list:
-                        w_id = mode_entry.get("workMode")
-                        name = mode_entry.get("name")
-                        if w_id is not None and name:
-                            self._dynamic_modes_cache[w_id] = name
-            except Exception as exc:
-                logger.warning(f"get_operating_mode_name: failed to fetch dynamic modes: {exc}")
+        return OPERATING_MODES.get(work_mode, f"Mode {work_mode}")
 
-        return self._dynamic_modes_cache.get(work_mode, OPERATING_MODES.get(work_mode, f"Mode {work_mode}"))

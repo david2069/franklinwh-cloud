@@ -4,6 +4,8 @@ from franklinwh_cloud.cli_output import (
     print_header, print_section, print_kv, print_json_output, print_warning,
     c,
 )
+from franklinwh_cloud.models import GridConnectionState
+
 
 
 async def run(client, *, json_output: bool = False):
@@ -55,8 +57,14 @@ async def run(client, *, json_output: bool = False):
     print_section("📊", "Power Flow")
     print_kv("Solar", f"{cur.solar_production:>8.1f} kW")
     print_kv("Battery", f"{cur.battery_use:>8.1f} kW  (SoC: {c('bold', f'{cur.battery_soc:.0f}%')})")
-    grid_color = "green" if cur.grid_status.name == "NORMAL" else "red"
-    print_kv("Grid", f"{cur.grid_use:>8.1f} kW  ({c(grid_color, cur.grid_status.name)})")
+    _grid_state = cur.grid_connection_state
+    _gcolor = {
+        GridConnectionState.CONNECTED: "green",
+        GridConnectionState.OUTAGE: "red",
+        GridConnectionState.SIMULATED_OFF_GRID: "yellow",
+        GridConnectionState.NOT_GRID_TIED: "cyan",
+    }.get(_grid_state, "white")
+    print_kv("Grid", f"{cur.grid_use:>8.1f} kW  ({c(_gcolor, _grid_state.value)})")
     print_kv("Home Load", f"{cur.home_load:>8.1f} kW")
     if cur.generator_production:
         print_kv("Generator", f"{cur.generator_production:>8.1f} kW")
@@ -84,7 +92,7 @@ async def run(client, *, json_output: bool = False):
 
     # Operating mode
     print_section("⚡", "Operating Mode")
-    print_kv("Mode", cur.work_mode_desc)
+    print_kv("Mode", cur.effective_mode)
     # Show reserve SoC for active mode
     try:
         mode_info = await client.get_mode_info(cur.work_mode or 2)
@@ -94,12 +102,12 @@ async def run(client, *, json_output: bool = False):
                 print_kv("Reserve SoC", f"{active_soc}%")
     except Exception:
         pass
-    print_kv("Run Status", cur.run_status_dec)
+    print_kv("Run Status", cur.run_status_desc)
 
     # aPower batteries
     if cur.apower_serial_numbers:
         print_section("🔋", "aPower Batteries")
-        from franklinwh_cloud.const import RUN_STATUS
+        from franklinwh_cloud.const.states import BMS_STATE
         sns = cur.apower_serial_numbers if isinstance(cur.apower_serial_numbers, list) else [cur.apower_serial_numbers]
         socs = cur.apower_soc if isinstance(cur.apower_soc, list) else [cur.apower_soc]
         pwrs = cur.apower_power if isinstance(cur.apower_power, list) else [cur.apower_power]
@@ -110,7 +118,7 @@ async def run(client, *, json_output: bool = False):
             soc = socs[i] if i < len(socs) else "?"
             pwr = pwrs[i] if i < len(pwrs) else "?"
             bms = bmss[i] if i < len(bmss) else 0
-            bms_desc = RUN_STATUS.get(int(bms), "Unknown") if bms else ""
+            bms_desc = BMS_STATE.get(int(bms), "Unknown") if bms else ""
             sn_short = sn[-6:] if len(str(sn)) > 6 else sn
             print_kv(f"aPower {sn_short}", f"SoC: {soc}%  Power: {pwr}W  {bms_desc}")
 

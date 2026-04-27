@@ -59,8 +59,13 @@ def _render_site(snap):
     """Render site identity."""
     print_section("📍", "Site")
     s = snap.site
-    if s.gateway_name:
-        print_kv("Name", s.gateway_name)
+    # Site name from cloud portal (siteName), not the aGate device name (gatewayName)
+    if s.site_name:
+        print_kv("Name", s.site_name)
+    elif s.gateway_name:
+        print_kv("Name", s.gateway_name)  # fallback if site_and_device_info failed
+    if s.site_id:
+        print_kv("Site ID", str(s.site_id))
     if s.address:
         print_kv("Address", s.address)
     if s.country:
@@ -105,6 +110,9 @@ def _render_agate(snap):
     """Render aGate identity."""
     print_section("🏠", "aGate")
     a = snap.agate
+    # User-configured aGate device name (e.g. "FHP")
+    if snap.site.gateway_name:
+        print_kv("Name", snap.site.gateway_name)
     if a.model:
         print_kv("Model", f"{a.model_name} — {a.model}")
     if a.sku:
@@ -191,16 +199,17 @@ def _render_flags(snap):
         ("PCS Power Control", f.pcs_enabled, "Enabled" if f.pcs_enabled else "Disabled"),
     ]
 
-    # Off-grid — differentiate 3 sources
+    # Grid-Tied — positive framing (not "Off-Grid: Grid-connected" double-negative)
+    grid_tied = not f.off_grid
     if f.off_grid_simulated:
-        og_detail = "Simulated (grid contactor opened)"
+        grid_detail = "Simulated off-grid (contactor opened by user)"
     elif f.off_grid_permanent:
-        og_detail = "Permanent (no utility service)"
+        grid_detail = "Permanent off-grid (no utility service)"
     elif f.off_grid:
-        og_detail = f"Grid outage detected (reason: {f.off_grid_reason})"
+        grid_detail = f"Grid outage detected (reason: {f.off_grid_reason})"
     else:
-        og_detail = "Grid-connected"
-    flags.append(("Off-Grid", f.off_grid, og_detail))
+        grid_detail = "Connected"
+    flags.append(("Grid-Tied", grid_tied, grid_detail))
 
     flags.extend([
         ("MPPT (DC-coupled)", f.mppt_enabled, "Enabled" if f.mppt_enabled else "Not available"),
@@ -255,7 +264,7 @@ def _render_flags(snap):
 
 
 def _render_state(snap):
-    """Render operating state."""
+    """Render operating state and supported modes."""
     e = snap.electrical
     print_section("⚡", "Operating State")
     print_kv("Mode", f"{e.operating_mode_name}")
@@ -265,6 +274,19 @@ def _render_state(snap):
     print_kv("Grid", grid_state)
     phase = "Three-phase" if snap.flags.three_phase else "Single-phase"
     print_kv("Phase", phase)
+
+    # Supported operating modes (only modes the device firmware supports are returned)
+    if e.supported_modes:
+        _WORK_MODE_NAMES = {1: "TOU", 2: "Self-Consumption", 3: "Emergency Backup"}
+        mode_parts = []
+        for m in sorted(e.supported_modes, key=lambda x: x.get("workMode", 99)):
+            name = m.get("name") or _WORK_MODE_NAMES.get(m.get("workMode"), f"Mode {m.get('workMode')}")
+            soc = m.get("soc")
+            if soc is not None:
+                mode_parts.append(f"{name} (reserve {soc:.0f}%)")
+            else:
+                mode_parts.append(name)
+        print_kv("Supported Modes", ", ".join(mode_parts))
 
 
 def _render_accessories(snap):
@@ -452,7 +474,7 @@ def _render_electrical(snap):
             if key == "v2l" and not (snap.flags.v2l_enabled or snap.flags.v2l_eligible):
                 continue
             label = relay_labels.get(key, key)
-            icon = c("green", "ON") if state else c("dim", "OFF")
+            icon = c("green", "● CLOSED") if state else c("dim", "○ OPEN")
             print_kv(label, icon)
 
 
@@ -547,7 +569,7 @@ def _render_whats_missing(snap):
         notes.append(("ⓘ", "No Generator Module installed"))
     if not f.vpp_enrolled:
         notes.append(("ⓘ", "Not enrolled in VPP programme"))
-    if snap.warranty.expiry == "":
+    if snap.tier >= 2 and snap.warranty.expiry == "":
         notes.append(("ⓘ", "Warranty info unavailable"))
 
     if notes:
