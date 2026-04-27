@@ -213,10 +213,14 @@ class TestGetStatsResponseParsing:
 
     @respx.mock
     async def test_get_power_details_strict_url(self, mock_client):
-        """Ensure get_power_details constructs the URL exactly without double slashes."""
-        # This will fail with respx.PassThrough if the client requests //hes-gateway/...
+        """Ensure get_power_details constructs the URL exactly without double slashes.
+
+        After DEF-STATS-DOUBLE-SLASH fix: method uses self.url_base + "api-energy/..."
+        so the full URL is https://energy.franklinwh.com/api-energy/electric/getFhpElectricData
+        (no hes-gateway/ prefix, no double slash).
+        """
         respx.get(
-            "https://energy.franklinwh.com/hes-gateway/api-energy/electic/getFhpPowerData",
+            "https://energy.franklinwh.com/api-energy/electric/getFhpElectricData",
             params={"gatewayId": "TEST-GW-001", "type": 1, "dayTime": "2026-03-26"}
         ).mock(return_value=httpx.Response(200, json={
             "code": 200,
@@ -228,9 +232,14 @@ class TestGetStatsResponseParsing:
 
     @respx.mock
     async def test_get_power_by_day_strict_url(self, mock_client):
-        """Ensure get_power_by_day constructs the URL without double slashes."""
+        """Ensure get_power_by_day constructs the URL without double slashes.
+
+        After DEF-STATS-DOUBLE-SLASH fix: method uses self.url_base + "api-energy/..."
+        so the full URL is https://energy.franklinwh.com/api-energy/power/getFhpPowerByDay
+        (no hes-gateway/ prefix, no double slash).
+        """
         respx.get(
-            "https://energy.franklinwh.com/hes-gateway/api-energy/power/getFhpPowerByDay",
+            "https://energy.franklinwh.com/api-energy/power/getFhpPowerByDay",
             params={"gatewayId": "TEST-GW-001", "dayTime": "2026-03-26"}
         ).mock(return_value=httpx.Response(200, json={
             "code": 200,
