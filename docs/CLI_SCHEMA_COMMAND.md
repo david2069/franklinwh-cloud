@@ -47,21 +47,29 @@ franklinwh-cli schema --live --filter power     # filtered JSON
 |--------|---------|
 | **Python Attribute** | The field name on `stats.current` or `stats.totals` |
 | **Raw API Key** | The JSON key in the FranklinWH API response |
-| **Source** | Which MQTT command provides this field |
+| **Source** | Which API endpoint or transport provides this field |
 | **Units** | Physical unit (kW, kWh, V, A, Hz, %, °C) |
 | **Live Value** | (with `--live` only) current reading from the gateway |
 
-### Source codes
+### Source prefix notation
 
-| Source | Description |
-|--------|-------------|
-| `203/runtimeData` | `getDeviceCompositeInfo` (cmdType 203) → `result.runtimeData` — main telemetry call |
-| `203/result` | `getDeviceCompositeInfo` → `result` (top-level, not nested in runtimeData) |
-| `211/result` | `get_power_info` (cmdType 211) — **opt-in**, only with `get_stats(include_electrical=True)` |
-| `311/sw_data` | `getSmartCircuitsInfo` (cmdType 311) — requires Smart Circuit accessory |
-| `311/runtimeData` | `getSmartCircuitsInfo` → runtimeData inline |
-| `get_tou_info` | Derived from TOU schedule lookup — not from the main MQTT call |
-| `derived` | Computed by the library (no direct API field) |
+> [!IMPORTANT]
+> **`203/` is a REST GET — not a `sendMqtt` call.** The prefix notation describes *which API
+> response* a field comes from, not the transport mechanism used to retrieve it. Specifically:
+> `getDeviceCompositeInfo` is a plain `HTTPS GET` that the cloud server assembles server-side.
+> The `sendMqtt + cmdType 203` path (`_status()`) is a legacy private method not used by
+> `get_stats()`. See [Transport Architecture](API_COOKBOOK.md#-transport-architecture-rest-get-vs-mqtt-relay)
+> for the full breakdown.
+
+| Source | Transport | Cost | When it fires |
+|--------|-----------|------|---------------|
+| `203/runtimeData` | **REST GET** → `getDeviceCompositeInfo` | **Cheapest** — CloudFront-cached | Every `get_stats()` call |
+| `203/result` | **REST GET** → `getDeviceCompositeInfo` (top-level) | **Cheapest** — same call | Every `get_stats()` call |
+| `211/result` | **MQTT Relay** → `get_power_info()` (sendMqtt cmdType 211) | Higher — aGate round-trip | Only when `include_electrical=True` |
+| `311/runtimeData` | **MQTT Relay** → `get_smart_circuits_info()` (cmdType 311) | Higher — aGate round-trip | Only if smart circuits accessory present |
+| `311/sw_data` | **MQTT Relay** → `_switch_usage()` (cmdType 353, not 311) | Higher — aGate round-trip | Only if smart circuits active in `pro_load[]` |
+| `get_tou_info` | **REST GET** → TOU schedule endpoint | Low-medium | Only in TOU mode, opt-in |
+| `derived` | Local computation | **Free** — no API call | Always |
 
 ### Relay encoding
 

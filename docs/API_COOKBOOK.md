@@ -76,6 +76,118 @@ Always check `client.metrics.snapshot()` to audit your background thread discipl
 
 ---
 
+## 🚦 Transport Architecture: REST GET vs MQTT Relay
+
+Understanding the **two transport paths** in this library is essential before writing custom
+polling code or building your own API layer on top. The two mechanisms have fundamentally
+different cost and latency characteristics.
+
+### The Two Transport Paths
+
+| Transport | Mechanism | Cost | CloudFront-cacheable | Who uses it |
+|---|---|---|---|---|
+| **REST GET** → cloud aggregator | `HTTPS GET` to `/hes-gateway/terminal/getDeviceCompositeInfo` | **Cheapest** — cloud assembles response from its DB | ✅ Yes | `get_stats()`, `get_mode()`, `set_mode()` |
+| **REST GET/POST** → cloud REST API | Standard HTTPS to cloud REST endpoints | Low-medium | Partial | `get_gateway_tou_list()`, `get_tou_info()`, `set_mode()` POST |
+| **MQTT Relay** → physical aGate | `POST` to `/hes-gateway/terminal/sendMqtt` with `cmdType` in body | **Higher** — cloud relays over MQTT to aGate hardware, awaits response | ❌ No | `get_power_info()` (211), `get_smart_circuits_info()` (311), `_switch_usage()` (353) |
+
+> [!IMPORTANT]
+> **The MQTT relay path is a physical hardware round-trip.** Every `sendMqtt` call crosses:
+> Cloud → AWS IoT → aGate firmware → back. This is not a DB lookup. Overusing MQTT relay
+> calls on fast poll cycles is the primary cause of `DeviceTimeoutException` failures.
+
+### What the Schema `203/`, `211/`, `311/` Source Prefixes Mean
+
+The `franklinwh-cli schema` command's **Source** column uses `cmdType/sub-object` notation.
+**These prefixes describe which command produced the field — they are not transport cost labels.**
+
+| Source prefix | Transport path | When it fires |
+|---|---|---|
+| `203/runtimeData`, `203/result` | **REST GET** → `getDeviceCompositeInfo` | Every `get_stats()` call — the main poll (cheapest) |
+| `211/result` | **MQTT Relay** → `get_power_info()` (cmdType 211) | Only when `get_stats(include_electrical=True)` |
+| `311/runtimeData`, `311/sw_data` | **MQTT Relay** → `_switch_usage()` (cmdType 353) | Only when smart circuits are active (`pro_load[]` non-zero) |
+| `derived` | Local computation | Free — no API call |
+| `get_tou_info` | REST GET → TOU schedule endpoint | Only when `get_mode()` is in TOU mode |
+
+> [!NOTE]
+> `203/runtimeData` is **not** a `sendMqtt + cmdType 203` call. The private `_status()`
+> method (which does use `sendMqtt` with cmdType 203) is a legacy low-level method not called
+> by `get_stats()`. The `getDeviceCompositeInfo` REST GET is the production path.
+
+### The `get_stats()` Call Tree
+
+```
+get_stats()
+  │
+  ├─ get_device_composite_info()      ← 1x REST GET — all 203/ fields, cheap + CloudFront-cach'd
+  │    └─ result: runtimeData, currentWorkMode, solarHaveVo, deviceStatus, alarms, relays
+  │
+  ├─ get_operating_mode_name()        ← dict lookup (OPERATING_MODES const) — FREE
+  │
+  ├─ [conditional] _switch_usage()   ← MQTT relay cmdType 353 — only if pro_load[] non-zero
+  │    └─ triggers: smart circuit SW1/SW2/V2L present and active in runtimeData.pro_load
+  │
+  ├─ [conditional] get_grid_status() ← REST GET — only if relay OPEN or offgridreason set
+  │    └─ triggers: ~0.1% of normal polls (relay open or off-grid flag)
+  │
+  └─ [conditional] get_power_info()  ← MQTT relay cmdType 211 — only if include_electrical=True
+       └─ triggers: caller opts in explicitly (FHAI uses every Nth poll, not every tick)
+```
+
+**Normal poll (grid-connected, no smart circuits, no electrical): 1 REST GET. That's it.**
+
+### The `composite_hint` Pattern — Avoiding Redundant Fetches
+
+When your code calls `get_stats()` and then immediately calls `get_mode()` or `set_mode()`,
+you are paying for `getDeviceCompositeInfo` **twice** — once inside `get_stats()` and once
+inside the mode call. Use `composite_hint` to eliminate the duplicate:
+
+```python
+# ❌ Naive pattern — double REST GET:
+stats = await client.get_stats()       # calls getDeviceCompositeInfo internally
+mode  = await client.get_mode()        # calls getDeviceCompositeInfo AGAIN
+
+# ✅ Optimised pattern — single REST GET:
+composite = await client.get_device_composite_info()
+stats = await client.get_stats()        # NOTE: get_stats() calls composite internally;
+                                        # for a shared-cycle optimisation, call composite
+                                        # once and pass it to both:
+mode  = await client.get_mode(composite_hint=composite)
+
+# ✅ Simplest optimised pattern for a combined mode+stats read:
+composite = await client.get_device_composite_info()
+mode  = await client.get_mode(composite_hint=composite)
+# stats fields available directly in composite["result"]["runtimeData"]
+```
+
+The `composite_hint` accepts the **full response dict** returned by `get_device_composite_info()`
+(i.e. `{"code": 200, "result": {...}, "message": "success"}`). When provided, `get_mode()` and
+`set_mode()` skip their internal `getDeviceCompositeInfo` call entirely.
+
+> [!TIP]
+> `composite_hint` is keyword-only (after a bare `*`) so it cannot be passed positionally.
+> Existing call sites using positional args are 100% backward-compatible with zero changes.
+
+### Why You Should Not Write Your Own Transport Layer
+
+The library's transport paths have substantial hardening you would need to replicate:
+
+- **Auto-retry with token refresh**: `instrumented_retry` transparently catches `401`/code `10009`
+  responses, negotiates a new JWT via `TokenFetcher`, and replays the original request.
+- **MQTT multiplexing guard**: `sendMqtt` calls **cannot be concurrent** — the aGate MQTT broker
+  cannot multiplex simultaneous requests. The library sequences all `sendMqtt` calls carefully
+  (e.g. `get_bms_info()` type 2 then type 3 are sequential by design).
+- **Stale data fallback**: `get_stats()` returns the last-known-good `Stats` object when the
+  cloud returns an empty `result: null` glitch payload — a real observed cloud bug (not a crash).
+- **CloudFront edge tracking**: Every HTTP response is inspected for `X-Cache` / `x-amz-cf-pop`
+  headers to maintain a live `EdgeTracker` PoP map for diagnostic telemetry.
+- **Canary trap**: Every response is checked for an unrecognised `softwareVersion` field. If a
+  new firmware version is detected, the payload is dumped to disk for schema diffing.
+
+Reimplementing direct `sendMqtt` or `getDeviceCompositeInfo` calls outside this library means
+none of the above protections apply to those calls.
+
+---
+
 ## 🔌 Grid Connection State
 
 > [!IMPORTANT]
