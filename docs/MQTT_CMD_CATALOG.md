@@ -16,7 +16,7 @@ Click any link in the **Python Method** column to view its formal definition in 
 
 | `cmdType` | `MqttCmd` Enum | `dataArea` Sub-Type / Opt | Python Method | Payload Description |
 | :---: | :--- | :--- | :--- | :--- |
-| <a id="cmd-203"></a>**`203`** | `STATUS` | `{"opt": 1}` | [`_status()`](API_REFERENCE.md#franklinwh_cloud.mixins.stats.StatsMixin._status) | High-level device component status polling |
+| <a id="cmd-203"></a>**`203`** | `STATUS` | `{"opt": 1}` | [`_status()`](API_REFERENCE.md#franklinwh_cloud.mixins.stats.StatsMixin._status) | High-level device component status polling. ⚠️ **Legacy path** — `_status()` is a private method not called by `get_stats()`. Normal polling uses `getDeviceCompositeInfo` REST GET (not this MQTT relay). See [Transport Architecture](API_COOKBOOK.md#-transport-architecture-rest-get-vs-mqtt-relay). |
 | <a id="cmd-211-1"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 1}` | [`get_power_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_power_info) | Full Gateway Electrical voltage/freq/relays |
 | <a id="cmd-211-2"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 2}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 1) |
 | <a id="cmd-211-3"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 3}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 2) |

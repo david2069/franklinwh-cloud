@@ -36,7 +36,7 @@ class ModesMixin:
     The API endpoint is ``hes-gateway/terminal/tou/updateTouModeV2``.
     """
 
-    async def set_mode(self, requestedOperatingMode, requestedSOC=None, reqbackupForeverFlag=None, reqnextWorkMode=None, reqdurationMinutes=None):
+    async def set_mode(self, requestedOperatingMode, requestedSOC=None, reqbackupForeverFlag=None, reqnextWorkMode=None, reqdurationMinutes=None, *, composite_hint: dict | None = None):
         """Set the Operating Work Mode.
 
         Switch from current to requestedOperatingMode value.
@@ -73,6 +73,14 @@ class ModesMixin:
                 2 = Self Consumption
         reqdurationMinutes : int (MANDATORY if reqbackupForeverFlag=2)
             Duration in minutes for Emergency Backup (30–4320, i.e. 30 min to 3 days)
+
+        composite_hint : dict | None, optional
+            Raw response dict from a recent ``get_device_composite_info()`` call
+            (the full dict including ``code``, ``result``, ``message`` keys).
+            When provided, the function skips its own ``get_device_composite_info()``
+            REST GET and uses this data directly — eliminating a redundant round-trip
+            when the caller already holds fresh composite data (e.g. from ``get_stats()``
+            or a shared poll cycle). Default ``None`` preserves original behaviour.
 
         Returns
         -------
@@ -137,10 +145,15 @@ class ModesMixin:
                     raise InvalidOperatingModeOption(f"Invalid reserve SOC value requested: {requestedSOC}")
 
         logger.debug(f"set_mode: Validated requested Operating Mode: {requestedOperatingMode}, Reserve SOC: {requestedSOC}, Backup Forever Flag: {reqbackupForeverFlag}, Next Work Mode: {reqnextWorkMode}, Duration Minutes: {reqdurationMinutes}")
-        logger.debug(f"set_mode: calling get_device_composite_info to get TOU details and map target mode: {requestedOperatingMode}")
         logger.debug(f"set_mode: lookup MODE_MAP for {requestedOperatingMode} {MODE_MAP[requestedOperatingMode]}")
 
-        res = await self.get_device_composite_info()
+        # ── Composite info — use hint if caller already holds fresh data ──────
+        if composite_hint is not None:
+            logger.debug("set_mode: using composite_hint (skipping getDeviceCompositeInfo REST GET)")
+            res = composite_hint
+        else:
+            logger.debug(f"set_mode: calling get_device_composite_info to get TOU details and map target mode: {requestedOperatingMode}")
+            res = await self.get_device_composite_info()
         if res['code'] != 200:
             assert res['code'] == 200, f"set_mode: Error: getDeviceCompositeInfo: {res['code']}: {res['message']} "
         logger.debug("set_mode: getDeviceCompositeInfo successful response")
@@ -265,7 +278,7 @@ class ModesMixin:
 
         return result
 
-    async def get_mode(self, requestedMode=None):
+    async def get_mode(self, requestedMode=None, *, composite_hint: dict | None = None):
         """Return the current or requested operating mode details.
 
         Calls two required APIs (composite info + TOU list) and one optional
@@ -275,6 +288,13 @@ class ModesMixin:
         ----------
         requestedMode : int, optional
             Mode to query. If None, returns current mode details.
+        composite_hint : dict | None, optional
+            Raw response dict from a recent ``get_device_composite_info()`` call
+            (the full dict including ``code``, ``result``, ``message`` keys).
+            When provided, the function skips its own ``get_device_composite_info()``
+            REST GET and uses this data directly — eliminating a redundant round-trip
+            when the caller already holds fresh composite data (e.g. from a shared
+            poll cycle with ``get_stats()``). Default ``None`` preserves original behaviour.
 
         Returns
         -------
@@ -282,9 +302,13 @@ class ModesMixin:
             Mode details including workMode, soc, run_status, deviceStatus, etc.
             On failure returns dict with 'error' key.
         """
-        # ── Step 1: Composite info (required) ─────────────────────────
+        # ── Step 1: Composite info — use hint if caller already holds fresh data ──
         try:
-            composite = await self.get_device_composite_info()
+            if composite_hint is not None:
+                logger.debug("get_mode: using composite_hint (skipping getDeviceCompositeInfo REST GET)")
+                composite = composite_hint
+            else:
+                composite = await self.get_device_composite_info()
         except Exception as exc:
             logger.error(f"get_mode: get_device_composite_info failed: {exc}")
             return {"error": f"Failed to get composite info: {exc}"}
