@@ -13,21 +13,26 @@ from franklinwh_cloud.cli_output import (
 )
 
 async def run(client, *, json_output: bool = False, 
-              turn_on: int = None, turn_off: int = None,
+              turn_on: int = None, turn_off: int = None, schedule: int = None,
               cutoff: int = None, disable_cutoff: int = None, soc: int = None,
               load_limit: int = None, amps: int = None):
     """Execute the Smart Circuits command."""
 
     # Handle Setters
     if turn_on is not None:
-        await client.set_smart_circuit_state(turn_on, True)
+        await client.set_smart_switch_state(turn_on, "ON")
         if not json_output:
             print_kv("Command", f"Sent Turn ON to Circuit {turn_on}")
     
     if turn_off is not None:
-        await client.set_smart_circuit_state(turn_off, False)
+        await client.set_smart_switch_state(turn_off, "OFF")
         if not json_output:
             print_kv("Command", f"Sent Turn OFF to Circuit {turn_off}")
+
+    if schedule is not None:
+        await client.set_smart_switch_state(schedule, "SCHEDULE")
+        if not json_output:
+            print_kv("Command", f"Sent SCHEDULE mode to Circuit {schedule}")
 
     if cutoff is not None:
         if soc is None:
@@ -49,7 +54,7 @@ async def run(client, *, json_output: bool = False,
         if not json_output:
             print_kv("Command", f"Sent LOAD LIMIT {amps}A to Circuit {load_limit}")
 
-    if turn_on or turn_off or cutoff or disable_cutoff or load_limit:
+    if turn_on or turn_off or schedule or cutoff or disable_cutoff or load_limit:
         return  # Exit after writing, to avoid printing stale data due to MQTT propagation delay
 
     # ── Render Lists ───────────────────────────────────────────

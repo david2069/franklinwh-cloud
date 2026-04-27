@@ -124,7 +124,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
         if der:
             print_kv("DER Schedule", der)
         work_mode = template.get("workMode", 0)
-        mode_names = {1: "Time of Use", 2: "Self Consumption", 3: "Emergency Backup"}
+        mode_names = {1: "Time-Of-Use", 2: "Self Consumption", 3: "Emergency Backup"}
         print_kv("Work Mode", mode_names.get(work_mode, f"Unknown ({work_mode})"))
 
         nem_type = dispatch_result.get("nemType", 0)
@@ -142,6 +142,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
             from datetime import datetime
             current_month = str(datetime.now().month)
             total_blocks = 0
+            rendered_seasons = 0
             
             for season_idx, season in enumerate(strategies):
                 months = season.get("month", "")
@@ -151,7 +152,8 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                     active_months = [m.strip() for m in months.split(",") if m.strip()]
                     if current_month not in active_months:
                         continue
-                        
+
+                rendered_seasons += 1
                 season_name = season.get("seasonName", f"Season {season_idx + 1}")
                 month_display = _format_months(months)
 
@@ -188,11 +190,11 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
 
                         # Table header
                         if has_soc:
-                            print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
-                            print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
+                            print(f"  {'START':<10}{'END':<10}{'NAME':<15}{'DISPATCH':<24}{'WAVE':<15}{'MAX SoC':<9}{'MIN SoC':<9}{'BUY':<7}{'SELL'}")
+                            print(f"  {'─'*9} {'─'*9} {'─'*14} {'─'*23} {'─'*14} {'─'*8} {'─'*8} {'─'*6} {'─'*6}")
                         else:
-                            print(f"  {'START':<10}{'END':<10}{'NAME':<14}{'DISPATCH':<24}{'WAVE':<12}{'BUY':<7}{'SELL'}")
-                            print(f"  {'─'*9} {'─'*9} {'─'*13} {'─'*23} {'─'*11} {'─'*6} {'─'*6}")
+                            print(f"  {'START':<10}{'END':<10}{'NAME':<15}{'DISPATCH':<24}{'WAVE':<15}{'BUY':<7}{'SELL'}")
+                            print(f"  {'─'*9} {'─'*9} {'─'*14} {'─'*23} {'─'*14} {'─'*6} {'─'*6}")
 
                         for block in periods:
                             start = block.get("startHourTime", "?")
@@ -231,14 +233,15 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                             buy_str = f"${w_buy or 0.0:.2f}"
                             sell_str = f"${w_sell or 0.0:.2f}"
 
-                            print(f"  {start:<10}{end:<10}{name:<14}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<12}{soc_cols}{buy_str:<7}{sell_str}")
+                            print(f"  {start:<10}{end:<10}{name:<15}{c(disp_color, f'{disp_display:<24s}')}{wave_name:<15}{soc_cols}{buy_str:<7}{sell_str}")
 
                         total_blocks += len(periods)
                         print()
                     else:
                         print_warning("  No dispatch periods configured for this day type.")
 
-            print_kv("Total", f"{total_blocks} time blocks across {len(strategies)} season(s)")
+            season_label = "season" if rendered_seasons == 1 else "seasons"
+            print_kv("Total", f"{total_blocks} time blocks across {rendered_seasons} {season_label}")
 
     except Exception as e:
         print_warning(f"Could not retrieve dispatch detail: {e}")
@@ -347,7 +350,7 @@ def _extract_rates(day_type: dict) -> list:
     tiers = [
         ("On-Peak", "eleticRatePeak", "eleticSellPeak"),
         ("Sharp Peak", "eleticRateSharp", "eleticSellSharp"),
-        ("Shoulder", "eleticRateShoulder", "eleticSellShoulder"),
+        ("Mid-Peak", "eleticRateShoulder", "eleticSellShoulder"),
         ("Off-Peak", "eleticRateValley", "eleticSellValley"),
         ("Super Off-Peak", "eleticRateSuperOffPeak", "eleticSellSuperOffPeak"),
     ]

@@ -378,10 +378,10 @@ async def collect_snapshot(client) -> dict:
             "battery_kw": cur.battery_use,
             "battery_soc": cur.battery_soc,
             "grid_kw": cur.grid_use,
-            "grid_status": cur.grid_status.name,
+            "grid_status": cur.grid_connection_state.value,
             "home_load_kw": cur.home_load,
             "operating_mode": cur.work_mode_desc,
-            "run_status": cur.run_status_dec,
+            "run_status": cur.run_status_desc,
         }
     except Exception as e:
         snapshot["power"]["error"] = str(e)
@@ -1337,7 +1337,7 @@ async def run_info(client, json_output: bool = False):
                 
                 try:
                     stats = await client.get_stats()
-                    run_status = stats.current.run_status_dec
+                    run_status = stats.current.run_status_desc
                     work_mode = stats.current.work_mode_desc
                     status_str = f"{run_status} ({work_mode})"
                 except Exception:

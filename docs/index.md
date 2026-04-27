@@ -8,7 +8,7 @@ Unofficial Python library and CLI for the **FranklinWH** energy management syste
 
 This library provides a Python interface to the **FranklinWH Cloud API** — an undocumented, proprietary service that was designed and optimised exclusively for:
 
-- **FranklinWH Official Mobile App** — available via the [Apple App Store](https://apps.apple.com/app/franklinwh/id1581685498) and [Google Play Store](https://play.google.com/store/apps/details?id=com.franklinwh.app)
+- **FranklinWH Official Mobile App** — available via the Apple App Store ([US](https://apps.apple.com/us/app/franklinwh/id1581685498) | [AU](https://apps.apple.com/au/app/franklinwh/id1581685498) | [CA](https://apps.apple.com/ca/app/franklinwh/id1581685498)) and Google Play Store ([US](https://play.google.com/store/apps/details?id=com.franklinwh.app&gl=US) | [AU](https://play.google.com/store/apps/details?id=com.franklinwh.app&gl=AU) | [CA](https://play.google.com/store/apps/details?id=com.franklinwh.app&gl=CA))
 - **FranklinWH Energy Website** — an internal platform for authorised FranklinWH employees, contractors, and certified installers and their affiliates
 
 The Cloud API was **not designed for third-party developer use**. It has no public documentation, no official SDK, no versioning guarantees, and no SLA. It may change, be rate-limited, or be discontinued at any time without notice.
@@ -21,6 +21,11 @@ This library was created to enable homeowners and developers to:
 - **Understand** the data and control interfaces available
 - **Integrate** with home automation platforms (Home Assistant, etc.)
 - **Learn** about energy storage system APIs and solar battery management
+
+!!! tip "The Ultimate Goal"
+    This library exists inherently to encourage the development of an **official public API library**. If this project is not officially endorsed, we hope it is at least acknowledged by FranklinWH Engineering.
+
+    The ultimate goal of this open-source effort is to demonstrate the massive community demand for FranklinWH to publish an official API with modern endpoints for customer and verified partner usage, secured by modern authentication (OAuth/Tokens), reliable rate-limiting, and robust orchestration mechanics for proxy/gateway integration.
 
 It fills a gap where no official developer tools exist, allowing FranklinWH system owners to access data about their own equipment.
 

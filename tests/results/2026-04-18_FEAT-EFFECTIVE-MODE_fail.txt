@@ -1,0 +1,563 @@
+═══════════════════════════════════════════════════════════
+ TEST RESULTS — FEAT-EFFECTIVE-MODE
+ Date:    2026-04-18 11:41:34 AEST
+ Branch:  feat/openapi-stubs
+ Commit:  12d334d (pre-commit)
+ Result:  FAIL ❌
+═══════════════════════════════════════════════════════════
+
+
+==================================== ERRORS ====================================
+_____________________ ERROR collecting tests/test_auth.py ______________________
+tests/test_auth.py:7: in <module>
+    from franklinwh_cloud.auth import PasswordAuth, TokenAuth
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________ ERROR collecting tests/test_backward_compatibility.py _____________
+tests/test_backward_compatibility.py:5: in <module>
+    from franklinwh_cloud.const import TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_________________ ERROR collecting tests/test_build_payload.py _________________
+tests/test_build_payload.py:12: in <module>
+    from franklinwh_cloud.client import to_hex
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_cli_core.py ____________________
+tests/test_cli_core.py:10: in <module>
+    from franklinwh_cloud.cli import load_credentials, build_parser
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_cli_mode.py ____________________
+tests/test_cli_mode.py:5: in <module>
+    from franklinwh_cloud.cli_commands.mode import run
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________________ ERROR collecting tests/test_cli_tou.py ____________________
+tests/test_cli_tou.py:9: in <module>
+    from franklinwh_cloud.cli_commands.tou import (
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_______________ ERROR collecting tests/test_client_auth_retry.py _______________
+tests/test_client_auth_retry.py:7: in <module>
+    from franklinwh_cloud.client import Client
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_____________________ ERROR collecting tests/test_const.py _____________________
+tests/test_const.py:8: in <module>
+    from franklinwh_cloud.const.tou import WaveType, dispatchCodeType
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_discover.py ____________________
+tests/test_discover.py:6: in <module>
+    from franklinwh_cloud.discovery import (
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_get_stats.py ___________________
+tests/test_get_stats.py:12: in <module>
+    from franklinwh_cloud.client import Client, Stats, Current, Totals
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+__________________ ERROR collecting tests/test_grid_status.py __________________
+tests/test_grid_status.py:5: in <module>
+    from franklinwh_cloud.client import GridStatus
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+__________________ ERROR collecting tests/test_integration.py __________________
+tests/test_integration.py:12: in <module>
+    from franklinwh_cloud.cli_commands.support import _collect_keys
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_____________________ ERROR collecting tests/test_live.py ______________________
+tests/test_live.py:33: in <module>
+    from franklinwh_cloud.client import Client, Stats
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_live_mode.py ___________________
+tests/test_live_mode.py:3: in <module>
+    from franklinwh_cloud.client import Client, TokenFetcher
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_________________ ERROR collecting tests/test_method_cache.py __________________
+tests/test_method_cache.py:8: in <module>
+    from franklinwh_cloud.cache import MethodCache, DEFAULT_CACHE
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________________ ERROR collecting tests/test_metrics.py ____________________
+tests/test_metrics.py:7: in <module>
+    from franklinwh_cloud.metrics import ClientMetrics, instrumented_retry, extract_endpoint
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_____________________ ERROR collecting tests/test_modes.py _____________________
+tests/test_modes.py:10: in <module>
+    from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________________ ERROR collecting tests/test_network.py ____________________
+tests/test_network.py:14: in <module>
+    from franklinwh_cloud.exceptions import DeviceTimeoutException
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+_____________________ ERROR collecting tests/test_retry.py _____________________
+tests/test_retry.py:7: in <module>
+    from franklinwh_cloud.client import (
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+______________________ ERROR collecting tests/test_sc.py _______________________
+tests/test_sc.py:4: in <module>
+    from franklinwh_cloud.client import Client
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_set_mode.py ____________________
+tests/test_set_mode.py:8: in <module>
+    from franklinwh_cloud.client import (
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________________ ERROR collecting tests/test_support.py ____________________
+tests/test_support.py:5: in <module>
+    from franklinwh_cloud.cli_commands.support import (
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_telemetry.py ___________________
+tests/test_telemetry.py:7: in <module>
+    from franklinwh_cloud.telemetry import _send_telemetry_sync, dispatch_cli_event
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+___________________ ERROR collecting tests/test_tou_price.py ___________________
+tests/test_tou_price.py:12: in <module>
+    from franklinwh_cloud.client import Client
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________________ ERROR collecting tests/test_tou_set.py ____________________
+tests/test_tou_set.py:15: in <module>
+    from franklinwh_cloud.cli_commands.tou import (
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+____________________ ERROR collecting tests/test_wrapper.py ____________________
+tests/test_wrapper.py:3: in <module>
+    from franklinwh_cloud import FranklinWHCloud
+franklinwh_cloud/__init__.py:5: in <module>
+    from .client import Client
+franklinwh_cloud/client.py:20: in <module>
+    from .models import Stats, Current, Totals, GridStatus, empty_stats
+franklinwh_cloud/models.py:64: in <module>
+    @dataclass
+     ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1442: in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1432: in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:1136: in _process_class
+    _init_fn(all_init_fields,
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/dataclasses.py:687: in _init_fn
+    raise TypeError(f'non-default argument {f.name!r} '
+E   TypeError: non-default argument 'apower_serial_numbers' follows default argument 'effective_mode'
+=========================== short test summary info ============================
+ERROR tests/test_auth.py - TypeError: non-default argument 'apower_serial_num...
+ERROR tests/test_backward_compatibility.py - TypeError: non-default argument ...
+ERROR tests/test_build_payload.py - TypeError: non-default argument 'apower_s...
+ERROR tests/test_cli_core.py - TypeError: non-default argument 'apower_serial...
+ERROR tests/test_cli_mode.py - TypeError: non-default argument 'apower_serial...
+ERROR tests/test_cli_tou.py - TypeError: non-default argument 'apower_serial_...
+ERROR tests/test_client_auth_retry.py - TypeError: non-default argument 'apow...
+ERROR tests/test_const.py - TypeError: non-default argument 'apower_serial_nu...
+ERROR tests/test_discover.py - TypeError: non-default argument 'apower_serial...
+ERROR tests/test_get_stats.py - TypeError: non-default argument 'apower_seria...
+ERROR tests/test_grid_status.py - TypeError: non-default argument 'apower_ser...
+ERROR tests/test_integration.py - TypeError: non-default argument 'apower_ser...
+ERROR tests/test_live.py - TypeError: non-default argument 'apower_serial_num...
+ERROR tests/test_live_mode.py - TypeError: non-default argument 'apower_seria...
+ERROR tests/test_method_cache.py - TypeError: non-default argument 'apower_se...
+ERROR tests/test_metrics.py - TypeError: non-default argument 'apower_serial_...
+ERROR tests/test_modes.py - TypeError: non-default argument 'apower_serial_nu...
+ERROR tests/test_network.py - TypeError: non-default argument 'apower_serial_...
+ERROR tests/test_retry.py - TypeError: non-default argument 'apower_serial_nu...
+ERROR tests/test_sc.py - TypeError: non-default argument 'apower_serial_numbe...
+ERROR tests/test_set_mode.py - TypeError: non-default argument 'apower_serial...
+ERROR tests/test_support.py - TypeError: non-default argument 'apower_serial_...
+ERROR tests/test_telemetry.py - TypeError: non-default argument 'apower_seria...
+ERROR tests/test_tou_price.py - TypeError: non-default argument 'apower_seria...
+ERROR tests/test_tou_set.py - TypeError: non-default argument 'apower_serial_...
+ERROR tests/test_wrapper.py - TypeError: non-default argument 'apower_serial_...
+!!!!!!!!!!!!!!!!!!! Interrupted: 26 errors during collection !!!!!!!!!!!!!!!!!!!
+26 errors in 0.78s
+
+═══════════════════════════════════════════════════════════
+ Summary: 26 errors in 0.78s
+═══════════════════════════════════════════════════════════

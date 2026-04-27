@@ -21,6 +21,7 @@ alwaysApply: true
 5. **No auto-proceed** on implementation plans — wait for explicit user approval
 6. **API-affecting changes** (`set_tou_schedule`, `set_mode`, PCS settings) require user sign-off before commit
 7. **Read-only CLI commands** (`status`, `tou`, `monitor`, `--next`) are safe after syntax check
+8. **ZERO HARDCODING**: When extracting variables, mapping states, or enumerating hardware models, you MUST extract these natively from upstream JSON/API payloads. Hardcoded string hacks are forbidden unless strictly approved.
 
 ## Structure
 

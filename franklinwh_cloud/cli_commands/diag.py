@@ -288,43 +288,6 @@ async def run(client, *, json_output: bool = False):
         if version_info.get("protocol_version"):
             print_kv("Protocol", version_info["protocol_version"])
 
-    # ── 5b. Relay States ─────────────────────────────────────────────
-    # Use runtimeData from the composite info call above (section 5)
-
-    if not json_output and "error" not in gateway_info:
-        try:
-            rt = data.get("runtimeData", {})
-            main_sw = rt.get("main_sw", [])
-            if main_sw:
-                relay_defs = [
-                    ("Grid Relay", 0),
-                    ("Generator Relay", 1),
-                    ("Solar PV Relay", 2),
-                ]
-                print_section("🔧", "Relay States")
-                for name, idx in relay_defs:
-                    if idx < len(main_sw):
-                        val = main_sw[idx]
-                        state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
-                        print_kv(name, state)
-
-                # Additional relays from runtimeData (if present)
-                for key, label in [
-                    ("gridRelay2", "Grid Relay 2"),
-                    ("blackStartRelay", "Black Start Relay"),
-                    ("pvRelay2", "PV Relay 2"),
-                    ("BFPVApboxRelay", "BFPV/aPBox Relay"),
-                ]:
-                    val = rt.get(key)
-                    if val is not None:
-                        state = c("green", "● CLOSED") if val else c("dim", "○ OPEN")
-                        print_kv(label, state)
-            else:
-                print_section("🔧", "Relay States")
-                print_kv("Status", c("dim", "No relay data in runtimeData"))
-        except Exception:
-            pass  # relay display is best-effort
-
     # ── 5c. Solar Port Configuration ─────────────────────────────────
 
     if not json_output and "error" not in gateway_info:
@@ -409,6 +372,59 @@ async def run(client, *, json_output: bool = False):
                 dns = op.get("dns", "—")
                 print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi} dBm  DNS: {dns}')
 
+    # ── 5e. Connectivity Overview (Deep Scan) ────────────────────────
+
+    conn_overview = {}
+    try:
+        conn_overview = await client.get_connectivity_overview(deep_scan=True)
+        checks_passed += 1
+    except Exception as e:
+        conn_overview["error"] = str(e)
+        checks_warned += 1
+
+    results["connectivity_overview"] = conn_overview
+
+    if not json_output:
+        print_section("🌐", "Connectivity Overview")
+        if "error" in conn_overview:
+            print_kv("Status", c("yellow", f'⚠ {conn_overview["error"]}'))
+        else:
+            primary = conn_overview.get("primary", {})
+            print_kv("Primary Link", primary.get("name"))
+            print_kv("Device IP", primary.get("ip") or "—")
+            print_kv("Network Gateway", primary.get("gateway") or "—")
+
+            backups = conn_overview.get("backups", [])
+            viable_backups = [
+                b for b in backups
+                if b.get("ip") not in (None, "", "0.0.0.0")
+                or b.get("id") == 4  # 4G: viability checked separately via signal
+            ]
+            # Drop 4G only if there is genuinely no signal at all
+            sig = conn_overview.get("signals", {})
+            mobile_pct = sig.get("mobile_signal", 0)
+            viable_backups = [
+                b for b in viable_backups
+                if not (b.get("id") == 4 and not mobile_pct)
+            ]
+            if viable_backups:
+                print_kv("Backup Links", ", ".join(b.get("name") for b in viable_backups))
+            else:
+                print_kv("Backup Links", c("dim", "None viable"))
+
+            if "wifi_signal" in sig:
+                print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%")
+            if "mobile_signal" in sig:
+                print_kv("4G/Mobile Signal", f"{sig.get('mobile_signal')}%")
+
+            span = conn_overview.get("span_connected", False)
+            span_text = c("green", "● Active") if span else c("dim", "○ Inactive")
+            print_kv("SPAN Panel", span_text)
+
+            modbus = conn_overview.get("modbus_tcp_502_open", False)
+            modbus_text = c("green", "● Open") if modbus else c("red", "○ Closed/Blocked")
+            print_kv("Local Modbus (502)", modbus_text)
+
     # ── 6. Power Snapshot ────────────────────────────────────────────
 
     power_info = {}
@@ -424,10 +440,10 @@ async def run(client, *, json_output: bool = False):
             "battery_kw": cur.battery_use,
             "battery_soc": cur.battery_soc,
             "grid_kw": cur.grid_use,
-            "grid_status": cur.grid_status.name,
+            "grid_status": cur.grid_connection_state.value,
             "home_load_kw": cur.home_load,
             "operating_mode": cur.work_mode_desc,
-            "run_status": cur.run_status_dec,
+            "run_status": cur.run_status_desc,
         }
         checks_passed += 1
     except Exception as e:
@@ -446,11 +462,39 @@ async def run(client, *, json_output: bool = False):
             print_kv("API Response", f'{power_info["api_response_s"]:.3f}s')
             print_kv("Solar", f'{power_info["solar_kw"]:.1f} kW')
             print_kv("Battery", f'{power_info["battery_kw"]:.1f} kW  (SoC: {power_info["battery_soc"]:.0f}%)')
-            grid_color = "green" if power_info["grid_status"] == "NORMAL" else "red"
+            grid_color = "red" if power_info["grid_status"] == "Outage" else "green"
             print_kv("Grid", f'{power_info["grid_kw"]:.1f} kW  ({c(grid_color, power_info["grid_status"])})')
             print_kv("Home", f'{power_info["home_load_kw"]:.1f} kW')
             print_kv("Mode", power_info["operating_mode"])
             print_kv("Run Status", power_info["run_status"])
+            
+            print_section("🔧", "System Relays")
+
+            # Firmware relay encoding: 1 = OPEN, 0 = CLOSED
+            def fmt_relay(val):
+                return c("dim", "○ OPEN") if val else c("green", "● CLOSED")
+
+            # Primary relays — sourced from runtimeData.main_sw[] via get_stats()
+            # main_sw order: [0]=Grid, [1]=Generator, [2]=Solar
+            print_kv("Grid Relay", fmt_relay(cur.grid_relay1))
+            print_kv("Generator Relay", fmt_relay(cur.generator_relay))
+            print_kv("Solar PV Relay", fmt_relay(cur.solar_relay1))
+
+            # Extended relays — require an explicit get_power_info() (cmdType 211) call.
+            # Fetched here once since diag is a one-shot command, not a polling loop.
+            try:
+                pwr = await client.get_power_info()
+                ext_relay_defs = [
+                    ("Grid Relay 2",      pwr.get("gridRelay2")),
+                    ("Black Start Relay", pwr.get("blackStartRelay")),
+                    ("PV Relay 2",        pwr.get("pvRelay2")),
+                    ("BFPV/aPBox Relay",  pwr.get("BFPVApboxRelay")),
+                ]
+                for label, val in ext_relay_defs:
+                    if val is not None:
+                        print_kv(label, fmt_relay(val))
+            except Exception:
+                pass  # Extended relay data is best-effort in diag
 
     # ── 7. API Health ────────────────────────────────────────────────
 

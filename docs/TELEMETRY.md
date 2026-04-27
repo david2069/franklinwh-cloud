@@ -19,6 +19,7 @@ We use [Scarf](https://scarf.sh/) to passively track generic package downloads (
 For deeper operational usage, we provide an **OPTIONAL** integration with [PostHog](https://posthog.com/). **This is never used without explicit user consent under any circumstances.**
 - **Base Metrics Collected**: The specific Python command invoked (e.g., `discover`, `tou --set`), execution latency, and success/failure flags. We only collect what is needed—nothing more, nothing less.
 - **Privacy Model**: 100% Opt-In. If enabled, the terminal is assigned an anonymous UUID (e.g., `c7b2...`). We never extract emails, passwords, gateway serials, or battery configurations.
+- **GeoIP Suppression**: **We actively suppress PostHog's native GeoIP logging** by hardcoding `$ip: 127.0.0.1` directly into every outbound HTTP packet payload, preventing their ingress servers from scraping your router's origin IP address to approximate your physical location.
 - **Example Use Case**: Determining if users genuinely utilize the `--extended` table views or identifying which operating modes fail most frequently.
 - **Example Data Link**: [PostHog Event Tracking Examples](https://posthog.com/docs/getting-started/send-events)
 
@@ -68,6 +69,24 @@ flowchart TD
 ## Developer Guide: Implementing PostHog Telemetry
 
 If you are building a custom CLI wrapper (e.g., `franklinwh_cli.py`) or a Home Assistant component using `franklinwh-cloud`, you **MUST** properly comply with all consent requirements. **You must formally request opt-in consent from your users via a UI toggle or explicitly written configuration file.**
+
+### Step 1: Register for PostHog (Bring Your Own Key)
+We **do not** register or host a central PostHog organizational dashboard for external users. If you want to use this tracking pipeline to monitor your own tool's usage, you must register your own free account:
+
+1. Go to [https://posthog.com/signup](https://posthog.com/signup) and create a free account.
+2. Once logged in, navigate to **Project Settings**.
+3. Locate your **Project API Key** (it will begin with `phc_...`).
+4. Inject that key securely into your `.env` or `franklinwh.ini` file.
+
+### Step 2: Configure `franklinwh.ini`
+Your users (or yourself) must explicitly opt-in by creating a `[telemetry]` block that stores your new API key:
+
+```ini
+[telemetry]
+enabled = true
+uuid = my-anonymous-user-1234
+api_key = phc_your_actual_project_id_here
+```
 
 **Plain English translation:** When your code calls our tracking function, it doesn't wait around for the internet to connect or the data to send. It simply hands the data off to a background worker and instantly moves on. This guarantees your app never slows down, freezes, or lags just because it's trying to send a metric.
 

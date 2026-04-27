@@ -6,6 +6,7 @@ import logging
 import warnings
 
 from franklinwh_cloud.exceptions import BadRequestParsingError, DeviceTimeoutException
+from franklinwh_cloud.models import MqttCmd
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -158,27 +159,35 @@ class DevicesMixin:
 
         # Type 2 — send first (must be sequential, not concurrent)
         data2 = None
-        try:
-            payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
-            wire2 = self._build_payload(211, payload2)
-            raw2 = (await self._mqtt_send(wire2))["result"]["dataArea"]
-            if raw2:
-                data2 = json.loads(raw2)
-                logger.debug(f"get_bms_info: type2 raw payload: {raw2}")
-        except Exception as e:
-            logger.warning(f"get_bms_info: type2 failed: {e}")
+        for attempt in range(3):
+            try:
+                payload2 = {"fhpSn": f"{apower_serial_no}", "type": 2}
+                wire2 = self._build_payload(MqttCmd.POWER_AND_RELAYS, payload2)  # cmdType 211
+                raw2 = (await self._mqtt_send(wire2))["result"]["dataArea"]
+                if raw2:
+                    data2 = json.loads(raw2)
+                    logger.debug(f"get_bms_info: type2 raw payload: {raw2}")
+                break  # Success
+            except Exception as e:
+                logger.warning(f"get_bms_info: type2 attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(1)
 
         # Type 3 — send second
         data3 = None
-        try:
-            payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
-            wire3 = self._build_payload(211, payload3)
-            raw3 = (await self._mqtt_send(wire3))["result"]["dataArea"]
-            if raw3:
-                data3 = json.loads(raw3)
-                logger.debug(f"get_bms_info: type3 raw payload: {raw3}")
-        except Exception as e:
-            logger.warning(f"get_bms_info: type3 failed: {e}")
+        for attempt in range(3):
+            try:
+                payload3 = {"fhpSn": f"{apower_serial_no}", "type": 3}
+                wire3 = self._build_payload(MqttCmd.POWER_AND_RELAYS, payload3)  # cmdType 211
+                raw3 = (await self._mqtt_send(wire3))["result"]["dataArea"]
+                if raw3:
+                    data3 = json.loads(raw3)
+                    logger.debug(f"get_bms_info: type3 raw payload: {raw3}")
+                break  # Success
+            except Exception as e:
+                logger.warning(f"get_bms_info: type3 attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(1)
 
         # Log response status
         got2 = data2 is not None
@@ -242,7 +251,7 @@ class DevicesMixin:
             if dataArea is None:
                 BadRequestParsingError("Missing payload")
 
-        wire_payload = self._build_payload(327, dataArea)
+        wire_payload = self._build_payload(MqttCmd.AESTHETICS, dataArea)  # cmdType 327
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
@@ -253,7 +262,7 @@ class DevicesMixin:
         """
         payload = {"opt": 0}
         logger.info(f"get_smart_circuits_info: cmdType: 311 Type 2 on aGate {self.gateway}")
-        wire_payload = self._build_payload(311, payload)
+        wire_payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, payload)  # cmdType 311
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
@@ -273,6 +282,26 @@ class DevicesMixin:
             circuits[i] = SmartCircuitDetail.from_api_payload(raw_data, i)
         return circuits
 
+    async def _update_smart_circuit_config(self, circuit: int, updates: dict):
+        """Helper to perform a read-modify-write 311 cycle for a specific circuit."""
+        payload = await self.get_smart_circuits_info()
+        payload["opt"] = 1
+        payload.pop("modeChoose", None)
+        payload.pop("result", None)
+
+        for i in range(1, 4):
+            if f"Sw{i}MsgType" in payload:
+                payload[f"Sw{i}MsgType"] = 0
+
+        payload[f"Sw{circuit}MsgType"] = 1
+        for k, v in updates.items():
+            payload[k] = v
+
+        wire_payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, payload)  # cmdType 311
+        import json
+        data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        return json.loads(data)
+
     async def set_smart_circuit_state(self, circuit: int, turn_on: bool):
         """Toggle a Smart Circuit on or off.
         
@@ -286,10 +315,52 @@ class DevicesMixin:
         if circuit not in (1, 2, 3):
             raise ValueError("Circuit must be 1, 2, or 3")
         
-        # FranklinWH accepts partial updates via MQTT
-        payload = {f"Sw{circuit}Mode": 1 if turn_on else 0}
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        mode_val = 1 if turn_on else 0
+        updates = {
+            f"Sw{circuit}Mode": mode_val,
+            f"Sw{circuit}ProLoad": mode_val ^ 1
+        }
+        return await self._update_smart_circuit_config(circuit, updates)
+
+    
+    async def set_smart_switch_state(self, circuit: int, state):
+        """Configure a Smart Circuit's operating mode (ON, OFF, or Schedule).
+        
+        Parameters
+        ----------
+        circuit : int
+            Circuit number (1, 2, or 3)
+        state : bool or str or int
+            True/"ON"/1 to turn on (Manual)
+            False/"OFF"/0 to turn off (Manual)
+            "Schedule"/2 to set to Schedule mode
+        """
+        if circuit not in (1, 2, 3):
+            raise ValueError("Circuit must be 1, 2, or 3")
+            
+        mode_val = 0
+        if isinstance(state, bool):
+            mode_val = 1 if state else 0
+        elif isinstance(state, str):
+            state_up = state.upper()
+            if state_up == "ON":
+                mode_val = 1
+            elif state_up == "OFF":
+                mode_val = 0
+            elif state_up == "SCHEDULE":
+                mode_val = 2
+            else:
+                raise ValueError("State string must be 'ON', 'OFF', or 'SCHEDULE'")
+        elif isinstance(state, int) and state in (0, 1, 2):
+            mode_val = state
+        else:
+            raise ValueError("Invalid state. Must be bool, 'ON', 'OFF', 'SCHEDULE', or 0/1/2")
+            
+        updates = {
+            f"Sw{circuit}Mode": mode_val,
+            f"Sw{circuit}ProLoad": mode_val ^ 1
+        }
+        return await self._update_smart_circuit_config(circuit, updates)
 
     async def set_smart_circuit_soc_cutoff(self, circuit: int, enable: bool, soc: int = 0):
         """Configure the off-grid SOC Auto Cut-off threshold.
@@ -306,12 +377,11 @@ class DevicesMixin:
         if circuit not in (1, 2, 3):
             raise ValueError("Circuit must be 1, 2, or 3")
         
-        payload = {
+        updates = {
             f"Sw{circuit}AtuoEn": 1 if enable else 0,
             f"Sw{circuit}SocLowSet": int(soc)
         }
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        return await self._update_smart_circuit_config(circuit, updates)
 
     async def set_smart_circuit_load_limit(self, circuit: int, max_amps: int):
         """Configure the maximum amperage draw for a Smart Circuit.
@@ -327,9 +397,8 @@ class DevicesMixin:
         if circuit not in (1, 2, 3):
             raise ValueError("Circuit must be 1, 2, or 3")
             
-        payload = {f"Sw{circuit}LoadLimit": int(max_amps)}
-        wire_payload = self._build_payload(310, payload)
-        return await self._mqtt_send(wire_payload)
+        updates = {f"Sw{circuit}LoadLimit": int(max_amps)}
+        return await self._update_smart_circuit_config(circuit, updates)
 
     async def get_device_info(self):
         """Get detailed device info for the current gateway.
@@ -367,12 +436,12 @@ class DevicesMixin:
 
         match requestType:
             case "1":
-                requestCode = 317
+                requestCode = MqttCmd.NETWORK_INTERFACES  # cmdType 317
                 dataArea = {"opt": 0, "paraType": 6}
             case "2":
-                requestCode = 339
+                requestCode = MqttCmd.CLOUD_CONNECTIVITY  # cmdType 339
             case "3":
-                requestCode = 337
+                requestCode = MqttCmd.WIFI_CONFIG  # cmdType 337
             case _:
                 raise BadRequestParsingError(f"Missing requestType value or unknown: {requestType}")
 
@@ -391,7 +460,7 @@ class DevicesMixin:
             Electricity metrics: voltages, currents, frequencies, relay states, modes
         """
         dataArea = {"type": 1}
-        wire_payload = self._build_payload(211, dataArea)
+        wire_payload = self._build_payload(MqttCmd.POWER_AND_RELAYS, dataArea)  # cmdType 211
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
@@ -404,7 +473,7 @@ class DevicesMixin:
             0 = raw, 1 = Smart Circuits, 2 = V2L, 3 = Generator
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(353, dataArea)
+        wire_payload = self._build_payload(MqttCmd.ACCESSORY_LOADS, dataArea)  # cmdType 353
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         raw_data = json.loads(data)
         result = {}
@@ -507,7 +576,7 @@ class DevicesMixin:
             - awsStatus: AWS connection status (1 = connected)
         """
         dataArea = {"optType": 0, "paraType": 6}
-        wire_payload = self._build_payload(317, dataArea)
+        wire_payload = self._build_payload(MqttCmd.NETWORK_INTERFACES, dataArea)  # cmdType 317
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         parsed = _parse_mqtt_json(raw, 317)
 
@@ -574,7 +643,7 @@ class DevicesMixin:
             - wifi_safety: security mode (1 = WPA/WPA2)
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(337, dataArea)
+        wire_payload = self._build_payload(MqttCmd.WIFI_CONFIG, dataArea)  # cmdType 337
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         parsed = _parse_mqtt_json(raw, 337)
 
@@ -609,7 +678,7 @@ class DevicesMixin:
         cloud. The aGate must be online (even via 4G) for this to work.
         """
         dataArea = {"wifi_ScanTime": 0}
-        wire_payload = self._build_payload(335, dataArea)
+        wire_payload = self._build_payload(MqttCmd.WIFI_SCAN, dataArea)  # cmdType 335
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 335)
 
@@ -661,7 +730,7 @@ class DevicesMixin:
             - awsStatus: 0 = offline, 1 = connected to AWS cloud
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(339, dataArea)
+        wire_payload = self._build_payload(MqttCmd.CLOUD_CONNECTIVITY, dataArea)  # cmdType 339
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 339)
 
@@ -680,7 +749,7 @@ class DevicesMixin:
             - 4GNetSwitch: Cellular 4G interface
         """
         dataArea = {"opt": 0}
-        wire_payload = self._build_payload(341, dataArea)
+        wire_payload = self._build_payload(MqttCmd.NETWORK_SWITCHES, dataArea)  # cmdType 341
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 341)
 
@@ -761,4 +830,108 @@ class DevicesMixin:
         url = self.url_base + "hes-gateway/terminal/getPersonalInfo"
         data = await self._get(url, params=None)
         return data
+
+    async def get_connectivity_overview(self, deep_scan: bool = False):
+        """Unified overview of the gateway's network connectivity.
+        
+        Fetches primary and backup connection statuses, mapped network types,
+        and optionally verifies SPAN panel integration and local Modbus availability.
+        
+        Parameters
+        ----------
+        deep_scan : bool
+            Determine if secondary requests (SPAN / Modbus ping) should be executed.
+            Default is False to reduce polling overhead.
+            
+        Returns
+        -------
+        dict
+            Connectivity overview dictionary containing cloud_connected, primary, primary_ip, and backups.
+        """
+        import asyncio
+        import socket
+        from franklinwh_cloud.const.devices import NETWORK_TYPES
+        
+        # Parallel fetch critical configuration
+        net_info, conn_status, net_switches, stats = await asyncio.gather(
+            self.get_network_info(),
+            self.get_connection_status(),
+            self.get_network_switches(),
+            self.get_stats()
+        )
+        
+        primary_id = net_info.get("currentNetType")
+        primary_name = NETWORK_TYPES.get(primary_id, f"Unknown ({primary_id})")
+        
+        # Resolve primary IP address based on active connection
+        primary_ip = None
+        primary_gateway = None
+        if primary_id == 1:
+            cfg = net_info.get("eth0", {})
+        elif primary_id == 2:
+            cfg = net_info.get("eth1", {})
+        elif primary_id == 3:
+            cfg = net_info.get("wifi", {})
+        else:
+            cfg = {}
+            
+        primary_ip = cfg.get("ip")
+        primary_gateway = cfg.get("gateway")
+            
+        # Discover backup connections powered on by the hardware switches
+        # Map NETWORK_TYPES id → net_info interface key for IP lookup
+        backups = []
+        if net_switches.get("ethernet0NetSwitch") == 1 and primary_id != 1:
+            ip = net_info.get("eth0", {}).get("ip")
+            backups.append({"id": 1, "name": NETWORK_TYPES.get(1), "ip": ip})
+        if net_switches.get("ethernet1NetSwitch") == 1 and primary_id != 2:
+            ip = net_info.get("eth1", {}).get("ip")
+            backups.append({"id": 2, "name": NETWORK_TYPES.get(2), "ip": ip})
+        if net_switches.get("wifiNetSwitch") == 1 and primary_id != 3:
+            ip = net_info.get("wifi", {}).get("ip")
+            backups.append({"id": 3, "name": NETWORK_TYPES.get(3), "ip": ip})
+        if net_switches.get("4GNetSwitch") == 1 and primary_id != 4:
+            rssi = net_info.get("operator", {}).get("rssi")
+            backups.append({"id": 4, "name": NETWORK_TYPES.get(4), "rssi": rssi})
+            
+        overview = {
+            "cloud_connected": bool(conn_status.get("awsStatus")),
+            "router_connected": bool(conn_status.get("routerStatus")),
+            "internet_connected": bool(conn_status.get("netStatus")),
+            "primary": {
+                "id": primary_id,
+                "name": primary_name,
+                "ip": primary_ip,
+                "gateway": primary_gateway
+            },
+            "backups": backups,
+            "signals": {
+                "wifi_signal": stats.current.wifi_signal,
+                "mobile_signal": stats.current.mobile_signal
+            }
+        }
+        
+        if deep_scan:
+            # Check SPAN flag
+            try:
+                span = await self.get_span_setting()
+                overview["span_connected"] = bool(span.get("spanFlag"))
+            except Exception:
+                overview["span_connected"] = False
+                
+            # Ping Modbus TCP port 502
+            modbus_open = False
+            if primary_ip and primary_ip != "0.0.0.0":
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1.5)
+                    result = sock.connect_ex((primary_ip, 502))
+                    if result == 0:
+                        modbus_open = True
+                    sock.close()
+                except Exception:
+                    pass
+            overview["modbus_tcp_502_open"] = modbus_open
+            
+        return overview
 

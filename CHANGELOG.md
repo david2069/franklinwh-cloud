@@ -6,6 +6,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Emulator Foundation (`FEAT-TEST-API-PROXY`)** — Created top-level `emulator/` directory with a fully decoupled FastAPI proxy server (`emulator/main.py`) that intercepts `franklinwh-cloud` library requests and returns synthetic responses. Includes request-logging middleware simulating `@NotNull` Java Spring Boot constraints. Documented in `emulator/README.md` with instructions for routing `franklinwh-cli` against `localhost:8080` for offline structural failure experiments.
+- **`emulator` dependency group** — Added `fastapi[standard]>=0.110.0` and `uvicorn` as an isolated optional dependency group in `pyproject.toml` (`pip install -e ".[emulator]"`), keeping emulator deps fully decoupled from the core library and test suite.
+- **Live JSON schema validation (`FEAT-TEST-INTEGRATION`)** — Added `_assert_live_schema(path, method, payload)` helper to `tests/test_live.py`. Dynamically loads `docs/franklinwh_openapi.json` and validates live API payloads against the formal spec using `jsonschema`, providing automatic detection of undocumented upstream API mutations.
+
+### Changed
+- **`OPT-MODE-COMPOSITE-HINT`** — `get_mode()` and `set_mode()` now accept an optional keyword-only `composite_hint: dict | None = None` parameter. When supplied (as the full response dict from a recent `get_device_composite_info()` call), both methods skip their internal `getDeviceCompositeInfo` REST GET entirely. Eliminates a redundant API round-trip on callers that already hold fresh composite data (e.g. FHAI gateway service calling `get_mode()` in the same poll tick as `get_stats()`). Fully backward-compatible — default `None` preserves original behaviour. See `docs/API_COOKBOOK.md §Transport Architecture`.
+
+### Documentation
+- **`docs/API_COOKBOOK.md`** — New "🚦 Transport Architecture: REST GET vs MQTT Relay" section explaining the two transport paths (REST GET vs `sendMqtt` hardware relay), the `203/`, `211/`, `311/` schema source prefix notation, the `get_stats()` conditional call tree, the `composite_hint` optimisation pattern, and why developers should not bypass the library's transport layer.
+- **`docs/MQTT_CMD_CATALOG.md`** — Added disambiguation note to the `cmdType 203` row clarifying that `_status()` is a legacy private path not called by `get_stats()`, which uses `getDeviceCompositeInfo` REST GET instead.
+- **`docs/CLI_SCHEMA_COMMAND.md`** — Updated Source column description and source codes table: corrected misleading "MQTT command" label to accurate "API transport" framing; added `[!IMPORTANT]` callout clarifying `203/` is a REST GET; expanded table with Transport, Cost, and "When it fires" columns for each source prefix.
+
+### Fixed
+- **`DEF-GRID-PROFILE-DYNAMIC-ID`** — `get_grid_profile_info(requestType=2)` was hardcoding `systemId=0`, returning empty `{}` payloads from the API. The method now auto-fetches the active profile `currentId` from `requestType=1` when `systemId` is not supplied. Also fixed `UnboundLocalError` caused by the CLI passing `requestType` as a string — now cast to `int` before branching logic.
+- **`DEF-TOU-LOG-NOISE`** — `get_tou_info()` was emitting two `logger.info()` calls on every poll cycle (`option = {option}` and `returning current=..., next=...`). Both downgraded to `logger.debug()` to eliminate INFO-level spam in Home Assistant system logs.
+- **`DEF-DYNAMIC-MODE-REVERT`** — Reverted unauthorised `FEAT-MODE-DYNAMIC-LIST` partial implementation. `get_operating_mode_name()` was silently calling `get_gateway_tou_list()` on every `get_stats()` poll and returning dealer-customised strings (e.g. `"peak"`) which broke downstream clients comparing against canonical mode names like `"Time of Use"`. Reverted to stable `OPERATING_MODES` dict lookup. `FEAT-MODE-DYNAMIC-LIST` remains ON HOLD pending approved design — see `defect_list.md`.
+- **`DEF-RELAY-INV`** — Relay states in `diag` and `discover` were inverted: the firmware encodes `1=OPEN, 0=CLOSED` but `fmt_relay` displayed `1` as `● CLOSED`. Fixed in `diag.py` (corrected comment + swapped display strings), `mixins/discover.py` (primary relay `main_sw` index comment corrected to `[Grid, Gen, Solar]`; storage changed from `bool(val)` to `not bool(val)` for both primary and extended relays; `stats.grid_relay2` attr path corrected to `stats.current.grid_relay2`), and `cli_commands/discover.py` (relay display changed from `ON/OFF` to `● CLOSED / ○ OPEN`). Verified live against `main_sw=[1,0,1]` (Grid=OPEN, Gen=CLOSED, Solar=OPEN) and cmdType 211 extended relay fields.
+- **`DEF-BMS-STATE-SWAP`** — `BMS_STATE` in `states.py` had `6` mapped to `"Discharging"` and `7` to `"Charging"`, inverting the firmware ground truth (`V10R01B04D00`, captured 2026-02-23). Fixed to `6="Charging"`, `7="Discharging"` per the invariant `bms_work = run_status + 5`. Added `BMS_WORK_OFFSET = 5` constant and `DCDC_STATE` map (mirrors `bms_work`, standby at `4`) to prevent consumers using `RUN_STATUS` as a wrong-dict lookup for `bms_work` values. Both exported from `franklinwh_cloud.const`.
+- **`DEF-ELECTRICAL-METRICS-LAYER`** — `get_stats()` now accepts `include_electrical: bool = False`. When `True`, calls `get_power_info()` (cmdType 211) internally and populates `grid_voltage1/2`, `grid_current1/2`, `grid_frequency`, `grid_set_frequency`, `grid_line_voltage` (correctly ÷10 scaled from raw integer), `generator_voltage`, and extended relays (`grid_relay2`, `black_start_relay`, `pv_relay2`, `bfpv_apbox_relay`) on `Current`. Scaling logic lives in the library — consumers call `get_stats(include_electrical=True)` on their slow cadence and read pre-scaled fields.
+- **`DEF-GRID-STATUS-SEMANTIC`** *(superseded by DEF-GRID-STATE-ENUM below)* — `Current.grid_status: GridStatus` replaced with `grid_outage: bool`. `GridStatus.NORMAL` was semantically wrong for permanently-islanded systems (`offgridreason=0` means "no outage detected", not "grid is present"). `grid_outage=True` only when firmware reports an active grid loss (`offGridFlag` or `offgridreason > 0`). `GridStatus` enum retained for `set_grid_status()` command path only. All CLI consumers updated: `Connected` / `Outage` labels replace `NORMAL` / `DOWN` / `OFF`.
+- **`DEF-GRID-STATE-ENUM`** — `grid_outage: bool` removed and replaced with `grid_connection_state: GridConnectionState` (four-state enum). The bool model conflated `Not-Grid-Tied` and `Simulated-Off-Grid` into `False`, making it impossible to distinguish deliberately-islanded systems from grid-tied ones. The enum provides unambiguous state for all topologies:
+
+  | State | `.value` | Condition |
+  |-------|----------|-----------|
+  | `CONNECTED` | `"Connected"` | `main_sw[0]==1` (relay CLOSED) |
+  | `OUTAGE` | `"Outage"` | `offGridFlag==1` (firmware-authoritative) |
+  | `SIMULATED_OFF_GRID` | `"SimulatedOffGrid"` | `main_sw[0]==0` AND `offgridState==1` |
+  | `NOT_GRID_TIED` | `"NotGridTied"` | `gridFlag==False` from `get_entrance_info()` |
+
+  **Detection strategy:** `NOT_GRID_TIED` cached once at startup via `get_entrance_info()` (never re-polled). `get_grid_status()` called only when `main_sw[0]==0` OR `offgridreason!=null` — zero overhead on connected systems. Dual-gate handles firmware API reporting lag (~5–10s) where `offgridreason` is set before `main_sw` updates (mechanical relay settling — expected vendor behaviour).
+
+  **Live-verified** (2026-04-10): Full `CONNECTED → SIMULATED_OFF_GRID → CONNECTED` cycle via `TestLiveGridConnectionState`. `offgridState=1`, `main_sw[0]=0`, and `GridConnectionState.SIMULATED_OFF_GRID` all confirmed.
+
+  **Breaking change:** `Current.grid_outage: bool` removed. Consumers migrate to `stats.current.grid_connection_state` (enum) or `.value` (str). See `docs/API_COOKBOOK.md §Grid Connection State` for full annotated examples.
+
+  **Files changed:** `models.py`, `mixins/stats.py`, `client.py`, `cli_commands/status.py`, `cli_commands/monitor.py`, `cli_commands/diag.py`, `cli_commands/support.py`, `__init__.py`, `tests/test_live.py`.
+
+
+
+
+## [0.4.7] - 2026-04-05
+
+> **⚠️ Post-Hoc Audit Notice (2026-04-27):** This release was pushed to PyPI by an FHAI agent without an approved implementation plan or `"explicit declaration of break change"` authorization (AP-1 violation, ticket `FHAI-ROGUE-SC-SWITCH-STATE`). The implementation was reviewed post-hoc and accepted as functionally correct. v0.4.7 is retained on PyPI. CI guardrails (`CI-TAG-BRANCH-GUARD`, `CI-VERSION-CONSISTENCY`) have been queued to prevent recurrence.
+
+### Added
+- **`set_smart_switch_state(circuit, state)`** — New method on `DevicesMixin` to configure a Smart Circuit's operating mode. Accepts `circuit` (1, 2, or 3) and `state` as `bool` (`True`/`False`), `str` (`"ON"`, `"OFF"`, `"SCHEDULE"`), or `int` (`0`, `1`, `2`). Builds MQTT cmdType 310 payload (`{f"Sw{N}Mode": val}`) consistent with existing Smart Circuit methods. `FHAI-ROGUE-SC-SWITCH-STATE`
+- **Client-configurable per-method TTL cache (`FEAT-TTL-CACHE`)** — New `cache.py` module providing a decorator-based TTL cache applied per API method. Configurable per-client instance. Reduces redundant API calls on fast poll cycles.
+- **WiFi and mobile signal in connectivity overview** — `get_stats()` and `discover` now surface structured connectivity payload including WiFi SSID/RSSI and 4G signal strength.
+- **Token refresh timestamp tracking** — `ClientMetrics` now records `last_token_refresh` timestamp, enabling downstream pollers (e.g. FHAI gateway service) to observe authentication renewal events without reimplementing session logic.
+
+### Fixed
+- **`get_stats()` relay source normalisation** — Evicted `get_power_info()` (cmdType 211) from the `get_stats()` hot path for relay data. Relay source consolidated to `main_sw[]` from composite info to prevent double-transport overhead and eliminate the intermittent `None` relay state seen on fast poll cycles.
+- **`get_stats()` relay fallback** — Added `main_sw` fallback for relay state when `include_electrical=False` (power_info skipped). Extended relays now remain populated on both slow and fast cadence.
+- **`diag` 4G backup link logic** — Fixed an over-aggressive filter that dropped the 4G interface from backup links when signal was partially present. Now only drops 4G on confirmed zero signal (all RSSI fields zero).
+- **`diag` extended relay parsing** — Relay state now parsed directly from `stats.current` in the diagnostic check, eliminating a stale reference to the powerInfo sub-path.
+- **Relay mapping order** — Corrected index order to align with `[Solar, Gen, Grid]` hardware mapping after live verification.
+- **`fix(telemetry)` GeoIP suppression** — Hardcoded anonymous `$ip: "127.0.0.1"` in PostHog payloads to block GeoIP sniffing.
+
+### Documentation
+- **API polling anti-patterns** — `docs/API_COOKBOOK.md` new section on over-polling and relay data sourcing.
+- **Connectivity API** — Documented structured connectivity payload fields and cross-referenced legacy relay aliases.
+- **Token refresh tracker recipe** — Code recipe added to `API_COOKBOOK.md` for downstream polling observability.
+- **Session persistence** — Documented infinite session auto-renewal vs official app behaviour.
+- **Accessory latency bounds** — Formalised library vs integrator roles regarding accessory detection timing.
+
 ## [0.4.6] - 2026-03-31
 
 ### Fixed
@@ -215,6 +281,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Power control basics (`set_mode`, `get_mode`)
 - Basic `asyncio`/`httpx` HTTP transport
 
-[Unreleased]: https://github.com/david2069/franklinwh-cloud/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.7...HEAD
+[0.4.7]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.6...v0.4.7
+[0.4.6]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.5...v0.4.6
+[0.4.5]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.4...v0.4.5
+[0.4.4]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.3...v0.4.4
+[0.4.3]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.0...v0.4.3
+[0.4.0]: https://github.com/david2069/franklinwh-cloud/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/david2069/franklinwh-cloud/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/david2069/franklinwh-cloud/releases/tag/v0.2.0
 [0.1.0]: https://github.com/david2069/franklinwh-cloud/releases/tag/v0.1.0
+

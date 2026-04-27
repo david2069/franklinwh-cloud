@@ -19,6 +19,8 @@ from franklinwh_cloud.cli_output import (
     print_header, print_kv, print_json_output,
     c,
 )
+from franklinwh_cloud.models import GridConnectionState
+
 
 
 # ── ANSI helpers ─────────────────────────────────────────────────────
@@ -68,15 +70,17 @@ def _direction(kw: float, pos_label: str = "export", neg_label: str = "import") 
     return "idle"
 
 
-def _grid_status_display(status_name: str) -> str:
-    """Colorize grid status."""
-    if status_name == "NORMAL":
-        return f"{GREEN}● CONNECTED{RESET}"
-    elif status_name == "DOWN":
-        return f"{RED}● DISCONNECTED{RESET}"
-    elif status_name == "OFF":
-        return f"{YELLOW}● OFF-GRID{RESET}"
-    return status_name
+def _grid_status_display(state: GridConnectionState) -> str:
+    return {
+        GridConnectionState.CONNECTED:          f"{GREEN}✓ Connected{RESET}",
+        GridConnectionState.OUTAGE:             f"{RED}✗ Outage{RESET}",
+        GridConnectionState.SIMULATED_OFF_GRID: f"{YELLOW}⚡ Simulated{RESET}",
+        GridConnectionState.NOT_GRID_TIED:      f"{CYAN}~ Not Grid-Tied{RESET}",
+    }.get(state, f"{GREEN}✓ Connected{RESET}")
+
+
+
+
 
 
 # ── Display Renderers ────────────────────────────────────────────────
@@ -110,8 +114,8 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
     lines.append("")
 
     # Battery & Mode status line
-    lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_status.name)}")
-    lines.append(f"  {BOLD}⚙️  Mode{RESET}      {mode_desc}   Status: {cur.run_status_dec}")
+    lines.append(f"  {BOLD}🔋 Battery{RESET}   SoC: {_soc_color(cur.battery_soc)}   Grid: {_grid_status_display(cur.grid_connection_state)}")
+    lines.append(f"  {BOLD}⚙️  Mode{RESET}      {mode_desc}   Status: {cur.run_status_desc}")
     lines.append("")
 
     # Daily energy
@@ -166,7 +170,7 @@ def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
     """Render single-line compact view."""
     cur = stats.current
     now = datetime.now().strftime("%H:%M:%S")
-    grid_sym = "●" if cur.grid_status.name == "NORMAL" else "✗"
+    grid_sym = "●" if cur.grid_connection_state == GridConnectionState.CONNECTED else "✗"
     batt_dir = "↑" if cur.battery_use > 0.05 else "↓" if cur.battery_use < -0.05 else "─"
     return (
         f"[{now}] "
@@ -174,7 +178,7 @@ def render_compact(stats, iteration: int, poll_time_ms: float = 0) -> str:
         f"🔋 {cur.battery_soc:>3.0f}% {batt_dir}{abs(cur.battery_use):>5.1f}kW  "
         f"⚡ {grid_sym} {cur.grid_use:>+5.1f}kW  "
         f"🏠 {cur.home_load:>5.1f}kW  "
-        f"│ {cur.work_mode_desc}  "
+        f"│ {cur.effective_mode}  "
         f"{DIM}{poll_time_ms:.0f}ms{RESET}"
     )
 
@@ -236,7 +240,7 @@ async def run(client, *, json_output: bool = False, interval: int = 30,
                 continue
 
             # Get mode description
-            mode_desc = getattr(stats.current, 'work_mode_desc', 'Unknown')
+            mode_desc = getattr(stats.current, 'effective_mode', '') or getattr(stats.current, 'work_mode_desc', 'Unknown')
 
             # Get metrics
             metrics = client.get_metrics()

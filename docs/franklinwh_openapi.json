@@ -12117,6 +12117,581 @@
           }
         }
       }
+    },
+    "/hes-gateway/terminal/solar/selectAnyOneSolarOpen": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/newApi/api-user/app/resource/getUserResources": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/tou/setPowerControlV2": {
+      "post": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/manage/solar/selectAnyOneSolarOpen": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/manage/selectGatewayPowerAlarm": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/initialize/selectTerStartupPage": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/getWarnFlagNotice": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/common/getMaintenanceInfo": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/getDeviceInfo": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/selectWorkingHours": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/selectIotUserRuntimeDataLog": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/common/getDeviceRealTimeData": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/chargePowerTotal": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/manage/getCommunicationOptimization": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/iotDayPowerStatistics": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/electricStatistics": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/countLoad": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/getCompliance": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/selectTerPushMessageUnread": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/selectTerPushMessageList": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/manage/getHotSpotInfo/v2": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/manage/component/progressOrderCount": {
+      "get": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hes-gateway/terminal/tou/updateTouMode": {
+      "post": {
+        "summary": "Unmapped Demo Endpoint (HAR Discovery)",
+        "description": "This endpoint was discovered natively via HAR telemetry capture (e.g. from the mobile app installer demo), but its structural JSON tree is currently unmapped/unknown. Defined as a stub.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation (Stubbed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Awaiting formal pedantic mapping.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

@@ -210,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Detailed Smart Circuit configuration and control")
     sub_sc.add_argument("--on", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 ON")
     sub_sc.add_argument("--off", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 OFF")
+    sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT", help="Set Circuit 1/2/3 to Schedule mode")
     sub_sc.add_argument("--cutoff", type=int, metavar="CIRCUIT", help="Enable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--disable-cutoff", type=int, metavar="CIRCUIT", help="Disable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")
@@ -257,6 +258,14 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Include BMS battery test (extra sendMqtt load — opt-in)")
 
 
+    # schema
+    sub_schema = subs.add_parser("schema",
+                                 help="Show Current/Totals field schema — Python attr → raw API key mapping")
+    sub_schema.add_argument("--live", action="store_true",
+                            help="Fetch live values from get_stats() and show alongside the schema")
+    sub_schema.add_argument("--filter", dest="filter_group", metavar="GROUP",
+                            help="Filter to fields in a group (e.g. 'power', 'electrical', 'relay', '211')")
+
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
     sub_fetch.add_argument("http_method", choices=["GET", "POST", "get", "post"],
@@ -274,6 +283,9 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Don't auto-inject gatewayId into payload")
     sub_fetch.add_argument("--inject-user", action="store_true",
                            help="Auto-inject userId into payload")
+    sub_fetch.add_argument("--app-version", metavar="VER",
+                           help="Override softwareversion header for this call only (e.g. APP2.11.0, APP1.0.0). "
+                                "Default: APP2.4.1 (certified baseline). Use for API version comparison testing.")
 
     return parser
 
@@ -282,8 +294,47 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def async_main():
     """Async entrypoint."""
+    import sys
+
     parser = build_parser()
-    args = parser.parse_args()
+
+    # ── Normalise argv: hoist global flags to before the subcommand ───────────
+    # argparse requires global flags (--json, --no-color, -v, etc.) to appear
+    # before the subcommand name. Users naturally write them after the subcommand
+    # (e.g. 'schema --live --json'). Pre-process argv so both positions work.
+    _GLOBAL_FLAGS = {
+        "--json", "-j", "--no-color",
+        "--verbose", "-v", "-vv", "-vvv",
+        "--api-trace", "--installer",
+    }
+    _GLOBAL_OPTS_WITH_VALUE = {"--config", "-c", "--email", "-e", "--password", "-p",
+                                "--gateway", "-g", "--trace", "--log-file"}
+
+    raw = sys.argv[1:]
+    before: list[str] = []   # flags that belong before the subcommand
+    rest:   list[str] = []   # subcommand + its own args
+    subcmd_seen = False
+    i = 0
+    while i < len(raw):
+        tok = raw[i]
+        if not subcmd_seen:
+            # Everything before the subcommand stays in order
+            rest.append(tok)
+            if not tok.startswith("-"):
+                subcmd_seen = True
+        else:
+            # After the subcommand — lift recognised global flags out
+            if tok in _GLOBAL_FLAGS:
+                before.append(tok)
+            elif tok in _GLOBAL_OPTS_WITH_VALUE and i + 1 < len(raw):
+                before.extend([tok, raw[i + 1]])
+                i += 1
+            else:
+                rest.append(tok)
+        i += 1
+
+    argv = before + rest
+    args = parser.parse_args(argv)
 
     if not args.command:
         parser.print_help()
@@ -292,6 +343,7 @@ async def async_main():
     # Look for telemetry config
     telemetry_enabled = False
     telemetry_uuid = "anonymous"
+    telemetry_api_key = None
     ini_paths = [args.config] if args.config else ["franklinwh.ini", "franklinwh/franklinwh.ini"]
     for ini_path in ini_paths:
         if ini_path and os.path.exists(ini_path):
@@ -301,11 +353,12 @@ async def async_main():
                 if config.getboolean("telemetry", "enabled", fallback=False):
                     telemetry_enabled = True
                     telemetry_uuid = config.get("telemetry", "uuid", fallback="anonymous")
+                    telemetry_api_key = config.get("telemetry", "api_key", fallback=None)
             except Exception:
                 pass
                 
     from franklinwh_cloud.telemetry import dispatch_cli_event
-    dispatch_cli_event(args.command, telemetry_enabled, telemetry_uuid)
+    dispatch_cli_event(args.command, telemetry_enabled, telemetry_uuid, telemetry_api_key)
 
     # Output config
     if args.no_color:
@@ -463,6 +516,12 @@ async def async_main():
                                       scope=getattr(args, 'scope', 'all'),
                                       info=getattr(args, 'info', False))
 
+            case "schema":
+                from franklinwh_cloud.cli_commands import schema
+                await schema.run(client, json_output=args.json,
+                                 show_live=getattr(args, 'live', False),
+                                 filter_group=getattr(args, 'filter_group', None))
+
             case "fetch":
                 from franklinwh_cloud.cli_commands import fetch
                 await fetch.run(client, args.http_method, args.path,
@@ -472,7 +531,8 @@ async def async_main():
                                 output_file=args.output,
                                 json_output=args.json,
                                 inject_gateway=not args.no_gateway,
-                                inject_user=args.inject_user)
+                                inject_user=args.inject_user,
+                                app_version=getattr(args, 'app_version', None))
 
     except KeyboardInterrupt:
         print("\nInterrupted.")
