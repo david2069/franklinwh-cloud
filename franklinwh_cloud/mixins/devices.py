@@ -558,6 +558,87 @@ class DevicesMixin:
         data = await self._post(url, params=params, payload=payload)
         return data["result"]
 
+    async def set_v2l_mode(self, enable: bool) -> dict:
+        """Enable or disable V2L (Vehicle-to-Load) output via the CarSW port.
+
+        .. warning::
+            **SPECULATIVE IMPLEMENTATION — not verified against live V2L hardware.**
+
+            Based on analysis of the cmdType 311 Smart Circuit payload structure:
+
+            - On US V1 Smart Circuits + Generator Module, Sw3 is the CarSW (V2L) port.
+            - The hypothesis is that toggling V2L maps to ``Sw3Mode = 1 (ON) / 0 (OFF)``
+              via the same cmdType 311 write path used for Smart Circuit control.
+            - A separate dedicated V2L endpoint (e.g. ``updateV2l``) may exist but has
+              not been captured in mobile app traffic.
+
+            **Verification needed:** A user with a V2L-capable US V1 aGate + Generator
+            Module should toggle V2L in the FranklinWH app with Charles/mitmproxy running
+            and compare the captured payload against this implementation.
+
+            See: ``docs/GENERATOR_V2L_API.md`` — V2L Control section.
+
+        Parameters
+        ----------
+        enable : bool
+            True to enable V2L output (Sw3 ON), False to disable (Sw3 OFF).
+
+        Returns
+        -------
+        dict
+            Raw cmdType 311 response from the aGate.
+
+        Raises
+        ------
+        RuntimeError
+            If the speculative path produces an unexpected response shape.
+
+        Notes
+        -----
+        Prerequisites (hardware):
+          - US V1 Smart Circuits (accessory type 202, SKU ACCY-SCV1-US)
+          - Generator Module V1 (accessory type 201, SKU ACCY-GENV1-US)
+          - ``v2lModeEnable = 1`` in runtimeData (system-level V2L licence flag)
+
+        Prerequisites (state):
+          - System must be in off-grid mode (grid relay OPEN) for V2L to be
+            permitted by firmware. On-grid V2L is not supported on any FranklinWH
+            hardware variant.
+
+        Example usage::
+
+            # Check V2L eligibility before calling
+            snap = await client.discover()
+            if not snap.flags.v2l_eligible:
+                raise RuntimeError("Hardware not V2L-capable")
+
+            stats = await client.get_stats()
+            if not stats.current.v2l_enabled:
+                raise RuntimeError("V2L feature not licensed/enabled on this gateway")
+
+            # Enable V2L output
+            result = await client.set_v2l_mode(enable=True)
+
+            # Confirm state
+            stats = await client.get_stats()
+            from franklinwh_cloud.const import V2L_RUN_STATE
+            print(V2L_RUN_STATE[stats.current.v2l_status])
+            # Expected: "Standby" or "Discharging / Active"
+        """
+        logger.warning(
+            "set_v2l_mode() is a SPECULATIVE implementation — Sw3 (CarSW) toggle via "
+            "cmdType 311. Not verified on live V2L hardware. "
+            "See docs/GENERATOR_V2L_API.md for details."
+        )
+        # Speculative: V2L CarSW port = Smart Circuit 3 (Sw3) on US V1 + Generator Module
+        # enable=True  → Sw3Mode=1 (Manual ON)
+        # enable=False → Sw3Mode=0 (Manual OFF)
+        return await self._update_smart_circuit_config(
+            circuit=3,
+            updates={"Sw3Mode": 1 if enable else 0, "Sw3ProLoad": 0 if enable else 1},
+        )
+
+
     async def get_network_info(self):
         """Get aGate network configuration via MQTT command.
 
