@@ -629,7 +629,7 @@ gateways under a site.
 
 ```json
 {
-  "id":        "10060006A02F24170091",
+  "id":        "10060006A0XXXXXXXXXX",
   "name":      "FHP",
   "groupId":   null,
   "groupName": null,
@@ -2057,7 +2057,7 @@ Reset steps:
 
 ```python
 # ✅ CORRECT — select before calling
-await client.select_gateway(gateway_id="10060006A02F24170091")
+await client.select_gateway(gateway_id="10060006A0XXXXXXXXXX")
 health = await client.get_tou_health()
 
 # ❌ WRONG — never loop health checks across all gateways in a single cycle
