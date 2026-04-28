@@ -84,6 +84,7 @@ nav:
     - Serial Numbers Format: SERIAL_NUMBERS.md
   - CLI:
     - Raw API Methods: cli-raw.md
+    - Support Info (--info, --diag, --mock): CLI_SUPPORT_INFO.md
   - Device Discovery:
     - Payload Strategies (Agent Warning): DISCOVER_VS_SUPPORT.md
     - Implementation Plan: DISCOVER_IMPLEMENTATION_PLAN.md

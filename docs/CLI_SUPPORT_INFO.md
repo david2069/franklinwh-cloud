@@ -93,7 +93,7 @@ between site and aGate:
 Single-gateway accounts and fully-ungrouped accounts show **no group tier** —
 the tree goes directly from site to aGate.
 
-> See also: [API Cookbook — Gateway Groups](API_COOKBOOK.md#gateway-groups--get_home_gateway_list-group-fields)
+> See also: [API Cookbook — Gateway Groups](API_COOKBOOK.md#gateway-groups-get_home_gateway_list-group-fields)
 > for the authoritative description of `groupId` / `groupName` / `groupFlag` semantics.
 
 ---
@@ -260,6 +260,6 @@ standard discovery pipeline are required.
 
 ## Related Documentation
 
-- [API Cookbook — Gateway Groups](API_COOKBOOK.md#gateway-groups--get_home_gateway_list-group-fields)
+- [API Cookbook — Gateway Groups](API_COOKBOOK.md#gateway-groups-get_home_gateway_list-group-fields)
 - [Discover vs Support](DISCOVER_VS_SUPPORT.md) — When to use each command
 - [CLI Schema Command](CLI_SCHEMA_COMMAND.md) — Field-level API mapping

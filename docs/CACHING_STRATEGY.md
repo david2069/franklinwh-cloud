@@ -254,4 +254,4 @@ franklinwh-cli raw <url> --headers   # shows raw x-cache, x-amz-cf-pop headers
 - [`API_COOKBOOK.md §🚫 API Anti-Patterns`](API_COOKBOOK.md) — polling cadence rules
 - [`API_COOKBOOK.md §🔌 Grid Connection State`](API_COOKBOOK.md) — `_not_grid_tied` cache usage
 - [`RATE_LIMITING.md`](RATE_LIMITING.md) — `RateLimiter` configuration
-- [`defect_list.md`](../defect_list.md) — `DEF-BLANK-STATS-PASSTHROUGH` tracking
+- `defect_list.md` — `DEF-BLANK-STATS-PASSTHROUGH` tracking (archived)
