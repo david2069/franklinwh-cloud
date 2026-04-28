@@ -1233,258 +1233,798 @@ def _display_nettest_summary(total_ms: float, all_ok: bool, failures: list):
 
 # ── Account Info ─────────────────────────────────────────────────────
 
-async def run_info(client, json_output: bool = False):
-    """Implement franklinwh-cli support --info mapping the account taxonomy."""
+def mock_diag_output():
+    """Print a simulated max-config support --info --diag output.
+
+    Shows every possible feature enabled on a fictional two-gateway grouped
+    site. Useful for understanding output format without API calls.
+    No real account data is used or implied.
+    """
+    from franklinwh_cloud.cli_output import c
+
+    BANNER = "  ⚠  SIMULATED DATA — no real API calls made  ⚠"
+    print(c("yellow", "─" * len(BANNER)))
+    print(c("yellow", BANNER))
+    print(c("yellow", "─" * len(BANNER)))
+    print()
+
+    # ── Account / Site header ──────────────────────────────────────────
+    print(f"{c('cyan', 'john.doe@anymail.com')} (UserId: 99999)")
+    print(f"└── {c('yellow', 'Smallsville (SiteId: 1203) — 123 Anywhere St, Sydney NSW 2000')}")
+
+    gateways = [
+        {
+            "serial":  "10060006A0AAAAAA0001",
+            "name":    "FHP1",
+            "model":   "aGate X-02-US",
+            "group":   "Main House",
+            "grp_id":  "501",
+            "last":    False,
+        },
+        {
+            "serial":  "10060006A0BBBBBB0002",
+            "name":    "FHP2",
+            "model":   "aGate X-01-AU",
+            "group":   "(ungrouped)",
+            "grp_id":  None,
+            "last":    True,
+        },
+    ]
+
+    # Groups
+    print(f"    ├── {c('magenta', 'Group: \"Main House\" (GroupId: 501)')}")
+    print(f"    └── {c('magenta', 'Group: (ungrouped)')}")
+    print()
+
+    for gw in gateways:
+        bar  = "    "
+        grp_bar = "    "
+        gw_pfx = "└──" if gw["last"] else "├──"
+        indent = bar + grp_bar
+
+        print(f"    {'└──' if gw['last'] else '├──'} {c('magenta', 'Group: ' + ('\"Main House\" (GroupId: 501)' if not gw['last'] else '(ungrouped)'))}")
+        print(f"{indent}{gw_pfx} {c('green', gw['name'] + ' (' + gw['model'] + ': ' + gw['serial'] + ')')}")
+        gw_bar = "    " if gw["last"] else "│   "
+
+        # Tree items
+        items = [
+            "Status: Charging (Self-Consumption)",
+            "Grid: Connected",
+            "Solar PV: PV1 + PV2 + Proximal (7.6 kW live) + Remote (aPBox)",
+            "CT: Split Grid ✓  (two utility services)",
+            "CT: Split PV ✓  (multiple PV strings metered)",
+            "aHub: Detected  (remote SC / solar / generator input)",
+            "aPBox: Detected, Remote Solar Enabled",
+            "aPower S / DC MPPT: Enabled (1 unit(s))",
+            "Smart Circuit: Living Room [Auto]",
+            "Smart Circuit: Pool Pump [Schedule]",
+            "Smart Circuit: Workshop [Manual]",
+            "V2L: Enabled — Ready",
+            "Generator: Honda EU7000iS (SN: GEN-XXXX001), Enabled — Running",
+            "aPower S (Serial: 10050013A0AAAAAAS01)",
+            "aPower (Serial: 10050013A0AAAAAAA01)",
+            "aPower (Serial: 10050013A0AAAAAAA02)",
+            "Derating: Charge limited to 8 kW",
+            "Lifecycle: Created 2024-01-15 | Activated 2024-04-01 | Expires 2036-04-01 | PTO: 2024-05-01",
+            "Grid Profile: IEEE 1547a (Default)",
+            "✅ aGate: Normal",
+            "✅ aPower: 3 unit(s), SoC 85.0%",
+            "✅ PCS Control: Enabled",
+            "✅ TOU Schedule: Configured",
+        ]
+        for i, item in enumerate(items):
+            last = i == len(items) - 1
+            print(f"{indent}{gw_bar}{'└──' if last else '├──'} {c('dim', item)}")
+
+        # Feature flags
+        pad = f"{indent}{gw_bar}    "
+        print(f"{pad}{c('bold', '🏷️  Feature Flags')}")
+        flags = [
+            (True,  "Solar: PV1 + PV2 + Proximal (AC-coupled) + Remote (aPBox)"),
+            (True,  "TOU/Tariff: Configured"),
+            (True,  "PCS Power Control: Enabled"),
+            (True,  "Grid-Tied: Connected"),
+            (True,  "MPPT (DC-coupled): Enabled"),
+            (True,  "Three Phase: Installed"),
+            (True,  "CT Split — Grid: Installed"),
+            (True,  "CT Split — PV: Installed"),
+        ]
+        for ok, lbl in flags:
+            print(f"{pad}  {'✅' if ok else '❌'} {lbl}")
+
+        # Smart circuits with V2L
+        sc_ver = 2 if not gw["last"] else 1
+        sc_names = "Living Room, Pool Pump, Workshop" if sc_ver == 2 else "Circuit 1, Circuit 2"
+        sc_cnt = 3 if sc_ver == 2 else 2
+        print(f"{pad}  ✅ Smart Circuits: V{sc_ver}, {sc_cnt} circuits ({sc_names})")
+        if sc_ver == 2:
+            print(f"{pad}      ✅ V2L: V2L built-in (V2 Smart Circuits)")
+        else:
+            print(f"{pad}      ✅ V2L: V2L via CarSW (V1 SC + Generator Module)")
+
+        more_flags = [
+            (True,  "Generator Module: Enabled"),
+            (True,  "Remote Solar (aPBox): Connected"),
+            (True,  "aHub: Detected"),
+            (True,  "VPP Programme: Enrolled"),
+        ]
+        for ok, lbl in more_flags:
+            print(f"{pad}  {'✅' if ok else '❌'} {lbl}")
+
+        # System Relays (all connected / closed)
+        print(f"{pad}{c('bold', '🔧  System Relays')}")
+        relays = [
+            ("Grid Relay",        False, "OPEN"),
+            ("Generator Relay",   True,  "CLOSED"),
+            ("Solar PV Relay",    True,  "CLOSED"),
+            ("Grid Relay 2",      True,  "CLOSED"),
+            ("Black Start Relay", False, "OPEN"),
+            ("Solar PV Relay 2",  True,  "CLOSED"),
+            ("BFPV/aPBox Relay",  True,  "CLOSED"),
+        ]
+        label_w = max(len(r[0]) for r in relays)
+        for lbl, closed, state in relays:
+            icon = "●" if closed else "○"
+            print(f"{pad}  {lbl:>{label_w}}: {icon} {state}")
+
+        print()
+
+    print(c("yellow", "─" * len(BANNER)))
+    print(c("yellow", BANNER))
+    print(c("yellow", "─" * len(BANNER)))
+
+
+async def run_info(client, json_output: bool = False, diag: bool = False):
+    """Implement franklinwh-cli support --info mapping the account taxonomy.
+
+    Renders: user → site → [group →] aGate → full installation detail.
+    Groups are shown only when at least one gateway has groupFlag=1 (multi-gateway
+    accounts). Single-gateway accounts show the flat tree with no group tier.
+
+    Installation detail per aGate:
+      - Status (run + mode)
+      - Grid connection type
+      - Solar PV (ports + live kW or "None")
+      - Split CTs (grid / PV) — only if installed
+      - aHub / aPBox / MPPT — only if detected
+      - Smart Circuits with serial + model
+      - V2L state
+      - Generator with serial + state
+      - aPower batteries with model
+      - Lifecycle dates
+      - Grid profile
+    """
     from franklinwh_cloud.cli_output import c, print_json_output
-    import json
-    
+    from franklinwh_cloud.const import FRANKLINWH_MODELS
+
     email = getattr(client.fetcher, "email", "UnknownUser")
     user_id = getattr(client.fetcher, "user_id", "Unknown")
-    
+
     try:
-        site = await client.siteinfo()
-        user_id = site.get("userId", user_id)
-        email = site.get("email", email)
+        site_info = await client.siteinfo()
+        user_id = site_info.get("userId", user_id)
+        email = site_info.get("email", email)
     except Exception:
         pass
 
+    # ── Fetch account-level data ──────────────────────────────────────
     try:
         site_info_res = await client.get_site_and_device_info()
         sites_data = site_info_res.get("result", [])
-        
-        # Parallel fetch gateways for lifecycle dates
-        try:
-            gw_res = await client.get_home_gateway_list()
-            gateways = {g.get("id"): g for g in gw_res.get("result", []) if g.get("id")}
-        except Exception:
-            gateways = {}
-            
     except Exception as e:
         print_error(f"Failed to fetch site list: {e}")
         return
 
-    # We will build a unified output dictionary so JSON clients get everything
+    try:
+        gw_res = await client.get_home_gateway_list()
+        gw_meta_list = gw_res.get("result", [])
+        # Keyed by gateway id for O(1) lookup
+        gateways = {g.get("id"): g for g in gw_meta_list if g.get("id")}
+    except Exception:
+        gw_meta_list = []
+        gateways = {}
+
+    # ── Build output structure ────────────────────────────────────────
     topology = {"email": email, "userId": user_id, "sites": []}
-    
+
     if not json_output:
         print(f"{c('cyan', email)} (UserId: {user_id})")
-    
+
     for site_idx, site in enumerate(sites_data):
         is_last_site = site_idx == len(sites_data) - 1
         site_prefix = "└──" if is_last_site else "├──"
-        site_bar = "    " if is_last_site else "│   "
-        
+        site_bar    = "    " if is_last_site else "│   "
+
         site_name = site.get("siteName") or "Default Site"
-        site_id = site.get("siteId") or "Unknown"
-        address = site.get("completeAddress", "")
-        
+        site_id   = site.get("siteId") or "Unknown"
+        address   = site.get("completeAddress", "")
+
         site_node = {
             "siteName": site_name,
             "siteId": site_id,
             "completeAddress": address,
-            "gateways": []
+            "groups": [],
+            "gateways": [],
         }
         topology["sites"].append(site_node)
-        
+
         if not json_output:
             site_label = f"{site_name} (SiteId: {site_id})"
             if address:
                 site_label += f" — {address}"
             print(f"{site_prefix} {c('yellow', site_label)}")
-        
-        gws = site.get("basicDeviceInfoVOList", [])
-        for gw_idx, gw in enumerate(gws):
-            is_last_gw = gw_idx == len(gws) - 1
-            gw_prefix = "└──" if is_last_gw else "├──"
-            gw_bar = "    " if is_last_gw else "│   "
-            
-            gw_id = gw.get("gatewayId", "?")
-            gw_name = gw.get("gatewayName", "FHP")
-            gw_addr = gw.get("completeAddress", "")
-            
-            from franklinwh_cloud.const import FRANKLINWH_MODELS
-            hw_ver = gw.get("sysHdVersion")
-            agate_model = FRANKLINWH_MODELS.get(int(hw_ver), {}).get("model", "aGate") if hw_ver else "aGate"
-            
-            gw_node = {
-                "gatewayId": gw_id,
-                "gatewayName": gw_name,
-                "gatewayModel": agate_model,
-                "completeAddress": gw_addr,
-                "status": "Unknown",
-                "lifecycle": {},
-                "devices": []
-            }
-            site_node["gateways"].append(gw_node)
-            
-            if not json_output:
-                gw_label = f"{gw_name} ({agate_model}: {gw_id})"
-                if gw_addr and gw_addr != address:
-                    gw_label += f" — {gw_addr}"
-                print(f"{site_bar}{gw_prefix} {c('green', gw_label)}")
-            
-            try:
-                old_gw = client.gateway
-                client.gateway = gw_id
-                
-                comp = await client.get_device_composite_info()
-                rt = comp.get("result", {}).get("runtimeData", {})
-                
-                apowers = rt.get("fhpSn", [])
-                solar = rt.get("solarVo", [])
-                
-                from datetime import datetime
-                
-                try:
-                    stats = await client.get_stats()
-                    run_status = stats.current.run_status_desc
-                    work_mode = stats.current.work_mode_desc
-                    status_str = f"{run_status} ({work_mode})"
-                except Exception:
-                    status_str = "Unknown"
-                    
-                sync_flags = {}
-                try:
-                    modes_res = await client.get_gateway_tou_list()
-                    m_res = modes_res.get("result", {})
-                    tou_send = m_res.get("touSendStatus")
-                    stop_mode = m_res.get("stopMode")
-                    alert_msg = m_res.get("touAlertMessage")
-                    
-                    if stop_mode:
-                        status_str += " [STOP MODE!]"
-                    if tou_send:
-                        status_str += f" [Sync Pending]"
-                    if alert_msg:
-                        status_str += f" [Alert: {alert_msg}]"
-                        
-                    sync_flags = {
-                        "touSendStatus": tou_send,
-                        "stopMode": stop_mode,
-                        "touAlertMessage": alert_msg
-                    }
-                except Exception:
-                    pass
-                
-                gw_node["status"] = status_str
-                gw_node.update(sync_flags)
-                    
-                try:
-                    tou_res = await client.get_tou_dispatch_detail()
-                    pto = tou_res.get("result", {}).get("ptoDate")
-                except Exception:
-                    pto = None
-                    
-                try:
-                    w_res = await client.get_warranty_info()
-                    expires = w_res.get("result", {}).get("expirationTime")
-                except Exception:
-                    expires = None
-                
-                gw_meta = gateways.get(gw_id, {})
-                active_t = gw_meta.get("activeTime")
-                create_t = gw_meta.get("createTime")
-                
-                active_str = datetime.fromtimestamp(active_t / 1000.0).strftime("%Y-%m-%d") if active_t else "N/A"
-                create_str = datetime.fromtimestamp(create_t / 1000.0).strftime("%Y-%m-%d") if create_t else "N/A"
-                pto_str = pto if pto else "Pending"
-                exp_str = f" | Expires {expires}" if expires else ""
-                
-                gw_node["lifecycle"] = {
-                    "createdOn": create_str,
-                    "activatedOn": active_str,
-                    "expiresOn": expires,
-                    "ptoDate": pto_str
-                }
-                
-                try:
-                    gp = await client.get_grid_profile_info()
-                    grid_profile = "Unknown"
-                    if isinstance(gp, dict):
-                        for p in gp.get("list", []):
-                            if p.get("id") == gp.get("currentId", -1):
-                                grid_profile = p.get("name", "Unknown")
-                                break
-                except Exception:
-                    grid_profile = "Unknown"
-                if grid_profile != "Unknown":
-                    gw_node["grid_profile"] = grid_profile
-                
-                items = [
-                    f"Status: {status_str}",
-                    f"Lifecycle: Created {create_str} | Activated {active_str}{exp_str} | PTO: {pto_str}"
-                ]
-                if grid_profile != "Unknown":
-                    items.append(f"Grid Profile: {grid_profile}")
-                
-                try:
-                    pcap_res = await client.get_power_cap_config_list()
-                    apower_configs = pcap_res.get("result", [])
-                except Exception:
-                    apower_configs = []
 
-                apower_models = {}
-                for cfg in apower_configs:
-                    sn = cfg.get("peSn")
-                    ver = cfg.get("peHwVersion") or (cfg.get("peHwVerList") or [None])[0]
-                    if sn and ver:
-                        try:
-                            model_dict = FRANKLINWH_MODELS.get(int(ver), {})
-                            apower_models[sn] = model_dict.get("model", "aPower")
-                        except (ValueError, TypeError):
-                            pass
-                            
-                for i, ap in enumerate(apowers):
-                    model_name = apower_models.get(ap, "aPower")
-                    items.append(f"{model_name} (Serial: {ap})")
-                    gw_node["devices"].append({"type": "battery", "model": model_name, "serial": ap})
-                
-                if solar:
-                    items.append(f"Solar PV: {len(solar)} strings")
-                    gw_node["devices"].append({"type": "solar", "count": len(solar)})
-                
+        # ── Group-aware gateway bucketing ─────────────────────────────
+        gws = site.get("basicDeviceInfoVOList", [])
+
+        # Check whether any gateway in this site belongs to a named group
+        has_groups = any(
+            gateways.get(gw.get("gatewayId"), {}).get("groupFlag") == 1
+            for gw in gws
+        )
+
+        # Build ordered buckets: groupId (str) or None → [gw_dict, ...]
+        group_buckets  = {}   # ordered by first appearance
+        group_names    = {}   # groupId → display name
+
+        for gw in gws:
+            gid = gw.get("gatewayId", "?")
+            meta = gateways.get(gid, {})
+            grp  = meta.get("groupId") if meta.get("groupFlag") == 1 else None
+            if grp not in group_buckets:
+                group_buckets[grp] = []
+            group_buckets[grp].append(gw)
+            if grp and grp not in group_names:
+                group_names[grp] = meta.get("groupName") or f"Group {grp}"
+
+        # ── Iterate groups (or flat list if no groups) ─────────────────
+        group_ids = list(group_buckets.keys())
+        for grp_idx, grp_id in enumerate(group_ids):
+            members = group_buckets[grp_id]
+            is_last_grp = grp_idx == len(group_ids) - 1
+
+            if has_groups:
+                grp_prefix = "└──" if is_last_grp else "├──"
+                grp_bar    = "    " if is_last_grp else "│   "
+                grp_label  = group_names.get(grp_id, "(ungrouped)")
+                grp_display = f"Group: \"{grp_label}\"" if grp_id else "Group: (ungrouped)"
+                if grp_id:
+                    grp_display += f" (GroupId: {grp_id})"
+                if not json_output:
+                    print(f"{site_bar}{grp_prefix} {c('magenta', grp_display)}")
+                grp_node = {
+                    "groupId": grp_id,
+                    "groupName": grp_label if grp_id else None,
+                    "gateways": [],
+                }
+                site_node["groups"].append(grp_node)
+                gw_parent_list = grp_node["gateways"]
+                indent = site_bar + grp_bar
+            else:
+                indent = site_bar
+                gw_parent_list = site_node["gateways"]
+
+            # ── Per-gateway rendering ──────────────────────────────────
+            for gw_idx, gw in enumerate(members):
+                is_last_gw = gw_idx == len(members) - 1
+                gw_prefix  = "└──" if is_last_gw else "├──"
+                gw_bar     = "    " if is_last_gw else "│   "
+
+                gw_id   = gw.get("gatewayId", "?")
+                gw_name = gw.get("gatewayName", "FHP")
+
+                meta    = gateways.get(gw_id, {})
+                hw_ver  = meta.get("sysHdVersion") or gw.get("sysHdVersion")
                 try:
-                    acc_res = await client.get_accessories(0)
-                    accessories = acc_res.get("result", [])
-                except Exception:
-                    accessories = []
-                
-                if accessories:
-                    sc_cnt = sum(1 for a in accessories if a.get("accessoryType") in (202, 204, 302))
-                    gen_cnt = sum(1 for a in accessories if a.get("accessoryType") in (201, 203, 301))
-                    
-                    if sc_cnt:
-                        items.append(f"Smart Circuit × {sc_cnt}")
-                        gw_node["devices"].append({"type": "smart_circuit", "count": sc_cnt})
-                    if gen_cnt:
-                        items.append(f"Generator × {gen_cnt}")
-                        gw_node["devices"].append({"type": "generator", "count": gen_cnt})
-                
+                    agate_model = FRANKLINWH_MODELS.get(int(hw_ver), {}).get("model", "aGate") if hw_ver else "aGate"
+                except (ValueError, TypeError):
+                    agate_model = "aGate"
+
+                gw_node = {
+                    "gatewayId":   gw_id,
+                    "gatewayName": gw_name,
+                    "gatewayModel": agate_model,
+                    "group":  {"id": grp_id, "name": group_names.get(grp_id)} if grp_id else None,
+                    "status": "Unknown",
+                    "grid":   {},
+                    "solar":  {},
+                    "ct_splits": {},
+                    "ahub":   False,
+                    "apbox":  {},
+                    "mppt":   {},
+                    "smart_circuits": [],
+                    "v2l":    {},
+                    "generator": {},
+                    "batteries":  [],
+                    "derating": {},
+                    "lifecycle": {},
+                }
+                gw_parent_list.append(gw_node)
+
+                if not json_output:
+                    gw_label = f"{gw_name} ({agate_model}: {gw_id})"
+                    print(f"{indent}{gw_prefix} {c('green', gw_label)}")
+
+                # ── Per-gateway API calls ──────────────────────────────
+                items = []   # line items for the tree display
+                try:
+                    old_gw = client.gateway
+                    client.gateway = gw_id
+
+                    # ── Status (run + mode) ──────────────────────────
+                    try:
+                        stats = await client.get_stats()
+                        run_status = stats.current.run_status_desc or "Unknown"
+                        work_mode  = stats.current.work_mode_desc  or "Unknown"
+                        status_str = f"{run_status} ({work_mode})"
+                        grid_conn  = stats.current.grid_connection_state.value
+                        solar_live_kw = stats.current.solar_production
+                    except Exception:
+                        status_str    = "Unknown"
+                        grid_conn     = None
+                        solar_live_kw = None
+
+                    # ── TOU sync flags ──────────────────────────────
+                    try:
+                        modes_res  = await client.get_gateway_tou_list()
+                        m_res      = modes_res.get("result", {})
+                        tou_send   = m_res.get("touSendStatus")
+                        stop_mode  = m_res.get("stopMode")
+                        alert_msg  = m_res.get("touAlertMessage")
+                        if stop_mode:
+                            status_str += " [STOP MODE!]"
+                        if tou_send:
+                            status_str += " [Sync Pending]"
+                        if alert_msg:
+                            status_str += f" [Alert: {alert_msg}]"
+                        gw_node.update({"touSendStatus": tou_send, "stopMode": stop_mode,
+                                        "touAlertMessage": alert_msg})
+                    except Exception:
+                        pass
+
+                    gw_node["status"] = status_str
+                    items.append(f"Status: {status_str}")
+
+                    # ── runtimeData (composite) ─────────────────────
+                    rt      = {}
+                    solar_vo = {}
+                    try:
+                        comp    = await client.get_device_composite_info()
+                        result  = comp.get("result", {})
+                        rt      = result.get("runtimeData", {})
+                        solar_vo = result.get("solarHaveVo", {}) or {}
+                    except Exception:
+                        pass
+
+                    # ── Grid status ─────────────────────────────────
+                    off_grid_permanent = bool(int(solar_vo.get("offGirdFlag", 0) or 0))
+                    off_grid_live      = bool(int(solar_vo.get("offGridFlag", rt.get("offGridFlag", 0)) or 0))
+                    if off_grid_permanent:
+                        grid_label = "Not Grid-Tied"
+                    elif off_grid_live:
+                        grid_label = f"Off-Grid (Outage)"
+                    elif grid_conn and grid_conn.lower() not in ("", "unknown"):
+                        grid_label = grid_conn.replace("_", " ").title()
+                    else:
+                        grid_label = "Connected"
+                    items.append(f"Grid: {grid_label}")
+                    gw_node["grid"] = {"label": grid_label, "connected": not (off_grid_permanent or off_grid_live)}
+
+                    # ── Solar PV ────────────────────────────────────
+                    def _install(key, default="0"):
+                        return rt.get(key, solar_vo.get(key, default))
+
+                    pv1     = str(_install("installPv1Port")) == "1"
+                    pv2     = str(_install("installPv2Port")) == "1"
+                    proximal = str(_install("installProximalsolar")) == "1"
+                    remote  = bool(int(solar_vo.get("remoteSolarEn", 0) or 0))
+
+                    pv_parts = []
+                    if pv1:      pv_parts.append("PV1")
+                    if pv2:      pv_parts.append("PV2")
+                    if proximal: pv_parts.append("Proximal")
+
+                    if pv_parts or remote:
+                        pv_detail = " + ".join(pv_parts) if pv_parts else ""
+                        if remote:
+                            pv_detail = (pv_detail + " + Remote (aPBox)").lstrip(" + ")
+                        if solar_live_kw is not None and solar_live_kw > 0:
+                            pv_detail += f" ({solar_live_kw:.1f} kW live)"
+                        items.append(f"Solar PV: {pv_detail or 'Detected'}")
+                        gw_node["solar"] = {
+                            "installed": True, "pv1": pv1, "pv2": pv2,
+                            "proximal": proximal, "remote": remote,
+                            "live_kw": solar_live_kw,
+                        }
+                    else:
+                        items.append("Solar PV: None")
+                        gw_node["solar"] = {"installed": False}
+
+                    # ── Split CTs ───────────────────────────────────
+                    ct_grid = bool(int(_install("gridSplitCtEn", 0) or 0))
+                    ct_pv   = bool(int(_install("pvSplitCtEn", 0) or 0))
+                    gw_node["ct_splits"] = {"grid": ct_grid, "pv": ct_pv}
+                    if ct_grid:
+                        items.append("CT: Split Grid ✓  (two utility services)")
+                    if ct_pv:
+                        items.append("CT: Split PV ✓  (multiple PV strings metered)")
+
+                    # ── Entrance info (aHub + MPPT flag) ───────────
+                    entrance = {}
+                    try:
+                        entrance = await client.get_entrance_info()
+                    except Exception:
+                        pass
+
+                    ahub = bool(entrance.get("ahubAddressingFlag"))
+                    gw_node["ahub"] = ahub
+                    if ahub:
+                        items.append("aHub: Detected  (remote SC / solar / generator input)")
+
+                    # ── aPBox ───────────────────────────────────────
+                    di     = rt.get("di")
+                    do_st  = rt.get("doStatus")
+                    apbox_io    = (isinstance(di, list) and any(v != 0 for v in di)) or \
+                                  (isinstance(do_st, list) and any(v != 0 for v in do_st))
+                    apbox_solar = remote
+                    apbox_detected = apbox_io or apbox_solar
+                    gw_node["apbox"] = {"detected": apbox_detected, "remote_solar": apbox_solar}
+                    if apbox_detected:
+                        apbox_label = "aPBox: Detected"
+                        if apbox_solar:
+                            apbox_label += ", Remote Solar Enabled"
+                        items.append(apbox_label)
+
+                    # ── MPPT / aPower S ─────────────────────────────
+                    mppt_en = bool(entrance.get("mpptEnFlag") or rt.get("mpptEnFlag") or
+                                   solar_vo.get("mpptEnFlag"))
+                    # Per-unit: aPower S has non-empty mpptAppVer in get_power_cap_config_list
+                    try:
+                        pcap_res      = await client.get_power_cap_config_list()
+                        apower_configs = pcap_res.get("result", [])
+                    except Exception:
+                        apower_configs = []
+
+                    apower_models = {}
+                    derate_kw = None
+                    for cfg in apower_configs:
+                        sn  = cfg.get("peSn")
+                        ver = cfg.get("peHwVersion") or (cfg.get("peHwVerList") or [None])[0]
+                        if sn and ver:
+                            try:
+                                apower_models[sn] = FRANKLINWH_MODELS.get(int(ver), {}).get("model", "aPower")
+                            except (ValueError, TypeError):
+                                apower_models[sn] = "aPower"
+                        # Derating: maxChargingPower or chargingPowerLimited
+                        if cfg.get("chargingPowerLimited") and cfg.get("maxChargingPower"):
+                            derate_kw = cfg.get("maxChargingPower")
+
+                    mppt_serials = [sn for sn, m in apower_models.items() if "S" in m]
+                    gw_node["mppt"] = {"enabled": mppt_en, "units": mppt_serials}
+                    if mppt_en:
+                        items.append(f"aPower S / DC MPPT: Enabled ({len(mppt_serials)} unit(s))")
+                    elif mppt_serials:
+                        items.append(f"aPower S: Detected — MPPT Not Enabled")
+
+                    # ── Smart Circuits + Generator (from accessories) ─
+                    try:
+                        acc_res     = await client.get_accessories(0)
+                        accessories = acc_res.get("result", [])
+                    except Exception:
+                        accessories = []
+
+                    sc_items  = []
+                    gen_items = []
+                    for a in accessories:
+                        atype  = a.get("accessoryType", 0)
+                        serial = a.get("snSerialNumber") or a.get("sn", "?")
+                        acc_name = a.get("accessoryName", "")
+
+                        if atype in (202, 204, 302):   # Smart Circuits
+                            sc_items.append({"serial": serial, "type": atype, "name": acc_name})
+                        elif atype in (201, 203, 301): # Generator
+                            gen_items.append({"serial": serial, "type": atype, "name": acc_name})
+
+                    # ── SC fallback: AU accounts don't return SCs via get_accessories()
+                    # Use get_smart_circuits_info() (MQTT cmd 311) when accessories yields nothing
+                    if not sc_items:
+                        try:
+                            sc_info = await client.get_smart_circuits_info()
+                            if isinstance(sc_info, dict) and "Sw1Name" in sc_info:
+                                from franklinwh_cloud.const.states import SMART_CIRCUIT_MODE
+                                sw_merge = sc_info.get("SwMerge", 0) == 1
+                                if sw_merge:
+                                    slots = [("Sw1Name", "Sw1Mode"), ("Sw3Name", "Sw3Mode")]
+                                else:
+                                    slots = [("Sw1Name", "Sw1Mode"), ("Sw2Name", "Sw2Mode")]
+                                    # Sw3 slot is always returned by firmware but is only
+                                    # real hardware on US V2 SC (3 circuits). AU and US V1
+                                    # are 2-circuit hardware — include Sw3 only when non-empty
+                                    # AND this isn't a known 2-circuit region.
+                                    is_au = (meta.get("countryId") or gw.get("countryId")) == 3
+                                    if not is_au and sc_info.get("Sw3Name"):
+                                        slots.append(("Sw3Name", "Sw3Mode"))
+                                for name_key, mode_key in slots:
+                                    sw_name = (sc_info.get(name_key) or "").strip()
+                                    if sw_name:
+                                        sc_items.append({
+                                            "serial": None,
+                                            "type": 302,   # AU type sentinel
+                                            "name": sw_name,
+                                            "mode": SMART_CIRCUIT_MODE.get(
+                                                sc_info.get(mode_key, 0), str(sc_info.get(mode_key, 0))
+                                            ),
+                                        })
+                        except Exception:
+                            pass
+
+
+                    for sc in sc_items:
+                        sc_label = sc["name"] or "Smart Circuit"
+                        mode_sfx = f" [{sc['mode']}]" if sc.get("mode") else ""
+                        sn_sfx   = f" (SN: {sc['serial']})" if sc.get("serial") else ""
+                        items.append(f"Smart Circuit: {sc_label}{mode_sfx}{sn_sfx}")
+                    if sc_items:
+                        gw_node["smart_circuits"] = sc_items
+
+
+                    # ── V2L ─────────────────────────────────────────
+                    v2l_state_raw = rt.get("v2lRunState")
+                    v2l_en        = bool(entrance.get("v2lModeEnable") or rt.get("v2lModeEnable"))
+                    if v2l_state_raw is not None or v2l_en:
+                        from franklinwh_cloud.const.states import V2L_RUN_STATE
+                        v2l_state_str = V2L_RUN_STATE.get(v2l_state_raw, str(v2l_state_raw)) if v2l_state_raw is not None else "Unknown"
+                        v2l_label = f"V2L: {'Enabled' if v2l_en else 'Capable, Disabled'} — {v2l_state_str}"
+                        items.append(v2l_label)
+                        gw_node["v2l"] = {"enabled": v2l_en, "state": v2l_state_str}
+
+                    # ── Generator detail ─────────────────────────────
+                    gen_stat_raw = rt.get("genStat")
+                    gen_en       = bool(entrance.get("genEn") or rt.get("genEn"))
+                    for gen in gen_items:
+                        gen_label = gen["name"] or "Generator"
+                        state_sfx = ""
+                        if gen_stat_raw is not None:
+                            from franklinwh_cloud.const.states import GENERATOR_STATE
+                            state_sfx = f" — {GENERATOR_STATE.get(gen_stat_raw, str(gen_stat_raw))}"
+                        en_sfx = ", Enabled" if gen_en else ""
+                        items.append(f"Generator: {gen_label} (SN: {gen['serial']}){en_sfx}{state_sfx}")
+                    if gen_items:
+                        gw_node["generator"] = {
+                            "installed": True, "enabled": gen_en,
+                            "state_code": gen_stat_raw, "units": gen_items,
+                        }
+
+                    # ── Derating ─────────────────────────────────────
+                    if derate_kw:
+                        items.append(f"Derating: Charge limited to {derate_kw} kW")
+                        gw_node["derating"] = {"active": True, "max_charge_kw": derate_kw}
+
+                    # ── aPower batteries ─────────────────────────────
+                    apowers = rt.get("fhpSn", [])
+                    for ap in apowers:
+                        model_name = apower_models.get(ap, "aPower")
+                        items.append(f"{model_name} (Serial: {ap})")
+                        gw_node["batteries"].append({"type": "battery", "model": model_name, "serial": ap})
+
+                    # ── Lifecycle ────────────────────────────────────
+                    try:
+                        tou_res = await client.get_tou_dispatch_detail()
+                        pto     = tou_res.get("result", {}).get("ptoDate")
+                    except Exception:
+                        pto = None
+
+                    try:
+                        w_res   = await client.get_warranty_info()
+                        expires = w_res.get("result", {}).get("expirationTime")
+                    except Exception:
+                        expires = None
+
+                    from datetime import datetime
+                    active_t  = meta.get("activeTime")
+                    create_t  = meta.get("createTime")
+                    active_str = datetime.fromtimestamp(active_t / 1000.0).strftime("%Y-%m-%d") if active_t else "N/A"
+                    create_str = datetime.fromtimestamp(create_t / 1000.0).strftime("%Y-%m-%d") if create_t else "N/A"
+                    pto_str    = pto if pto else "Pending"
+                    exp_sfx    = f" | Expires {expires}" if expires else ""
+
+                    gw_node["lifecycle"] = {
+                        "createdOn": create_str, "activatedOn": active_str,
+                        "expiresOn": expires,    "ptoDate": pto_str,
+                    }
+                    items.append(f"Lifecycle: Created {create_str} | Activated {active_str}{exp_sfx} | PTO: {pto_str}")
+
+                    # ── Grid profile ─────────────────────────────────
+                    try:
+                        gp = await client.get_grid_profile_info()
+                        grid_profile = "Unknown"
+                        if isinstance(gp, dict):
+                            for p in gp.get("list", []):
+                                if p.get("id") == gp.get("currentId", -1):
+                                    grid_profile = p.get("name", "Unknown")
+                                    break
+                    except Exception:
+                        grid_profile = "Unknown"
+
+                    if grid_profile != "Unknown":
+                        items.append(f"Grid Profile: {grid_profile}")
+                        gw_node["grid_profile"] = grid_profile
+
+                    # ── System Readiness (always shown) ─────────────────
+                    from franklinwh_cloud.const import AGATE_STATE
+                    dev_status = 0
+                    try:
+                        dev_status = int(comp.get("result", {}).get("deviceStatus", 0))
+                    except Exception:
+                        pass
+                    agate_ok    = dev_status == 1   # 1=Normal, 0=uninitialised
+                    agate_label = AGATE_STATE.get(dev_status, f"Unknown ({dev_status})")
+                    items.append(f"{'✅' if agate_ok else '❌'} aGate: {agate_label}")
+
+                    apower_count = len(apowers)
+                    try:
+                        soc_val = round(float(stats.current.battery_pct), 1)
+                        soc_sfx = f", SoC {soc_val}%"
+                    except Exception:
+                        soc_sfx = ""
+                    items.append(f"{'✅' if apower_count > 0 else '❌'} aPower: {apower_count} unit(s){soc_sfx}")
+
+                    pcs_ok = bool(entrance.get("pcsEntrance"))
+                    items.append(f"{'✅' if pcs_ok else '❌'} PCS Control: {'Enabled' if pcs_ok else 'Disabled'}")
+
+                    tou_health_ok = not bool(stop_mode)
+                    if stop_mode:
+                        tou_health_label = "STOP MODE"
+                    elif tou_send:
+                        tou_health_label = "Sync Pending"
+                    else:
+                        tou_health_label = "Configured"
+                    items.append(f"{'✅' if tou_health_ok else '❌'} TOU Schedule: {tou_health_label}")
+
+                    gw_node["readiness"] = {
+                        "agate": {"ok": agate_ok, "label": agate_label},
+                        "apower": {"count": apower_count},
+                        "pcs": {"enabled": pcs_ok},
+                        "tou": {"ok": tou_health_ok, "label": tou_health_label},
+                    }
+
+                    client.gateway = old_gw
+
+                except Exception as e:
+                    gw_node["error"] = str(e)
+                    if not json_output:
+                        print(f"{indent}{gw_bar}└── {c('red', f'Error fetching details: {e}')}")
+                    continue
+
+                # ── Render tree items ─────────────────────────────────
                 if not json_output:
                     for item_idx, item in enumerate(items):
-                        is_last_item = item_idx == len(items) - 1
-                        item_prefix = "└──" if is_last_item else "├──"
-                        print(f"{site_bar}{gw_bar}{item_prefix} {c('dim', item)}")
-                    
-                client.gateway = old_gw
-            except Exception as e:
-                gw_node["error"] = str(e)
-                if not json_output:
-                    print(f"{site_bar}{gw_bar}└── Error fetching devices: {e}")
+                        is_last_item = item_idx == len(items) - 1 and not diag
+                        item_prefix  = "└──" if is_last_item else "├──"
+                        print(f"{indent}{gw_bar}{item_prefix} {c('dim', item)}")
+
+                # ── Feature Flags (--diag only, after tree) ───────────
+                if diag and not json_output:
+                    client.gateway = gw_id   # re-scope for extra diag calls
+
+                    vpp_enrolled = False
+                    try:
+                        prog = await client.get_programme_info()
+                        vpp_enrolled = bool(prog.get("flag", 0)) if isinstance(prog, dict) else bool(prog)
+                    except Exception:
+                        pass
+
+                    three_phase = str(_install("isThreePhaseInstall")) == "1"
+
+                    try:
+                        from franklinwh_cloud.mixins.discover import get_catalog
+                        _cat = get_catalog()
+                        hw_ver_int = int(meta.get("sysHdVersion") or gw.get("sysHdVersion") or 0)
+                        sc_gen = _cat.get("agate_models", {}).get(str(hw_ver_int), {}).get("generation", 1)
+                    except Exception:
+                        sc_gen = 1
+                    sc_version = 2 if sc_gen == 2 else 1
+
+                    country_id = int(meta.get("countryId") or gw.get("countryId") or 0)
+                    has_gen = bool(gen_items) or bool(entrance.get("genEn"))
+                    if not sc_items:
+                        v2l_note, v2l_eligible = "No Smart Circuits installed", False
+                    elif country_id == 3:
+                        v2l_note, v2l_eligible = "AU Smart Circuits have no V2L port", False
+                    elif sc_version == 2:
+                        v2l_note, v2l_eligible = "V2L built-in (V2 Smart Circuits)", True
+                    elif sc_version == 1 and has_gen:
+                        v2l_note, v2l_eligible = "V2L via CarSW (V1 SC + Generator Module)", True
+                    else:
+                        v2l_note, v2l_eligible = "V1 Smart Circuits requires Generator Module for V2L", False
+
+                    pad = f"{indent}{gw_bar}    "
+                    print(f"{pad}{c('bold', '🏷️  Feature Flags')}")
+
+                    def _flag(ok, label):
+                        print(f"{pad}  {'✅' if ok else '❌'} {label}")
+
+                    if pv_parts or remote:
+                        solar_str = " + ".join(pv_parts)
+                        if remote:
+                            solar_str = (solar_str + " + Remote (aPBox)").lstrip(" + ")
+                        if proximal:
+                            solar_str = solar_str.replace("Proximal", "Proximal (AC-coupled)")
+                        _flag(True, f"Solar: {solar_str}")
+                    else:
+                        _flag(False, "Solar: Not installed")
+
+                    tariff_ok = bool(entrance.get("tariffSettingFlag"))
+                    _flag(tariff_ok, f"TOU/Tariff: {'Configured' if tariff_ok else 'Not configured'}")
+                    _flag(pcs_ok, f"PCS Power Control: {'Enabled' if pcs_ok else 'Disabled'}")
+                    _flag(not (off_grid_permanent or off_grid_live), f"Grid-Tied: {grid_label}")
+                    _flag(mppt_en, f"MPPT (DC-coupled): {'Enabled' if mppt_en else 'Not available'}")
+                    _flag(three_phase, f"Three Phase: {'Installed' if three_phase else 'Single-phase'}")
+                    _flag(ct_grid, f"CT Split — Grid: {'Installed' if ct_grid else 'Not installed'}")
+                    _flag(ct_pv, f"CT Split — PV: {'Installed' if ct_pv else 'Not installed'}")
+
+                    if sc_items:
+                        sc_names = ", ".join(sc["name"] for sc in sc_items if sc.get("name"))
+                        _flag(True, f"Smart Circuits: V{sc_version}, {len(sc_items)} circuits ({sc_names})")
+                        print(f"{pad}      {'✅' if v2l_eligible else '❌'} V2L: {v2l_note}")
+                    else:
+                        _flag(False, "Smart Circuits: Not installed")
+
+                    _flag(bool(gen_items), f"Generator Module: {'Enabled' if (gen_items and entrance.get('genEn')) else ('Installed' if gen_items else 'Not installed')}")
+                    _flag(apbox_detected, f"Remote Solar (aPBox): {'Connected' if apbox_detected else 'Not connected'}")
+                    _flag(ahub, f"aHub: {'Detected' if ahub else 'Not detected'}")
+                    _flag(vpp_enrolled, f"VPP Programme: {'Enrolled' if vpp_enrolled else 'Not enrolled'}")
+
+                    # ── System Relays ─────────────────────────────────
+                    print(f"{pad}{c('bold', '🔧  System Relays')}")
+                    RELAY_LABELS = [
+                        ("grid_1",      "Grid Relay"),
+                        ("generator",   "Generator Relay"),
+                        ("solar_pv_1",  "Solar PV Relay"),
+                        ("grid_2",      "Grid Relay 2"),
+                        ("black_start", "Black Start Relay"),
+                        ("solar_pv_2",  "Solar PV Relay 2"),
+                        ("apbox",       "BFPV/aPBox Relay"),
+                    ]
+                    relay_vals = {}
+                    main_sw = rt.get("main_sw", [])
+                    for i, k in enumerate(["grid_1", "generator", "solar_pv_1"]):
+                        if i < len(main_sw):
+                            relay_vals[k] = not bool(main_sw[i])
+                    try:
+                        stats_ext = await client.get_stats(include_electrical=True)
+                        if hasattr(stats_ext.current, "grid_relay2"):
+                            relay_vals["grid_2"]      = not bool(stats_ext.current.grid_relay2)
+                            relay_vals["black_start"] = not bool(stats_ext.current.black_start_relay)
+                            relay_vals["solar_pv_2"]  = not bool(stats_ext.current.pv_relay2)
+                            relay_vals["apbox"]       = not bool(stats_ext.current.bfpv_apbox_relay)
+                    except Exception:
+                        pass
+
+                    label_w = max(len(lbl) for _, lbl in RELAY_LABELS)
+                    for key, lbl in RELAY_LABELS:
+                        if key in relay_vals:
+                            closed = relay_vals[key]
+                            print(f"{pad}  {lbl:>{label_w}}: {'●' if closed else '○'} {'CLOSED' if closed else 'OPEN'}")
+
+                    gw_node["relays"] = relay_vals
+                    client.gateway = old_gw   # restore after diag calls
+
 
     if json_output:
         print_json_output(topology)
+
 
 # ── CLI entry point ──────────────────────────────────────────────────
 
 async def run(client, *, json_output: bool = False, save: bool = False,
               redact: str | None = None, label: str | None = None,
               analyze: bool = False, compare_file: str | None = None,
-              scope: str = "all", info: bool = False):
+              scope: str = "all", info: bool = False, diag: bool = False):
     """Execute the support command."""
 
-    if info:
-        await run_info(client, json_output=json_output)
+    if info or diag:
+        await run_info(client, json_output=json_output, diag=diag)
         return
 
     # Collect snapshot

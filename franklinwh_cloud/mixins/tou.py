@@ -1689,3 +1689,319 @@ class TouMixin:
             "sell_rates":        sell_rates,
         }
 
+    # ── TOU Health Check ──────────────────────────────────────────────────────
+
+    # dispatchId → expected gateway action for health cross-reference
+    _DISPATCH_TO_ACTION = {
+        8: "GRID_CHARGE",    # FORCE_CHARGE / GRID_IMPORT
+        7: "GRID_EXPORT",    # FORCE_DISCHARGE / GRID_DISCHARGE
+        6: "SELF_CONSUME",   # SELF_CONSUMPTION
+        3: "SELF_CONSUME",   # SOLAR_CHARGE — battery charges from solar, not forced grid action
+        2: "STANDBY",        # explicit standby block
+        1: "SELF_CONSUME",   # HOME_LOADS — self-consume mode
+        0: "UNKNOWN",        # custom/predefined, no expected run_status
+    }
+
+    # run_status int → human label (mirrors franklinwh_cloud/const/modes.py RUN_STATUS)
+    _RUN_STATUS_LABELS = {
+        0: "Standby",
+        1: "Charging",
+        2: "Discharging",
+        3: "Unknown (3)",
+        4: "Unknown (4)",
+        5: "Off-Grid Standby",
+        6: "Off-Grid Charging",
+        7: "Off-Grid Discharging",
+        8: "Debug Mode",
+        9: "VPP Mode",
+    }
+
+    async def get_tou_health(
+        self,
+        *,
+        live_stats: dict = None,
+        strict: bool = False,
+    ) -> dict:
+        """TOU Execution Health Check.
+
+        Cross-references three data sources to determine whether the gateway
+        is executing the current TOU schedule block as expected:
+
+          1. get_gateway_tou_list()  — active mode, cloud sync status, stopMode
+          2. get_tou_info(1)         — active schedule block + expected dispatch action
+          3. get_stats()             — live run_status + grid power (skipped if live_stats passed)
+
+        Parameters
+        ----------
+        live_stats : dict, optional
+            Pre-fetched normalised stats dict (FHAI last_data).
+            Must contain 'run_status' (int) and optionally 'grid_kw' (float).
+            If provided, avoids an extra get_stats() API call.
+        strict : bool, optional
+            If True, run_status=Standby during a GRID_CHARGE or GRID_EXPORT block
+            is always FAULT. If False (default), it is DEGRADED — acknowledging that
+            SOC guards (maxChargeSoc / minDischargeSoc) can legitimately suppress
+            forced dispatch.
+
+        Returns
+        -------
+        dict
+            ok                 : bool
+            health_status      : 'HEALTHY' | 'DEGRADED' | 'FAULT' | 'UNKNOWN'
+            active_mode        : 'Time-of-Use' | 'Self-Consumption' | 'Emergency Backup'
+            is_tou_mode        : bool
+            sync_status        : 'SYNC_OK' | 'SYNC_PENDING' | 'SYNC_ALERT' | 'UNKNOWN'
+            sync_message       : str  (touAlertMessage or '')
+            active_block       : dict (from get_tou_info active prefix keys)
+            expected_action    : str
+            actual_run_status  : int
+            actual_run_label   : str
+            grid_kw            : float
+            fault_reasons      : list[str]
+            stop_mode          : int
+            grid_charge_en     : int
+            tariff_setting_flag: bool
+        """
+        import asyncio
+
+        fault_reasons = []
+        health_status = "UNKNOWN"
+
+        # ── Step 1: mode list (getGatewayTouListV2) ──────────────────────────
+        try:
+            mode_resp = await self.get_gateway_tou_list()
+            result = mode_resp.get("result", {})
+        except Exception as exc:
+            return {
+                "ok": False,
+                "health_status": "UNKNOWN",
+                "error": f"get_gateway_tou_list failed: {exc}",
+                "fault_reasons": [f"Could not fetch mode list: {exc}"],
+            }
+
+        current_id = result.get("currendId")
+        mode_list  = result.get("list", [])
+        stop_mode  = result.get("stopMode", 0) or 0
+        grid_charge_en = result.get("gridChargeEn", 0) or 0
+        tariff_setting_flag = bool(result.get("tariffSettingFlag", True))
+
+        # Resolve active workMode and label from currendId
+        _WORK_MODE_LABELS = {1: "Time-of-Use", 2: "Self-Consumption", 3: "Emergency Backup"}
+        active_work_mode = None
+        for m in mode_list:
+            if m.get("id") == current_id:
+                active_work_mode = m.get("workMode")
+                break
+        active_mode = _WORK_MODE_LABELS.get(active_work_mode, f"Mode {active_work_mode}")
+        is_tou_mode = (active_work_mode == 1)
+
+        # Derive sync_status from touSendStatus / touAlertMessage.
+        #
+        # All observed values confirmed from HTTP Toolkit HAR corpus (1,253 samples):
+        #
+        #   null  (1141×) → idle, no pending sync               → SYNC_OK
+        #   2      (25×)  → "Package settings are taking effect" → SYNC_PENDING
+        #                   Schedule sent, gateway currently applying it.
+        #                   Cleared to null once gateway ACK received.
+        #   3      (87×)  → "Package settings synchronization of failed,
+        #                    please check after setting again"   → SYNC_ALERT
+        #                   Cloud did not receive gateway ACK.
+        #                   FALSE POSITIVE RISK: gateway may have applied the
+        #                   schedule to its local DB without the response
+        #                   reaching the cloud platform (e.g. brief disconnect).
+        #                   Mobile app shows a modal dialog with the alert message;
+        #                   user can tap "Apply Again" to retry.
+        tou_send_status   = result.get("touSendStatus")
+        tou_alert_message = result.get("touAlertMessage") or ""
+        if tou_send_status is None:
+            sync_status = "SYNC_OK"
+        elif tou_send_status in (3, "3"):
+            # Confirmed sync failure sentinel — mobile app surfaces touAlertMessage as modal
+            sync_status = "SYNC_ALERT"
+        else:
+            # Any other non-null value: schedule sent, awaiting gateway ACK
+            sync_status = "SYNC_PENDING"
+
+        # ── Step 2: active schedule block ────────────────────────────────────
+        active_block = {}
+        expected_action = "UNKNOWN"
+        try:
+            tou_info = await self.get_tou_info(1)
+            if tou_info:
+                active_block = {k: v for k, v in tou_info.items() if k.startswith("active")}
+                dispatch_id = tou_info.get("activeTOUdispatchId", 0)
+                expected_action = self._DISPATCH_TO_ACTION.get(dispatch_id, "UNKNOWN")
+            else:
+                # No schedule block found for today — not a fault
+                health_status = "UNKNOWN"
+        except Exception as exc:
+            fault_reasons.append(f"Could not fetch TOU schedule block: {exc}")
+            health_status = "UNKNOWN"
+
+        # ── Step 3: live run_status ───────────────────────────────────────────
+        actual_run_status = None
+        grid_kw = 0.0
+        if live_stats and "run_status" in live_stats:
+            actual_run_status = int(live_stats.get("run_status", 0) or 0)
+            grid_kw = float(live_stats.get("grid_kw") or live_stats.get("grid_use") or 0.0)
+        else:
+            try:
+                stats = await self.get_stats()
+                # get_stats() returns a Stats dataclass or dict
+                if hasattr(stats, "run_status"):
+                    actual_run_status = int(stats.run_status or 0)
+                elif isinstance(stats, dict):
+                    actual_run_status = int(stats.get("run_status", 0) or 0)
+                    grid_kw = float(stats.get("grid_kw") or stats.get("grid_use") or 0.0)
+            except Exception as exc:
+                fault_reasons.append(f"Could not fetch live run_status: {exc}")
+
+        actual_run_label = self._RUN_STATUS_LABELS.get(actual_run_status, f"Unknown ({actual_run_status})")
+
+        # ── Step 4: synthesise health verdict ────────────────────────────────
+        if not is_tou_mode:
+            # Gateway is not in TOU mode — health check is not applicable
+            health_status = "UNKNOWN"
+
+        elif stop_mode != 0:
+            # Manually stopped by user or firmware override
+            health_status = "DEGRADED"
+            fault_reasons.append(
+                f"Gateway is in stopMode={stop_mode} — TOU schedule execution paused."
+            )
+
+        elif expected_action == "UNKNOWN" or actual_run_status is None:
+            health_status = "UNKNOWN"
+
+        elif expected_action == "GRID_CHARGE":
+            if actual_run_status == 1 and grid_kw > 0:
+                health_status = "HEALTHY"
+            elif actual_run_status == 1 and grid_kw <= 0:
+                # Charging but from solar, not grid — schedule says grid charge
+                health_status = "DEGRADED"
+                fault_reasons.append(
+                    f"Schedule requires GRID_CHARGE but gateway is charging from solar "
+                    f"(grid_kw={grid_kw:.2f} kW ≤ 0). gridChargeEn={grid_charge_en}."
+                )
+            elif actual_run_status == 0:
+                health_status = "FAULT" if strict else "DEGRADED"
+                fault_reasons.append(
+                    f"Schedule block {active_block.get('activeStartTime','?')}–"
+                    f"{active_block.get('activeEndTime','?')} requires GRID_CHARGE "
+                    f"(dispatchId={dispatch_id}) but run_status is Standby (0). "
+                    f"gridChargeEn={grid_charge_en}. SOC guard may be suppressing dispatch."
+                )
+            else:
+                health_status = "FAULT"
+                fault_reasons.append(
+                    f"Schedule requires GRID_CHARGE but run_status={actual_run_status} "
+                    f"({actual_run_label}) with grid_kw={grid_kw:.2f} kW."
+                )
+
+        elif expected_action == "GRID_EXPORT":
+            if actual_run_status == 2 and grid_kw < 0:
+                health_status = "HEALTHY"
+            elif actual_run_status == 2 and grid_kw >= 0:
+                # Discharging to home, not exporting — partial execution
+                health_status = "DEGRADED"
+                fault_reasons.append(
+                    f"Schedule requires GRID_EXPORT but gateway is discharging to home only "
+                    f"(grid_kw={grid_kw:.2f} kW ≥ 0). Grid export may be capped."
+                )
+            elif actual_run_status == 0:
+                health_status = "FAULT" if strict else "DEGRADED"
+                fault_reasons.append(
+                    f"Schedule block {active_block.get('activeStartTime','?')}–"
+                    f"{active_block.get('activeEndTime','?')} requires GRID_EXPORT "
+                    f"(dispatchId={dispatch_id}) but run_status is Standby (0). "
+                    f"minDischargeSoc guard may be suppressing dispatch."
+                )
+            else:
+                health_status = "FAULT"
+                fault_reasons.append(
+                    f"Schedule requires GRID_EXPORT but run_status={actual_run_status} "
+                    f"({actual_run_label}) with grid_kw={grid_kw:.2f} kW."
+                )
+
+        elif expected_action == "SELF_CONSUME":
+            # Any of Standby/Charging/Discharging is valid for self-consumption
+            if actual_run_status in (0, 1, 2):
+                health_status = "HEALTHY"
+            elif actual_run_status in (5, 6, 7):
+                # Off-grid states during on-grid self-consume — unexpected
+                health_status = "DEGRADED"
+                fault_reasons.append(
+                    f"Schedule is SELF_CONSUME but run_status is {actual_run_label} — "
+                    f"gateway appears to be in an off-grid state."
+                )
+            else:
+                health_status = "HEALTHY"  # VPP/Debug/other — not a TOU fault
+
+        elif expected_action == "STANDBY":
+            if actual_run_status == 0:
+                health_status = "HEALTHY"
+            else:
+                # Active dispatch during a scheduled standby block — unusual but not necessarily broken
+                health_status = "DEGRADED"
+                fault_reasons.append(
+                    f"Schedule block is STANDBY (dispatchId={dispatch_id}) but gateway "
+                    f"run_status is {actual_run_label} ({actual_run_status}). "
+                    f"Solar-driven activity may be legitimate."
+                )
+
+        else:
+            health_status = "HEALTHY"
+
+        # ── touSendStatus != null: independently cap the health verdict ───────
+        #
+        # When touSendStatus is non-null, the cloud↔gateway schedule sync is
+        # either in flight or has failed. We cannot fully trust that the gateway
+        # is executing the correct schedule — regardless of what run_status shows.
+        #
+        # SYNC_ALERT (touSendStatus=3):
+        #   The cloud platform confirmed the sync failed. The gateway local DB
+        #   may be stale. Cap verdict to DEGRADED even if run_status matched.
+        #   False positives exist (gateway may have applied silently), so we do
+        #   not escalate to FAULT — but HEALTHY would be misleading.
+        #   Surface the touAlertMessage in fault_reasons in all cases.
+        #
+        # SYNC_PENDING (any other non-null):
+        #   Schedule was sent but gateway ACK not yet received. Transition state.
+        #   Downgrade HEALTHY → DEGRADED only. FAULT/DEGRADED stay unchanged.
+        if sync_status == "SYNC_ALERT":
+            if health_status == "HEALTHY":
+                health_status = "DEGRADED"
+            fault_reasons.insert(0, (
+                f"Cloud sync alert (touSendStatus=3): gateway schedule sync failed. "
+                f"Message: '{tou_alert_message}'. "
+                f"Run 'Reset TOU Mode' to re-apply and re-test. "
+                f"Note: false positives occur — gateway may have applied successfully "
+                f"without ACK reaching the cloud platform."
+            ))
+        elif sync_status == "SYNC_PENDING":
+            if health_status == "HEALTHY":
+                health_status = "DEGRADED"
+            fault_reasons.insert(0, (
+                f"Schedule sync pending (touSendStatus={tou_send_status}): "
+                f"gateway has not yet acknowledged the updated TOU schedule. "
+                f"Run status cannot be definitively correlated until sync clears."
+            ))
+
+        ok = health_status == "HEALTHY"
+        return {
+            "ok":                   ok,
+            "health_status":        health_status,
+            "active_mode":          active_mode,
+            "is_tou_mode":          is_tou_mode,
+            "sync_status":          sync_status,
+            "sync_message":         tou_alert_message,
+            "active_block":         active_block,
+            "expected_action":      expected_action,
+            "actual_run_status":    actual_run_status,
+            "actual_run_label":     actual_run_label,
+            "grid_kw":              grid_kw,
+            "fault_reasons":        fault_reasons,
+            "stop_mode":            stop_mode,
+            "grid_charge_en":       grid_charge_en,
+            "tariff_setting_flag":  tariff_setting_flag,
+        }

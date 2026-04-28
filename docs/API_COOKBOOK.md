@@ -619,6 +619,80 @@ async def main():
 asyncio.run(main())
 ```
 
+### Gateway Groups — `get_home_gateway_list()` Group Fields
+
+`get_home_gateway_list()` is the **only API that returns group membership**. The
+`get_site_and_device_info()` endpoint does NOT include group data — it only flat-lists
+gateways under a site.
+
+**Raw response fields (per gateway entry):**
+
+```json
+{
+  "id":        "10060006A02F24170091",
+  "name":      "FHP",
+  "groupId":   null,
+  "groupName": null,
+  "groupFlag": 0
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `groupId` | `str \| null` | UUID/int of the group. `null` = ungrouped |
+| `groupName` | `str \| null` | Human label ("Main House"). `null` = ungrouped |
+| `groupFlag` | `int` | `1` = this gateway belongs to a group; `0` = ungrouped |
+
+> [!IMPORTANT]
+> **`groupFlag=0` is the authoritative "ungrouped" sentinel** — do not infer grouping
+> from `groupId != null` alone. Always check `groupFlag == 1` first.
+> Single-gateway accounts will have `groupId: null, groupName: null, groupFlag: 0`.
+
+**Pattern — building a group-aware account topology:**
+
+```python
+gateways_raw = await proxy.get_home_gateway_list()
+gateways = gateways_raw.get("result", [])
+
+# Only show group tier when at least one gateway is grouped
+has_groups = any(gw.get("groupFlag") == 1 for gw in gateways)
+
+# Build group buckets
+group_buckets = {}   # groupId (or None) → [gateway_dict, ...]
+group_names   = {}   # groupId → groupName
+
+for gw in gateways:
+    grp = gw.get("groupId") if gw.get("groupFlag") == 1 else None
+    group_buckets.setdefault(grp, []).append(gw)
+    if grp and grp not in group_names:
+        group_names[grp] = gw.get("groupName") or f"Group {grp}"
+
+if has_groups:
+    for grp_id, members in group_buckets.items():
+        label = group_names.get(grp_id, "(ungrouped)")
+        print(f"Group: {label} (GroupId: {grp_id})")
+        for gw in members:
+            print(f"  └── {gw['name']} ({gw['id']})")
+else:
+    # Single-gateway or all ungrouped — no group header needed
+    for gw in gateways:
+        print(f"└── {gw['name']} ({gw['id']})")
+```
+
+**Result for a two-group account:**
+```
+Group: "Main House" (GroupId: 501)
+  └── FHP1 (10060006AXXXXXXXXX)
+  └── FHP2 (10060006AXXXXXXXXX)
+Group: (ungrouped)
+  └── FHP3 (10060006AXXXXXXXXX)
+```
+
+> [!NOTE]
+> Groups are a **display/organisation concept only** — they have no effect on API routing
+> or command scoping. Each gateway always requires its own `Client(auth, gateway=serial)`
+> instance regardless of group membership.
+
 ### Custom Client Identity (HTTP Headers)
 
 By default, the library sends a generic `franklinwh-cloud-client` User-Agent. If you are building an integration (e.g., a Home Assistant add-on or custom dashboard), you can declare your identity to FranklinWH's servers:
@@ -1705,3 +1779,296 @@ if getattr(client, "get_metrics", None):
 > Import: `from franklinwh_cloud.const import TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP`
 
 > Full details in [TOU_SCHEDULE_GUIDE.md](TOU_SCHEDULE_GUIDE.md)
+
+---
+
+## 🩺 TOU Health Check & Recovery
+
+The FranklinWH Cloud API has no native endpoint to confirm whether a gateway is
+**physically executing** its programmed TOU schedule. A gateway can be in TOU mode
+but stuck in standby — the cloud reports the schedule as active, but the battery
+does nothing. This section documents the library's diagnostic and recovery tooling
+built to detect and resolve this condition.
+
+> [!IMPORTANT]
+> These methods make **real API calls** and `reset_tou_mode()` **writes to the
+> gateway**. Call them **sparingly and on-demand only** — never in a polling loop.
+> For multi-gateway accounts, always scope calls to the specific gateway that has
+> the suspected fault. Do not call health checks across all gateways on every poll.
+
+---
+
+### Background: `touSendStatus` Field
+
+`getGatewayTouListV2` (called internally by `get_tou_health()`) returns two sync
+indicator fields alongside the schedule. These are the **only confirmed values**,
+observed across 1,253 HTTP Toolkit HAR samples:
+
+| `touSendStatus` | `touAlertMessage` | Count | Meaning |
+|---|---|---|---|
+| `null` | `null` | 1,141 | ✅ Settled — gateway has the current schedule, no sync pending |
+| `2` | `"Package settings are taking effect"` | 25 | 🔄 In-progress — schedule sent, gateway applying it now |
+| `3` | `"Package settings synchronization of failed, please check after setting again"` | 87 | ⚠️ Sync alert — cloud did not receive gateway ACK |
+
+> [!NOTE]
+> `touSendStatus=3` is **not always a real failure**. The gateway may have applied
+> the schedule to its local DB but the ACK response was lost (e.g. brief internet
+> drop during sync). The mobile app surfaces this as a modal dialog and allows the
+> user to "Apply Again". Treat it as a **warning**, not a hard fault — cross-reference
+> with `run_status` before acting.
+
+---
+
+### `get_tou_health()` — Read-Only Diagnostic
+
+**Mixin:** `TouMixin` | **Calls:** `getGatewayTouListV2` + `get_tou_info(1)` + live stats
+
+Returns a single verdict dict describing whether the gateway is correctly executing
+the active TOU schedule block for the current time.
+
+```python
+health = await client.get_tou_health(live_stats=last_stats_dict)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `live_stats` | `dict \| None` | `None` | Pass the last polled stats dict to avoid an extra API call. If `None`, the method calls `get_stats()` internally. |
+
+**Return dict:**
+
+| Key | Type | Description |
+|---|---|---|
+| `ok` | `bool` | `True` only when `health_status == "HEALTHY"` |
+| `health_status` | `str` | `"HEALTHY"` / `"DEGRADED"` / `"FAULT"` |
+| `active_mode` | `str` | Raw mode name from the API |
+| `is_tou_mode` | `bool` | Whether the gateway is currently in TOU mode |
+| `sync_status` | `str` | `"SYNC_OK"` / `"SYNC_PENDING"` / `"SYNC_ALERT"` |
+| `tou_send_status` | `int \| None` | Raw `touSendStatus` value |
+| `tou_alert_message` | `str` | Raw `touAlertMessage` value (empty string if null) |
+| `run_status` | `int \| None` | Raw `run_status` (0=Standby, 1=Charging, 2=Discharging) |
+| `run_status_label` | `str` | Human label: `"Standby"` / `"Charging"` / `"Discharging"` |
+| `active_block` | `dict \| None` | The schedule block that should be executing right now |
+| `expected_dispatch` | `str \| None` | What the schedule says the battery should be doing |
+| `fault_reasons` | `list[str]` | Non-empty list of reasons when `DEGRADED` or `FAULT` |
+
+**Health verdict rules:**
+
+| Condition | Verdict |
+|---|---|
+| Not in TOU mode | `FAULT` |
+| No active schedule block for current time | `DEGRADED` |
+| `run_status` matches expected dispatch | `HEALTHY` |
+| `run_status` is Standby when dispatch expects action | `FAULT` |
+| `run_status` is wrong direction | `DEGRADED` |
+| `touSendStatus=3` (SYNC_ALERT), any verdict | Caps to `DEGRADED` minimum |
+| `touSendStatus=2` (SYNC_PENDING), otherwise HEALTHY | Caps to `DEGRADED` |
+
+**When to call it:**
+
+```python
+# ✅ CORRECT — on-demand, triggered by a user action or scheduled alert
+if user_clicked_health_check_button:
+    health = await client.get_tou_health(live_stats=cached_stats)
+
+# ✅ CORRECT — once per poll cycle, for the specific gateway showing symptoms
+# (e.g. run_status=0 during an expected discharge window)
+if run_status == 0 and expected_dispatch in ("GRID_EXPORT", "GRID_CHARGE"):
+    health = await client.get_tou_health(live_stats=current_stats)
+
+# ❌ WRONG — never call in a tight loop or across every gateway on every poll
+for gw in all_gateways:
+    health = await client.get_tou_health()   # adds 2-3 extra API calls per gateway
+```
+
+---
+
+### `reset_tou_mode()` — Recovery (Write Operation)
+
+**Mixin:** `DevicesMixin` | **Calls:** `set_mode()` × 2 + `get_gateway_tou_list()` × N
+
+Performs a controlled **Self-Consumption → Time-of-Use** mode toggle. This causes
+the gateway firmware to re-read its local TOU schedule database from scratch, resolving
+the "stuck in standby" condition. After the toggle, polls `getGatewayTouListV2` at
+15-second intervals to confirm `touSendStatus` returns to `null`.
+
+> [!CAUTION]
+> This is a **write operation** that temporarily changes the operating mode.
+> It **MUST only be called** after presenting the fault to the user and receiving
+> explicit confirmation. Never call automatically. The FHAI endpoint requires
+> `{"confirmed": true}` in the POST body for this reason.
+
+```python
+result = await client.reset_tou_mode(
+    min_soc_pct=10,           # Default: 10% — SOC guard, rejects reset if battery too low
+    max_verify_attempts=4,    # Default: 4 — max polls for gateway ACK
+    verify_interval_s=15,     # Default: 15s — delay between polls (mirrors mobile app)
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `min_soc_pct` | `int` | `10` | Minimum battery SOC% before allowing the reset. Prevents accidental discharge on a critically low battery. |
+| `max_verify_attempts` | `int` | `4` | Maximum number of `getGatewayTouListV2` polls (4 × 15s = 60s total window). |
+| `verify_interval_s` | `int` | `15` | Seconds between verification polls. Matches the mobile app's observed post-apply polling cadence. |
+
+**Return dict:**
+
+| Key | Type | Description |
+|---|---|---|
+| `ok` | `bool` | `True` if the mode toggle succeeded (regardless of sync ACK) |
+| `sync_cleared` | `bool` | `True` if `touSendStatus` returned to `null` within the retry window |
+| `final_send_status` | `int \| None` | Last observed `touSendStatus` after all retries |
+| `final_alert_message` | `str` | Last observed `touAlertMessage` (empty string if null) |
+| `steps` | `list[str]` | Full step-by-step log of every action taken |
+| `error` | `str \| None` | Set only on fatal failure (SOC guard rejected, mode switch failed) |
+
+**`ok` vs `sync_cleared`:**
+
+- `ok=True, sync_cleared=True` → Full success. Reset applied, gateway confirmed.
+- `ok=True, sync_cleared=False` → Reset applied but no ACK in the retry window.
+  May be a false positive. Monitor `run_status` to verify physical execution.
+- `ok=False` → Fatal: SOC guard rejected the reset, or a mode switch API call
+  failed. Check `error` for the reason.
+
+---
+
+### Full Usage Example
+
+```python
+import asyncio
+from franklinwh_cloud import FranklinWHCloud
+
+async def check_and_recover_tou():
+    client = FranklinWHCloud.from_config("franklinwh.ini")
+    await client.login()
+    await client.select_gateway()
+
+    # ── Step 1: Get current stats once (reuse for health check) ──
+    stats = await client.get_stats()
+    live = {
+        "battery_soc": stats.current.soc,
+        "run_status":  stats.current.run_status,
+        "grid_power":  stats.current.grid_power,
+        "battery_power": stats.current.battery_power,
+    }
+
+    # ── Step 2: Run health check (on-demand only) ──
+    health = await client.get_tou_health(live_stats=live)
+
+    print(f"TOU Health: {health['health_status']}")
+    print(f"  Sync:     {health['sync_status']} (touSendStatus={health['tou_send_status']})")
+    print(f"  Mode:     {health['active_mode']}  (TOU={health['is_tou_mode']})")
+    print(f"  Battery:  {health['run_status_label']} (expected: {health['expected_dispatch']})")
+
+    if health['fault_reasons']:
+        print("  Faults:")
+        for r in health['fault_reasons']:
+            print(f"    • {r}")
+
+    if health['ok']:
+        print("✅ Gateway is executing schedule correctly.")
+        return
+
+    # ── Step 3: Gate the recovery behind explicit confirmation ──
+    print(f"\n⚠️  Health verdict: {health['health_status']}")
+    confirm = input("Run TOU mode reset? This will toggle Self-Consumption→TOU. (yes/no): ")
+    if confirm.strip().lower() != "yes":
+        print("Reset cancelled.")
+        return
+
+    # ── Step 4: Execute recovery ──
+    print("\n🔄 Running TOU mode reset...")
+    result = await client.reset_tou_mode(
+        min_soc_pct=10,
+        max_verify_attempts=4,   # up to 60 s of polling
+        verify_interval_s=15,    # 15 s between polls (mobile app cadence)
+    )
+
+    print("\nReset steps:")
+    for step in result['steps']:
+        print(f"  {step}")
+
+    if not result['ok']:
+        print(f"\n❌ Reset failed: {result['error']}")
+        return
+
+    if result['sync_cleared']:
+        print(f"\n✅ Reset complete — gateway ACK confirmed (touSendStatus=null).")
+    else:
+        print(
+            f"\n⚠️  Reset sent but sync unconfirmed "
+            f"(touSendStatus={result['final_send_status']}). "
+            f"This may be a false positive. Monitor run_status to verify."
+        )
+
+    # ── Step 5: Recheck health after recovery ──
+    await asyncio.sleep(5)
+    stats2 = await client.get_stats()
+    live2  = {"run_status": stats2.current.run_status}
+    health2 = await client.get_tou_health(live_stats=live2)
+    print(f"\n📋 Post-reset health: {health2['health_status']} — battery={health2['run_status_label']}")
+
+asyncio.run(check_and_recover_tou())
+```
+
+**Expected output — stuck gateway recovered:**
+```
+TOU Health: FAULT
+  Sync:     SYNC_OK (touSendStatus=None)
+  Mode:     Ausgrid EA11 TOU  (TOU=True)
+  Battery:  Standby (expected: GRID_EXPORT)
+  Faults:
+    • Gateway in TOU mode but run_status=Standby during a GRID_EXPORT block.
+      Expected: battery discharging to grid.
+
+⚠️  Health verdict: FAULT
+Run TOU mode reset? This will toggle Self-Consumption→TOU. (yes/no): yes
+
+🔄 Running TOU mode reset...
+
+Reset steps:
+  SOC guard passed: battery at 72%.
+  Step 1: set_mode(Self-Consumption) → {'code': 200, ...}
+  Step 2: 3 s pause complete.
+  Step 3: set_mode(Time-of-Use) sent — polling for gateway ACK.
+  Step 4 attempt 1/4: waiting 15 s…
+  Step 4 attempt 1: touSendStatus=2 (still pending/failed). Retrying…
+  Step 4 attempt 2/4: waiting 15 s…
+  Step 4 attempt 2: touSendStatus=null — gateway ACK received, sync confirmed.
+  TOU mode reset complete — schedule sync confirmed.
+
+✅ Reset complete — gateway ACK confirmed (touSendStatus=null).
+
+📋 Post-reset health: HEALTHY — battery=Discharging
+```
+
+---
+
+### Multi-Gateway Accounts — Scoping Rules
+
+> [!WARNING]
+> `get_tou_health()` and `reset_tou_mode()` operate on the **currently selected**
+> gateway (`client.gateway`). For multi-gateway accounts, you must select the
+> correct gateway before calling these methods.
+
+```python
+# ✅ CORRECT — select before calling
+await client.select_gateway(gateway_id="10060006A02F24170091")
+health = await client.get_tou_health()
+
+# ❌ WRONG — never loop health checks across all gateways in a single cycle
+# This is 3–5 extra API calls per gateway per poll. On a 4-gateway account
+# that runs every 60s, this is 12–20 extra calls per minute unnecessarily.
+for gw_id in all_gateway_ids:
+    await client.select_gateway(gateway_id=gw_id)
+    health = await client.get_tou_health()   # ← do not do this
+```
+
+Only run the health check for a **specific gateway** when there is a concrete
+signal that it may be stuck — e.g. `run_status=0` (Standby) during a time window
+where the schedule dictates charging or discharging.
+
