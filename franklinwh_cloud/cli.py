@@ -232,6 +232,10 @@ def build_parser() -> argparse.ArgumentParser:
                                   help="System snapshot for troubleshooting — export, redact, compare")
     sub_support.add_argument("--info", "-i", action="store_true",
                              help="Print full account/site taxonomy tree")
+    sub_support.add_argument("--diag", "-d", action="store_true",
+                             help="With --info: also show full ✅/❌ feature flag diagnostic (implies --info)")
+    sub_support.add_argument("--mock", "-m", action="store_true",
+                             help="Print a simulated max-config --info --diag output (no API calls, demo only)")
     sub_support.add_argument("--save", "-s", action="store_true",
                              help="Save snapshot to timestamped JSON file")
     sub_support.add_argument("--redact", "-r", nargs="?", const="partial", choices=["partial", "full"],
@@ -507,14 +511,20 @@ async def async_main():
                                              fem_url=getattr(args, 'fem_url', None),
                                              include_bms=getattr(args, 'bms', False))
                 else:
-                    await support.run(client, json_output=args.json,
-                                      save=args.save,
-                                      redact=getattr(args, 'redact', None),
-                                      label=getattr(args, 'label', None),
-                                      analyze=getattr(args, 'analyze', False),
-                                      compare_file=getattr(args, 'compare_file', None),
-                                      scope=getattr(args, 'scope', 'all'),
-                                      info=getattr(args, 'info', False))
+                    mock_flag  = getattr(args, 'mock', False)
+                    diag_flag  = getattr(args, 'diag', False)
+                    if mock_flag:
+                        support.mock_diag_output()
+                    else:
+                        await support.run(client, json_output=args.json,
+                                          save=args.save,
+                                          redact=getattr(args, 'redact', None),
+                                          label=getattr(args, 'label', None),
+                                          analyze=getattr(args, 'analyze', False),
+                                          compare_file=getattr(args, 'compare_file', None),
+                                          scope=getattr(args, 'scope', 'all'),
+                                          info=getattr(args, 'info', False) or diag_flag,
+                                          diag=diag_flag)
 
             case "schema":
                 from franklinwh_cloud.cli_commands import schema

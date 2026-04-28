@@ -935,3 +935,186 @@ class DevicesMixin:
             
         return overview
 
+    # ── TOU Mode Reset ────────────────────────────────────────────────────────
+
+    async def reset_tou_mode(
+        self,
+        *,
+        min_soc_pct: int = 10,
+        max_verify_attempts: int = 4,
+        verify_interval_s: int = 15,
+    ) -> dict:
+        """Force the gateway to re-evaluate its TOU schedule.
+
+        Performs a deliberate operating mode toggle:
+            Self-Consumption → (3 s pause) → Time-of-Use
+
+        Then polls getGatewayTouListV2 at verify_interval_s intervals to confirm
+        the gateway acknowledged the schedule (touSendStatus returns to null).
+        This mirrors the mobile app's post-apply polling behaviour.
+
+        This method MUST only be called after presenting the fault to the user
+        and receiving explicit confirmation — it is a write operation that
+        temporarily changes the operating mode.
+
+        Parameters
+        ----------
+        min_soc_pct : int, optional
+            Minimum battery SOC percentage required before allowing the reset.
+            Default is 10%. Prevents an accidental mode toggle that could trigger
+            unexpected discharge on a critically low battery.
+        max_verify_attempts : int, optional
+            Maximum number of getGatewayTouListV2 polls to check whether
+            touSendStatus cleared to null after the mode toggle. Default is 4
+            (4 × 15 s = up to 60 s total verification window).
+        verify_interval_s : int, optional
+            Seconds to wait between each verification poll. Default is 15 s,
+            matching the mobile app's observed polling cadence.
+
+        Returns
+        -------
+        dict
+            ok                  : bool      — True if mode toggle succeeded (regardless of sync ACK)
+            sync_cleared        : bool      — True if touSendStatus returned to null within retries
+            final_send_status   : int|None  — last observed touSendStatus value
+            final_alert_message : str       — last observed touAlertMessage (or '')
+            steps               : list[str] — log of each step taken
+            error               : str|None  — set only if a step failed fatally
+        """
+        steps = []
+
+        # SOC safety guard — read from last stats rather than calling get_stats()
+        # to avoid an extra API call in the reset sequence.
+        try:
+            live = await self.get_stats()
+            soc = None
+            if hasattr(live, "battery_soc"):
+                soc = live.battery_soc
+            elif isinstance(live, dict):
+                soc = live.get("battery_soc")
+            if soc is not None and int(soc or 0) < min_soc_pct:
+                return {
+                    "ok": False,
+                    "steps": [f"SOC guard: battery at {soc}% < {min_soc_pct}% minimum."],
+                    "error": (
+                        f"Reset rejected: battery SOC ({soc}%) is below the minimum "
+                        f"safe threshold ({min_soc_pct}%). Charge the battery before "
+                        f"attempting a TOU mode reset."
+                    ),
+                }
+            steps.append(f"SOC guard passed: battery at {soc}%.")
+        except Exception as exc:
+            # Non-fatal — proceed with reset, log the warning
+            steps.append(f"SOC guard check failed (proceeding anyway): {exc}")
+
+        # Step 1: switch to Self-Consumption
+        try:
+            res1 = await self.set_mode("self_consumption")
+            steps.append(f"Step 1: set_mode(Self-Consumption) → {res1}")
+        except Exception as exc:
+            return {
+                "ok": False,
+                "steps": steps,
+                "error": f"Step 1 (set Self-Consumption) failed: {exc}",
+            }
+
+        # Step 2: brief pause for firmware to process the mode change
+        await asyncio.sleep(3)
+        steps.append("Step 2: 3 s pause complete.")
+
+        # Step 3: switch back to Time-of-Use
+        try:
+            res2 = await self.set_mode("time_of_use")
+            steps.append(f"Step 3: set_mode(Time-of-Use) → {res2}")
+        except Exception as exc:
+            return {
+                "ok": False,
+                "steps": steps,
+                "error": (
+                    f"Step 3 (restore Time-of-Use) failed: {exc}. "
+                    f"Gateway may be stuck in Self-Consumption — manual intervention required."
+                ),
+            }
+
+        steps.append("Step 3: set_mode(Time-of-Use) sent — polling for gateway ACK.")
+
+        # Step 4: Poll getGatewayTouListV2 to verify sync cleared.
+        #
+        # Mirrors mobile app behaviour: after updateTouModeV2, the app polls
+        # getGatewayTouListV2 repeatedly at ~15 s intervals watching for
+        # touSendStatus to return to null (gateway acknowledged the new schedule).
+        #
+        # touSendStatus=3 may persist as a false positive even after the gateway
+        # successfully updated its local DB — if so we still return ok=True but
+        # set sync_cleared=False so FHAI can surface the appropriate message.
+        sync_cleared = False
+        final_send_status = None
+        final_alert_message = ""
+        _gw = self.gateway  # short label for log lines
+        logger.info(
+            f"[{_gw}] reset_tou_mode: starting sync verification "
+            f"(max {max_verify_attempts} attempts × {verify_interval_s} s)."
+        )
+        for attempt in range(1, max_verify_attempts + 1):
+            msg = f"[{_gw}] reset_tou_mode: attempt {attempt}/{max_verify_attempts} — waiting {verify_interval_s} s before poll."
+            logger.info(msg)
+            steps.append(f"Step 4 attempt {attempt}/{max_verify_attempts}: waiting {verify_interval_s} s…")
+            await asyncio.sleep(verify_interval_s)
+            try:
+                verify_resp = await self.get_gateway_tou_list()
+                verify_result = verify_resp.get("result", {})
+                final_send_status = verify_result.get("touSendStatus")
+                final_alert_message = verify_result.get("touAlertMessage") or ""
+                if final_send_status is None:
+                    sync_cleared = True
+                    msg = (
+                        f"[{_gw}] reset_tou_mode: attempt {attempt} — "
+                        f"touSendStatus=null. Gateway ACK received, sync confirmed. ✓"
+                    )
+                    logger.info(msg)
+                    steps.append(
+                        f"Step 4 attempt {attempt}: touSendStatus=null — "
+                        f"gateway ACK received, sync confirmed."
+                    )
+                    break
+                else:
+                    msg = (
+                        f"[{_gw}] reset_tou_mode: attempt {attempt} — "
+                        f"touSendStatus={final_send_status} (still pending/failed). "
+                        f"Alert: '{final_alert_message}'. Retrying…"
+                    )
+                    logger.warning(msg)
+                    steps.append(
+                        f"Step 4 attempt {attempt}: touSendStatus={final_send_status} "
+                        f"(still pending/failed). Retrying…"
+                    )
+            except Exception as exc:
+                msg = f"[{_gw}] reset_tou_mode: attempt {attempt} — poll failed: {exc}. Retrying…"
+                logger.warning(msg)
+                steps.append(f"Step 4 attempt {attempt}: poll failed ({exc}). Retrying…")
+
+        if sync_cleared:
+            logger.info(f"[{_gw}] reset_tou_mode: COMPLETE — schedule sync confirmed.")
+            steps.append("TOU mode reset complete — schedule sync confirmed.")
+        else:
+            logger.warning(
+                f"[{_gw}] reset_tou_mode: UNCONFIRMED after {max_verify_attempts} attempts. "
+                f"final touSendStatus={final_send_status}. "
+                f"Possible false positive — gateway may have applied without sending ACK."
+            )
+            steps.append(
+                f"TOU mode reset sent but sync unconfirmed after {max_verify_attempts} attempts "
+                f"(touSendStatus={final_send_status}). "
+                f"This may be a false positive — the gateway may have applied the schedule "
+                f"without the ACK reaching the cloud platform. Monitor run_status to verify."
+            )
+
+        return {
+            "ok": True,          # mode toggle succeeded regardless of sync ACK
+            "sync_cleared": sync_cleared,
+            "final_send_status": final_send_status,
+            "final_alert_message": final_alert_message,
+            "steps": steps,
+            "error": None,
+        }
+
