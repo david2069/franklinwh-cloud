@@ -82,6 +82,9 @@ franklinwh-cli monitor             # Live power flows
 franklinwh-cli tou                 # TOU schedule
 franklinwh-cli raw get_stats       # Raw API passthrough
 franklinwh-cli support --nettest   # Network diagnostics
+franklinwh-cli support --info      # Account/site topology tree
+franklinwh-cli support --info --diag  # + feature flags and relay states
+franklinwh-cli support --mock      # Simulated max-config output (no API)
 ```
 
 ## Architecture
@@ -130,6 +133,7 @@ graph LR
 | [API Cookbook](API_COOKBOOK.md) | Copy-paste recipes for common tasks |
 | [API Reference](API_REFERENCE.md) | All 70+ methods with parameters |
 | [TOU Guide](TOU_SCHEDULE_GUIDE.md) | Schedule management with workflow diagrams |
+| [Support Info Command](CLI_SUPPORT_INFO.md) | `support --info`, `--diag`, `--mock` — topology, feature flags, relays |
 | [CLI Raw Methods](cli-raw.md) | All raw API methods available from CLI |
 | [Troubleshooting](TROUBLESHOOTING.md) | Login, network, metrics, PII redaction guide |
 | [Thank You](thank-you.md) | Acknowledgements — Richo and franklinwh-python |
