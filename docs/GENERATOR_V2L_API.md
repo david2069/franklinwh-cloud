@@ -315,6 +315,7 @@ assert stats.current.grid_connection_state.value != "Connected", \
 
 ## Related Documentation
 
+- [Capturing Mobile App Traffic](CAPTURING_MOBILE_APP_TRAFFIC.md) — step-by-step guide for V2L/Generator hardware owners to capture verification traffic
 - [API Cookbook](API_COOKBOOK.md) — copy-paste recipes for common tasks
 - [REGION_QUIRKS.md](REGION_QUIRKS.md) — AU vs US accessory differences
 - [CLI_SUPPORT_INFO.md](CLI_SUPPORT_INFO.md) — `--diag` flag shows V2L and Generator in Feature Flags

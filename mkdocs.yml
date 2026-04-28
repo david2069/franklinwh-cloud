@@ -78,6 +78,7 @@ nav:
     - TOU Schedule Guide: TOU_SCHEDULE_GUIDE.md
     - TOU Tariff Reference: TOU_TARIFF_REFERENCE.md
     - Generator & V2L API: GENERATOR_V2L_API.md
+    - Capturing Mobile App Traffic: CAPTURING_MOBILE_APP_TRAFFIC.md
     - Scheduling Nettest: SCHEDULING.md
     - Logging Strategy: LOGGING.md
     - Rate Limiting & Good Citizenship: RATE_LIMITING.md
