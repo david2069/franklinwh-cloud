@@ -720,7 +720,7 @@ async def _wait_for_dispatch(client, *, verbose: bool = False,
     Returns dict with confirmation status for JSON output.
     """
     if verbose:
-        print(f"  {c('dim', 'Waiting for dispatch confirmation (up to {timeout}s)...')}")
+        print(f"  {c('dim', f'Waiting for dispatch confirmation (up to {timeout}s)...')}")
 
     elapsed = 0
     confirmed = False
