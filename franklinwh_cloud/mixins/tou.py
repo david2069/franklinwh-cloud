@@ -1044,7 +1044,9 @@ class TouMixin:
         payload = {"template": saveTOUdispatch_template, "strategyList": strategyList, "nemType": 0, "coverContentFlag": false}
         logger.info("set_tou_schedule: Finalised payload now sending to saveTouDispatch")
         key = "dispatchId"
-        dispatchIdList = list(dict.fromkeys(d[key] for d in detailVoList if key in d))
+        dispatchIdList = list(dict.fromkeys(
+            d[key] for d in (detailVoList or []) if key in d
+        ))
 
         res = await self.get_pcs_hintinfo(dispatchIdList)
         logger.info(f"set_tou_schedule: JSON: {payload}")
