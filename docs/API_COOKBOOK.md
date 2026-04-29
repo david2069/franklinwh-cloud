@@ -828,21 +828,13 @@ await client.set_tou_schedule(touMode="SELF")
 
 #### Example 1 — Single Season: Grid Charge for 1 Hour
 
-Use this pattern when you want to force a charge window across ALL days,
-all months. The library fills the rest of the 24-hour day with
-`default_mode` automatically.
-
-**Do NOT omit `seasons=`** — without it the library reads your existing
-cloud TOU (which may have a complex multi-season structure), merges the
-dispatch block into every season, and saves them ALL back. Pass an
-explicit single-season to isolate the dispatch.
+Use this pattern when you want to force a charge window for the current active
+season. The library resolves today's date to the correct season automatically
+and leaves all other seasons untouched. The rest of the 24-hour day is filled
+with `default_mode` automatically.
 
 ```python
-# ── Backup first — always ─────────────────────────────────────────────────
-backup = await client.get_tou_dispatch_detail()
-original_strategy = backup.get("result", {}).get("strategyList", [])
-
-# ── Set 1-hour grid charge window, single season, every day ───────────────
+# ── Set 1-hour grid charge window for today's active season ───────────────
 await client.set_tou_schedule(
     touMode="CUSTOM",
     touSchedule=[{
@@ -853,17 +845,14 @@ await client.set_tou_schedule(
         "waveType":   WaveType.OFF_PEAK.value,              # 0 — off-peak rate tier
         "gridChargeMax": 5000,                              # Watts — cap at 5 kW
     }],
-    seasons=[{
-        "name":   "Dispatch",           # Friendly label — does NOT appear in user's TOU
-        "months": "1,2,3,4,5,6,7,8,9,10,11,12",  # All months
-    }],
     default_mode="SELF",   # Rest of day = self-consumption (dispatchId=6)
     day_type=3,            # 3 = everyDay (weekday + weekend)
+    # month=4,             # Optional: target April's season explicitly
 )
 
-# ── Restore original multi-season TOU when done ───────────────────────────
-if original_strategy:
-    await client.set_tou_schedule_multi(original_strategy)
+# ── Caller is responsible for backup/restore if needed ────────────────────
+# Backup:  original = (await client.get_tou_dispatch_detail())["result"]["strategyList"]
+# Restore: await client.set_tou_schedule_multi(original)
 ```
 
 **Dispatch codes confirmed from mobile app HAR captures:**

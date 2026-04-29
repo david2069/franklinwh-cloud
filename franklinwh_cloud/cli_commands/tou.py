@@ -33,6 +33,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               end: str | None = None, default_mode: str = "SELF",
               schedule_file: str | None = None, rates_file: str | None = None,
               season_name: str | None = None, season_months: str | None = None,
+              tou_month: int | None = None,
               day_type_str: str | None = None, wait_confirm: bool = False,
               show_next: bool = False, show_price: bool = False,
               active_only: bool = False, multi_season_file: str | None = None,
@@ -54,7 +55,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
     if set_mode:
         await _handle_set(client, set_mode, start, end, default_mode,
                           schedule_file, rates_file, season_name,
-                          season_months, day_type_str, wait_confirm,
+                          season_months, tou_month, day_type_str, wait_confirm,
                           json_output)
         return
 
@@ -537,7 +538,8 @@ def _build_extra_kwargs(rates_file, season_name, season_months, day_type_str, js
 async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                       default_mode: str | None, schedule_file: str | None,
                       rates_file: str | None, season_name: str | None,
-                      season_months: str | None, day_type_str: str | None,
+                      season_months: str | None, tou_month: int | None,
+                      day_type_str: str | None,
                       wait_confirm: bool, json_output: bool):
     """Handle tou --set command."""
     from franklinwh_cloud.const import dispatchCodeType, WaveType
@@ -576,6 +578,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 touMode="CUSTOM",
                 touSchedule=schedule,
                 default_mode=default_mode.upper() if default_mode else "SELF",
+                month=tou_month,
                 **extra_kwargs,
             )
             if await _print_set_result(result, json_output, client, wait_confirm):
@@ -631,12 +634,15 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
             default_name = DISPATCH_CODES.get(default_dispatch_id, "Unknown")
             print(f"Setting {_dispatch_name(dispatch_id)} from {start} to {end}")
             print(f"  Remaining times: {default_name} (dispatchId={default_dispatch_id})")
+            if tou_month:
+                print(f"  Target month: {tou_month}")
 
         try:
             result = await client.set_tou_schedule(
                 touMode="CUSTOM",
                 touSchedule=schedule,
                 default_mode=default_mode.upper(),
+                month=tou_month,
                 **extra_kwargs,
             )
             if await _print_set_result(result, json_output, client, wait_confirm):
@@ -655,9 +661,11 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
 
         if not json_output:
             print(f"Setting full-day {_dispatch_name(dispatch_id)}...")
+            if tou_month:
+                print(f"  Target month: {tou_month}")
 
         try:
-            result = await client.set_tou_schedule(touMode=mode, **extra_kwargs)
+            result = await client.set_tou_schedule(touMode=mode, month=tou_month, **extra_kwargs)
             if await _print_set_result(result, json_output, client, wait_confirm):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:

@@ -10,7 +10,7 @@
 > - `minDischargeSoc` — **does not work** in recent testing (aGate ignores this field)
 > - Not all advanced TOU fields (`gridChargeMax`, `dischargePower`, `rampTime`, etc.) are fully supported or implemented by the aGate firmware
 > - For **compatibility with the official FranklinWH mobile app**, keep time periods in **30-minute boundaries** (e.g. 11:30, 12:00, 14:30). Arbitrary times like 11:49 work via the API but may display incorrectly or be overwritten in the app
-> - `set_tou_schedule` applies a single schedule to all 12 months. For complex multi-season or weekday/weekend schedules, use `set_tou_schedule_multi(strategy_list)`.
+> - `set_tou_schedule` targets the season that owns **today's date** (or a specific `month=` you provide). For explicit multi-season creation or full schedule restore, use `set_tou_schedule_multi(strategy_list)`.
 
 ---
 
@@ -172,7 +172,7 @@ Wave types (tariff periods): `OFF_PEAK=0`, `MID_PEAK=1`, `ON_PEAK=2`, `SUPER_OFF
 The FranklinWH App recently transitioned to a complex multi-season, multi-day-type representation of TOU schedules. The `set_tou_schedule_multi` method exposes this capability directly to Python.
 
 ### Backwards Compatibility
-The original `set_tou_schedule` method has been internally refactored to act as a defensive wrapper around `set_tou_schedule_multi`. When called, it seamlessly downgrades your 1D array into a 12-month `strategyList` and auto-heals upstream API quirks (such as ensuring zero-value constraints and patching missing empty strings) without breaking existing scripts.
+The original `set_tou_schedule` method has been internally refactored to perform **transparent season resolution**. When called without an explicit `seasons=` argument, it reads the existing schedule, identifies which season owns today's month (or the `month=N` you specify), updates **only that season's blocks**, and leaves all other seasons untouched. Single-season code continues to work exactly as before. Code that previously passed `seasons=[{"name":...,"months":"1,2,..."}]` to isolate a dispatch block should remove that argument — the library now does this automatically.
 
 ### Live Testing & Verification
 Both `set_tou_schedule` and `set_tou_schedule_multi` have undergone live regression testing (Session 11) against out-of-the-box physical aGates. The testing confirmed:
@@ -543,8 +543,11 @@ franklinwh-cli tou --json             # Machine-readable JSON
 
 ### Setting schedules from CLI
 
-> [!WARNING]
-> `tou --set` is **not yet implemented** in the CLI. The `tou` subcommand is read-only.
+> [!NOTE]
+> `tou --set` writes to your aGate's TOU schedule. For time-window commands
+> (`--start`/`--end`), the library automatically targets today's active season.
+> Use `--month N` to target a different season. Use `--wait` to poll until
+> the aGate confirms the schedule has been applied.
 
 **Workarounds to set from CLI:**
 

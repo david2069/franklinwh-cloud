@@ -152,9 +152,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub_tou.add_argument("--rates-file", dest="rates_file", metavar="PATH",
                          help="JSON file with pricing rates (peak, off_peak, sell_peak, ...)")
     sub_tou.add_argument("--season", metavar="NAME",
-                         help="Season name (e.g. 'Summer'). Use with --months.")
+                         help="Season name for explicit override (e.g. 'Summer'). Use with --months.")
     sub_tou.add_argument("--months", metavar="M,M,...",
-                         help="Comma-separated months for --season (e.g. '10,11,12,1,2,3')")
+                         help="Comma-separated months for explicit --season override (e.g. '10,11,12,1,2,3')")
+    sub_tou.add_argument("--month", dest="tou_month", metavar="1-12", type=int,
+                         help="Target month for --set (default: current month). "
+                              "Updates the season that owns this month, leaving all others untouched.")
     sub_tou.add_argument("--day-type", dest="day_type", metavar="TYPE",
                          choices=["everyday", "weekday", "weekend"],
                          help="Day type: everyday (default), weekday, weekend")
@@ -448,6 +451,7 @@ async def async_main():
                               rates_file=getattr(args, 'rates_file', None),
                               season_name=getattr(args, 'season', None),
                               season_months=getattr(args, 'months', None),
+                              tou_month=getattr(args, 'tou_month', None),
                               day_type_str=getattr(args, 'day_type', None),
                               wait_confirm=getattr(args, 'wait_confirm', False),
                               show_next=getattr(args, 'show_next', False),
