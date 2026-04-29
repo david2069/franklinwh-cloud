@@ -792,10 +792,14 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
     print()
 
     # ── Hold + restore on exit ─────────────────────────────────────
-    # Use asyncio.Event so Ctrl+C immediately wakes the sleep via
-    # loop.add_signal_handler() (asyncio-native, Unix only).
-    # signal.signal() + asyncio.sleep() does NOT work — the sync handler
-    # fires but the sleeping coroutine is not interrupted.
+    # loop.add_signal_handler() is asyncio-native: SIGINT sets stop_event
+    # which completes stop_event.wait() inside wait_for, breaking the loop.
+    #
+    # Do NOT use asyncio.shield() — it creates orphaned background Tasks on
+    # every timeout tick. Those tasks survive the break, keep the event loop
+    # busy, print stale heartbeats, and prevent the process from exiting.
+    # Plain wait_for(stop_event.wait()) is correct: TimeoutError cleanly
+    # cancels the Event.wait() coroutine with no background tasks.
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
@@ -810,14 +814,10 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
     HEARTBEAT_INTERVAL = 30  # seconds
     elapsed = 0
     try:
-        while not stop_event.is_set():
+        while True:
             try:
-                # Wait for stop or heartbeat tick — whichever comes first
-                await asyncio.wait_for(
-                    asyncio.shield(stop_event.wait()),
-                    timeout=HEARTBEAT_INTERVAL,
-                )
-                break  # stop_event was set
+                await asyncio.wait_for(stop_event.wait(), timeout=HEARTBEAT_INTERVAL)
+                break  # stop_event was set — exit hold loop
             except asyncio.TimeoutError:
                 elapsed += HEARTBEAT_INTERVAL
                 mins, secs = divmod(elapsed, 60)
