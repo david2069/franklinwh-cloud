@@ -768,7 +768,7 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
     cli_args : str
         The original CLI invocation string for backup metadata.
     """
-    import asyncio, signal, sys
+    import asyncio, signal
 
     backup_path = None
 
@@ -777,7 +777,7 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
         try:
             backup_path = await client.tou_backup_save(existing_strategy, cli_args)
             seasons = len(existing_strategy)
-            print(f"  {c('dim', f'Backup saved: {backup_path.name} ({seasons} season(s))')}")
+            print(f"  {c('dim', f'Backup saved: {backup_path.name} ({seasons} season(s)')}")
         except Exception as e:
             print_warning(f"Could not save backup: {e} — restore will be skipped")
     else:
@@ -791,16 +791,47 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
     await _handle_next(client, json_output=False)
     print()
 
-    # ── Hold + restore on exit ────────────────────────────────────
-    restored = [False]   # mutable flag shared with handler
+    # ── Hold + restore on exit ─────────────────────────────────────
+    # Use asyncio.Event so Ctrl+C immediately wakes the sleep via
+    # loop.add_signal_handler() (asyncio-native, Unix only).
+    # signal.signal() + asyncio.sleep() does NOT work — the sync handler
+    # fires but the sleeping coroutine is not interrupted.
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
 
-    async def _restore_and_exit():
-        if restored[0]:
-            return
-        restored[0] = True
+    def _set_stop():
+        stop_event.set()
+
+    loop.add_signal_handler(signal.SIGINT,  _set_stop)
+    loop.add_signal_handler(signal.SIGTERM, _set_stop)
+
+    print(f"  {c('bold', '✓ Dispatch active')} — press {c('bold', 'Ctrl+C')} to restore original and exit")
+
+    HEARTBEAT_INTERVAL = 30  # seconds
+    elapsed = 0
+    try:
+        while not stop_event.is_set():
+            try:
+                # Wait for stop or heartbeat tick — whichever comes first
+                await asyncio.wait_for(
+                    asyncio.shield(stop_event.wait()),
+                    timeout=HEARTBEAT_INTERVAL,
+                )
+                break  # stop_event was set
+            except asyncio.TimeoutError:
+                elapsed += HEARTBEAT_INTERVAL
+                mins, secs = divmod(elapsed, 60)
+                hrs,  mins = divmod(mins, 60)
+                duration_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+                print(f"  {c('dim', f'Dispatch active — {duration_str} elapsed — Ctrl+C to restore')}")
+    finally:
+        loop.remove_signal_handler(signal.SIGINT)
+        loop.remove_signal_handler(signal.SIGTERM)
+
+        # ── Restore ───────────────────────────────────────────────
         print()
         if backup_path and existing_strategy:
-            print(f"  Restoring original schedule...")
+            print("  Restoring original schedule...")
             try:
                 await client.tou_backup_restore(backup_path)
                 seasons = len(existing_strategy)
@@ -811,42 +842,9 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
                 await _handle_next(client, json_output=False)
             except Exception as e:
                 print_error(f"Restore failed: {e}")
-                print_warning(f"Manual recovery: franklinwh-cli tou --restore")
+                print_warning("Manual recovery: franklinwh-cli tou --restore")
         else:
             print_warning("No backup to restore — original schedule unchanged")
-
-    def _signal_handler(signum, frame):
-        """Sync trampoline for signal → async restore."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(_restore_and_exit())
-        else:
-            asyncio.run(_restore_and_exit())
-
-    # Register SIGINT (Ctrl+C) and SIGTERM
-    original_sigint  = signal.getsignal(signal.SIGINT)
-    original_sigterm = signal.getsignal(signal.SIGTERM)
-    signal.signal(signal.SIGINT,  _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
-
-    print(f"  {c('bold', '✓ Dispatch active')} — press {c('bold', 'Ctrl+C')} to restore original and exit")
-
-    HEARTBEAT_INTERVAL = 30  # seconds
-    elapsed = 0
-    try:
-        while True:
-            await asyncio.sleep(HEARTBEAT_INTERVAL)
-            elapsed += HEARTBEAT_INTERVAL
-            mins, secs = divmod(elapsed, 60)
-            hrs,  mins = divmod(mins, 60)
-            duration_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
-            print(f"  {c('dim', f'Dispatch active — {duration_str} elapsed — Ctrl+C to restore')}")
-    except (asyncio.CancelledError, KeyboardInterrupt):
-        pass
-    finally:
-        signal.signal(signal.SIGINT,  original_sigint)
-        signal.signal(signal.SIGTERM, original_sigterm)
-        await _restore_and_exit()
 
 
 async def _wait_for_dispatch(client, *, verbose: bool = False,
