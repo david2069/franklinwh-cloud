@@ -761,8 +761,10 @@ class TouMixin:
                         raise ValueError("Error: failed to parse JSON string")
 
             case _:
-                detailVoList = touSchedule
-                logger.info("set_tou_schedule: fall thew default match case detailVoList copied from touSchedule")
+                if touSchedule is not None:
+                    detailVoList = touSchedule
+                # else: leave detailVoList = [] (predefined modes: SELF, HOME, STANDBY, etc.)
+                logger.info(f"set_tou_schedule: predefined/simple mode '{touMode}' — detailVoList={detailVoList}")
 
         logger.info(f"set_tou_schedule: Generated detailVoList = {detailVoList}")
         dict_count = False
@@ -782,105 +784,113 @@ class TouMixin:
         entries = []
         seq = 0
 
-        for key, value in enumerate(detailVoList):
-            startTime = value["startHourTime"]
-            endTime = value["endHourTime"]
-            waveType = value["waveType"]
-            name = value["name"]
-            dispatchId = value["dispatchId"]
-            seq = seq + 1
-            duration = 0
-            if endTime == "24:00":
-                endTime = "23:59"
-                add_one_minute = True
-            EndTime = datetime.strptime(endTime, "%H:%M")
-            StartTime = datetime.strptime(startTime, "%H:%M")
-            duration = EndTime - StartTime
-            elapsed_minutes = elapsed_minutes + int(duration.total_seconds() / 60)
-            if endTime == "23:59":
-                endTime = "24:00"
-            entries.append({"id": seq, "elapsed_minutes": elapsed_minutes, "duration": str(duration), "startHourTime": str(startTime), "endHourTime": str(endTime), "waveType": waveType, "name": name, "dispatchId": dispatchId})
+        if detailVoList:
+            # ── Schedule processing, gap-repair, 1440-minute validation ─────
+            # Only runs for CUSTOM / schedule-bearing modes. Predefined modes
+            # (SELF, HOME, STANDBY, etc.) have an empty detailVoList and skip
+            # this entire section, going straight to the strategyList build.
+            for key, value in enumerate(detailVoList):
+                startTime = value["startHourTime"]
+                endTime = value["endHourTime"]
+                waveType = value["waveType"]
+                name = value["name"]
+                dispatchId = value["dispatchId"]
+                seq = seq + 1
+                duration = 0
+                if endTime == "24:00":
+                    endTime = "23:59"
+                    add_one_minute = True
+                EndTime = datetime.strptime(endTime, "%H:%M")
+                StartTime = datetime.strptime(startTime, "%H:%M")
+                duration = EndTime - StartTime
+                elapsed_minutes = elapsed_minutes + int(duration.total_seconds() / 60)
+                if endTime == "23:59":
+                    endTime = "24:00"
+                entries.append({"id": seq, "elapsed_minutes": elapsed_minutes, "duration": str(duration), "startHourTime": str(startTime), "endHourTime": str(endTime), "waveType": waveType, "name": name, "dispatchId": dispatchId})
 
-        logger.info("set_tou_schedule: Inserted duration and elapsed minutes - ready for sorting / parsing...")
-        if add_one_minute:
-            elapsed_minutes = elapsed_minutes + 1
+            logger.info("set_tou_schedule: Inserted duration and elapsed minutes - ready for sorting / parsing...")
+            if add_one_minute:
+                elapsed_minutes = elapsed_minutes + 1
 
-        logger.info(f"set_tou_schedule: Checking scheduled total elapsed time: {elapsed_minutes} minutes")
-        sorted_data = sorted(entries, key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
-        logger.info("set_tou_schedule: Checking for missing time periods in sorted_data...")
-        logger.info(f"set_tou_schedule: Sorted data = {sorted_data}")
+            logger.info(f"set_tou_schedule: Checking scheduled total elapsed time: {elapsed_minutes} minutes")
+            sorted_data = sorted(entries, key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
+            logger.info("set_tou_schedule: Checking for missing time periods in sorted_data...")
+            logger.info(f"set_tou_schedule: Sorted data = {sorted_data}")
 
-        repaired_entries = []
-        repaired_entries = detailVoList.copy()
-        amended = False
+            repaired_entries = []
+            repaired_entries = detailVoList.copy()
+            amended = False
 
-        for key, value in enumerate(sorted_data):
-            startTime = value["startHourTime"]
-            endTime = value["endHourTime"]
-            waveType = value["waveType"]
-            name = value["name"]
-            dispatchId = value["dispatchId"]
+            for key, value in enumerate(sorted_data):
+                startTime = value["startHourTime"]
+                endTime = value["endHourTime"]
+                waveType = value["waveType"]
+                name = value["name"]
+                dispatchId = value["dispatchId"]
 
-            if key == 0:
-                if startTime != "00:00":
-                    logger.info(f"set_tou_schedule: Validate time entries - first entry does not start at 00:00 - found startHourTime = {startTime}")
-                    insert_list = {"startHourTime": "00:00", "endHourTime": str(startTime), "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
-                    repaired_entries.insert(0, insert_list)
-                    logger.info(f"set_tou_schedule: Inserting missing time period entry at start: {insert_list} ")
-                    amended = True
-            else:
-                if dict_count > 1:
-                    priorEndTime = endTime
+                if key == 0:
+                    if startTime != "00:00":
+                        logger.info(f"set_tou_schedule: Validate time entries - first entry does not start at 00:00 - found startHourTime = {startTime}")
+                        insert_list = {"startHourTime": "00:00", "endHourTime": str(startTime), "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
+                        repaired_entries.insert(0, insert_list)
+                        logger.info(f"set_tou_schedule: Inserting missing time period entry at start: {insert_list} ")
+                        amended = True
                 else:
-                    priorEndTime = sorted_data[key - 1]["endHourTime"]
-
-                if startTime != priorEndTime:
-                    if priorEndTime != "24:00":
-                        insert_list = {"startHourTime": str(priorEndTime), "endHourTime": str(startTime), "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
-                        repaired_entries.append(insert_list)
-                        amended = True
-
-            if key == (len(sorted_data) - 1):
-                if endTime != "24:00":
-                    logger.info(f"set_tou_schedule: Last entry does not end at 24:00 - found endHourTime = {endTime}")
-                    if SINGLE_ENTRY:
+                    if dict_count > 1:
                         priorEndTime = endTime
-                    if priorEndTime != "24:00":
-                        insert_list = {"startHourTime": str(priorEndTime), "endHourTime": "24:00", "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
-                        repaired_entries.append(insert_list)
-                        logger.info(f"set_tou_schedule: Inserting missing time period entry at end: {insert_list} ")
-                        amended = True
+                    else:
+                        priorEndTime = sorted_data[key - 1]["endHourTime"]
 
-        if amended:
-            logger.info(f"set_tou_schedule: Amended sorted_data with missing time periods: {repaired_entries}")
-            detailVoList = repaired_entries
+                    if startTime != priorEndTime:
+                        if priorEndTime != "24:00":
+                            insert_list = {"startHourTime": str(priorEndTime), "endHourTime": str(startTime), "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
+                            repaired_entries.append(insert_list)
+                            amended = True
 
-        elapsed_minutes = 0
-        for key, value in enumerate(detailVoList):
-            startTime = value["startHourTime"]
-            endTime = value["endHourTime"]
-            waveType = value["waveType"]
-            name = value["name"]
-            dispatchId = value["dispatchId"]
-            duration = 0
-            if endTime == "24:00":
-                endTime = "23:59"
-                add_one_minute = True
-            EndTime = datetime.strptime(endTime, "%H:%M")
-            StartTime = datetime.strptime(startTime, "%H:%M")
-            duration = EndTime - StartTime
-            elapsed_minutes = elapsed_minutes + int(duration.total_seconds() / 60)
+                if key == (len(sorted_data) - 1):
+                    if endTime != "24:00":
+                        logger.info(f"set_tou_schedule: Last entry does not end at 24:00 - found endHourTime = {endTime}")
+                        if SINGLE_ENTRY:
+                            priorEndTime = endTime
+                        if priorEndTime != "24:00":
+                            insert_list = {"startHourTime": str(priorEndTime), "endHourTime": "24:00", "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
+                            repaired_entries.append(insert_list)
+                            logger.info(f"set_tou_schedule: Inserting missing time period entry at end: {insert_list} ")
+                            amended = True
 
-        if add_one_minute:
-            elapsed_minutes = elapsed_minutes + 1
-        logger.info(f"DetailVoList Entry {key}: startHourTime={startTime}, endHourTime={endTime}, waveType={waveType}, name={name}, dispatchId={dispatchId}, duration={duration}, elapsed_minutes={elapsed_minutes}")
-        if elapsed_minutes != 1440:
-            msg = f"set_tou_schedule: Error: Total elapsed minutes not equal to 1440 minutes (24 hours)! elapsed_minutes = {elapsed_minutes}"
-            logger.info(msg)
-            raise ValidationError(msg)
+            if amended:
+                logger.info(f"set_tou_schedule: Amended sorted_data with missing time periods: {repaired_entries}")
+                detailVoList = repaired_entries
 
-        detailVoList = sorted(detailVoList.copy(), key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
-        logger.info(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
+            elapsed_minutes = 0
+            for key, value in enumerate(detailVoList):
+                startTime = value["startHourTime"]
+                endTime = value["endHourTime"]
+                waveType = value["waveType"]
+                name = value["name"]
+                dispatchId = value["dispatchId"]
+                duration = 0
+                if endTime == "24:00":
+                    endTime = "23:59"
+                    add_one_minute = True
+                EndTime = datetime.strptime(endTime, "%H:%M")
+                StartTime = datetime.strptime(startTime, "%H:%M")
+                duration = EndTime - StartTime
+                elapsed_minutes = elapsed_minutes + int(duration.total_seconds() / 60)
+
+            if add_one_minute:
+                elapsed_minutes = elapsed_minutes + 1
+            logger.info(f"DetailVoList Entry {key}: startHourTime={startTime}, endHourTime={endTime}, waveType={waveType}, name={name}, dispatchId={dispatchId}, duration={duration}, elapsed_minutes={elapsed_minutes}")
+            if elapsed_minutes != 1440:
+                msg = f"set_tou_schedule: Error: Total elapsed minutes not equal to 1440 minutes (24 hours)! elapsed_minutes = {elapsed_minutes}"
+                logger.info(msg)
+                raise ValidationError(msg)
+
+            detailVoList = sorted(detailVoList.copy(), key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
+            logger.info(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
+        else:
+            logger.info(f"set_tou_schedule: predefined mode '{touMode}' — no schedule blocks; preserving existing strategyList structure")
+
 
         # ── Read existing config from current schedule ──────────────────────
         # Preserves rates, seasons, day types, and schedule blocks when
