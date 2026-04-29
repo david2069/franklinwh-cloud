@@ -174,7 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub_tou.add_argument("--multi-season", dest="multi_season_file", metavar="FILE",
                          help="Load and apply a multi-season/multi-day-type schedule from JSON file")
     sub_tou.add_argument("--wait", dest="wait_confirm", action="store_true",
-                         help="After --set, poll until dispatch is confirmed applied (up to 90s)")
+                         help="Supervised dispatch: backup current schedule, apply --set, "
+                              "confirm delivery, hold until Ctrl+C, then restore original.")
+    sub_tou.add_argument("--restore", dest="tou_restore", action="store_true",
+                         help="Manually restore the most recent unrestored TOU backup for this gateway.")
 
     # raw
     sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
@@ -460,7 +463,8 @@ async def async_main():
                               extended=getattr(args, 'extended', False),
                               multi_season_file=getattr(args, 'multi_season_file', None),
                               show_current=getattr(args, 'show_current', False),
-                              active_only=getattr(args, 'active_only', False))
+                              active_only=getattr(args, 'active_only', False),
+                              tou_restore=getattr(args, 'tou_restore', False))
 
             case "raw":
                 from franklinwh_cloud.cli_commands import raw

@@ -50,6 +50,173 @@ class TouMixin:
         backup_tou_schedule() — Write TOU schedule to a backup file
     """
 
+    # ── Backup / Restore ─────────────────────────────────────────────────────
+
+    _BACKUP_DIR = None   # resolved lazily; can be patched in tests
+
+    @classmethod
+    def _get_backup_dir(cls):
+        """Return (and create) the backup directory path."""
+        import os
+        from pathlib import Path
+        d = cls._BACKUP_DIR or Path(os.path.expanduser("~/.franklinwh/backups"))
+        d = Path(d)
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    async def tou_backup_save(self, strategy_list, cli_args=""):
+        """Serialise and save a TOU strategyList backup to disk.
+
+        Writes a JSON file to ~/.franklinwh/backups/ with the full
+        strategyList and a SHA-256 checksum for post-restore verification.
+
+        Parameters
+        ----------
+        strategy_list : list
+            The strategyList to back up (from get_tou_dispatch_detail result).
+        cli_args : str, optional
+            Human-readable description of the command being run (logged in
+            the backup metadata for forensic purposes).
+
+        Returns
+        -------
+        pathlib.Path
+            Path to the written backup file.
+        """
+        import hashlib, json as _json
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        payload_str = _json.dumps(strategy_list, sort_keys=True)
+        checksum = hashlib.sha256(payload_str.encode()).hexdigest()
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        filename = f"{self.gateway}_{ts}_{checksum[:8]}.json"
+        backup_path = self._get_backup_dir() / filename
+
+        meta = {
+            "gateway":       self.gateway,
+            "timestamp":     datetime.now(timezone.utc).isoformat(),
+            "checksum":      checksum,
+            "seasons":       len(strategy_list),
+            "cli_args":      cli_args,
+            "pid":           __import__("os").getpid(),
+        }
+        data = {"meta": meta, "strategyList": strategy_list}
+        backup_path.write_text(_json.dumps(data, indent=2))
+        logger.info(f"tou_backup_save: wrote {backup_path} (seasons={meta['seasons']}, checksum={checksum[:8]})")
+        return backup_path
+
+    async def tou_backup_restore(self, backup_path):
+        """Restore a TOU strategyList from a backup file.
+
+        Reads the backup, calls set_tou_schedule_multi with the original
+        strategyList, and verifies the checksum of what was submitted.
+
+        Parameters
+        ----------
+        backup_path : str or pathlib.Path
+            Path to the backup JSON file.
+
+        Returns
+        -------
+        dict
+            The restored strategyList.
+
+        Raises
+        ------
+        FileNotFoundError
+            If backup_path does not exist.
+        ValueError
+            If checksum verification fails.
+        """
+        import hashlib, json as _json
+        from pathlib import Path
+
+        backup_path = Path(backup_path)
+        if not backup_path.exists():
+            raise FileNotFoundError(f"tou_backup_restore: backup not found: {backup_path}")
+
+        data = _json.loads(backup_path.read_text())
+        strategy_list = data["strategyList"]
+        stored_checksum = data["meta"]["checksum"]
+
+        # Verify checksum of what we're about to restore
+        actual_checksum = hashlib.sha256(
+            _json.dumps(strategy_list, sort_keys=True).encode()
+        ).hexdigest()
+        if actual_checksum != stored_checksum:
+            raise ValueError(
+                f"tou_backup_restore: checksum mismatch — "
+                f"stored={stored_checksum[:8]} actual={actual_checksum[:8]}. "
+                f"Backup may be corrupted."
+            )
+
+        logger.info(f"tou_backup_restore: restoring from {backup_path} (checksum OK)")
+        await self.set_tou_schedule_multi(strategy_list)
+        logger.info(f"tou_backup_restore: restore complete")
+        return strategy_list
+
+    async def tou_backup_list(self, gateway=None):
+        """List available TOU backups on disk.
+
+        Parameters
+        ----------
+        gateway : str, optional
+            Filter to a specific gateway ID. Defaults to self.gateway.
+
+        Returns
+        -------
+        list[dict]
+            Sorted list of backup metadata dicts (newest first), each with:
+            path, gateway, timestamp, checksum, seasons, age_days, cli_args
+        """
+        import json as _json
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        gw = gateway or getattr(self, "gateway", None)
+        backup_dir = self._get_backup_dir()
+        results = []
+
+        for f in sorted(backup_dir.glob("*.json"), reverse=True):
+            try:
+                data = _json.loads(f.read_text())
+                meta = data.get("meta", {})
+                ts = datetime.fromisoformat(meta.get("timestamp", "1970-01-01T00:00:00+00:00"))
+                age_days = (datetime.now(timezone.utc) - ts).days
+                entry = {
+                    "path":      f,
+                    "gateway":   meta.get("gateway", ""),
+                    "timestamp": meta.get("timestamp", ""),
+                    "checksum":  meta.get("checksum", ""),
+                    "seasons":   meta.get("seasons", 0),
+                    "cli_args":  meta.get("cli_args", ""),
+                    "pid":       meta.get("pid"),
+                    "age_days":  age_days,
+                }
+                if gw is None or entry["gateway"] == gw:
+                    results.append(entry)
+            except Exception as e:
+                logger.warning(f"tou_backup_list: could not parse {f}: {e}")
+
+        return results
+
+    async def tou_backup_delete(self, backup_path):
+        """Delete a TOU backup file.
+
+        Parameters
+        ----------
+        backup_path : str or pathlib.Path
+            Path to the backup file to delete.
+        """
+        from pathlib import Path
+        p = Path(backup_path)
+        if p.exists():
+            p.unlink()
+            logger.info(f"tou_backup_delete: deleted {p}")
+        else:
+            logger.warning(f"tou_backup_delete: file not found (already deleted?): {p}")
+
     async def get_gateway_tou_list(self):
         """Get TOU Schedule to extract current operating mode and details.
 

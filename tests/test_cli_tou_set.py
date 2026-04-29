@@ -360,36 +360,37 @@ class TestCliSet06CustomFile:
 # ── T-CLI-07 ─────────────────────────────────────────────────────────────────
 
 class TestCliSet07Wait:
-    """T-CLI-07: --wait flag polls get_gateway_tou_list until confirmed."""
+    """T-CLI-07: --wait triggers supervised dispatch (backup → confirm → hold → restore)."""
 
     @pytest.mark.asyncio
-    async def test_wait_polls_until_confirmed(self, capsys):
-        """With --wait, get_gateway_tou_list polled and 'confirmed' printed."""
+    async def test_wait_enters_supervised_dispatch(self, capsys):
+        """With --wait, _supervised_dispatch is called after successful submit."""
         client = _make_client_single_season()
-        # Simulate: first poll pending, second poll confirmed
-        client.get_gateway_tou_list.side_effect = [
-            {"result": {"touSendStatus": 1, "workMode": 1}},
-            {"result": {"touSendStatus": 0, "workMode": 1}},
-        ]
+        # Add backup methods to the mock client
+        client.tou_backup_save = AsyncMock(return_value=None)
+        client.tou_backup_restore = AsyncMock(return_value=[])
+        client.tou_backup_delete = AsyncMock()
 
-        await tou_cmd._handle_set(
-            client=client,
-            set_mode="GRID_CHARGE",
-            start="01:00",
-            end="02:00",
-            default_mode=None,
-            schedule_file=None,
-            rates_file=None,
-            season_name=None,
-            season_months=None,
-            tou_month=None,
-            day_type_str=None,
-            wait_confirm=True,
-            json_output=False,
-        )
+        # Patch _supervised_dispatch so the hold loop does not block
+        with patch("franklinwh_cloud.cli_commands.tou._supervised_dispatch",
+                   new=AsyncMock()) as mock_supervised:
+            await tou_cmd._handle_set(
+                client=client,
+                set_mode="GRID_CHARGE",
+                start="01:00",
+                end="02:00",
+                default_mode=None,
+                schedule_file=None,
+                rates_file=None,
+                season_name=None,
+                season_months=None,
+                tou_month=None,
+                day_type_str=None,
+                wait_confirm=True,
+                json_output=False,
+            )
 
         client.set_tou_schedule.assert_called_once()
-        assert client.get_gateway_tou_list.call_count >= 1
+        mock_supervised.assert_called_once()
         captured = capsys.readouterr()
-        # Success and wait confirmation should both appear
         assert "1234" in captured.out or "submitted" in captured.out.lower()
