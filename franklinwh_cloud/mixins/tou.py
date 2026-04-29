@@ -435,6 +435,7 @@ class TouMixin:
         *,
         rates: dict = None,
         seasons: list = None,
+        month: int = None,
         day_type: int = 3,
         day_schedules: dict = None,
     ):
@@ -499,9 +500,19 @@ class TouMixin:
             If None, existing rates from the current schedule are preserved.
 
         seasons : list, optional (keyword-only)
-            List of season dicts, each with:
+            Explicit full season override. Each entry:
                 {"name": "Summer", "months": "10,11,12,1,2,3"}
-            If None, defaults to single season covering all 12 months.
+            When provided, the full strategyList is replaced with exactly
+            these seasons. No existing-config read is performed.
+            Use this for full schedule creation/restore only.
+
+        month : int, optional (keyword-only)
+            Target month (1-12) for the schedule update.
+            When ``seasons`` is not provided, the library reads the existing
+            strategyList, resolves which season owns this month, and updates
+            ONLY that season's blocks — all other seasons are left untouched.
+            Defaults to ``datetime.now().month`` (today's month).
+            Ignored when ``seasons`` is provided.
 
         day_type : int, optional (keyword-only)
             Day type for the schedule (default: 3 = everyDay):
@@ -954,10 +965,16 @@ class TouMixin:
                 )
 
         # ── Build strategyList (seasons) ───────────────────────────
-        # Priority: explicit seasons > existing > default single season
+        # Priority:
+        #   1. explicit seasons= arg     → full caller-controlled replacement
+        #   2. no seasons= arg           → transparent season resolution:
+        #        read existing config, find the season that owns today's month
+        #        (or the month= arg), replace ONLY that season's blocks,
+        #        leave all other seasons untouched.
+        #   3. no existing config at all → fresh single all-months season
         false = 'false'
         if seasons:
-            # Explicit seasons override
+            # ── Path 1: Explicit caller override ─────────────────────────────
             strategyList = []
             for s in seasons:
                 strategyList.append({
@@ -968,18 +985,54 @@ class TouMixin:
                     "dayTypeVoList": built_day_types,
                 })
         elif existing_seasons:
-            # Preserve existing season structure, replacing day types
+            # ── Path 2: Transparent season resolution ─────────────────────────
+            # Find the season that owns today's month (or the requested month).
+            # Update ONLY that season's blocks — all other seasons are untouched.
+            from datetime import datetime as _dt
+            target_month = str(month if month is not None else _dt.now().month)
+
+            target_idx = None
+            for i, s in enumerate(existing_seasons):
+                owned = [m.strip() for m in s.get("month", "").split(",") if m.strip()]
+                if target_month in owned:
+                    target_idx = i
+                    break
+
+            if target_idx is None:
+                # Month not found in any season — fall back to first season.
+                target_idx = 0
+                logger.warning(
+                    f"set_tou_schedule: month {target_month} not found in any "
+                    f"existing season — updating season[0] as fallback"
+                )
+            else:
+                logger.info(
+                    f"set_tou_schedule: month {target_month} → season[{target_idx}] "
+                    f"'{existing_seasons[target_idx].get('seasonName', '?')}'"
+                )
+
             strategyList = []
-            for existing_s in existing_seasons:
-                strategyList.append({
-                    "id": null,
-                    "seasonName": existing_s.get("seasonName", "Season 1"),
-                    "month": existing_s.get("month", "1,2,3,4,5,6,7,8,9,10,11,12"),
-                    "templateId": null,
-                    "dayTypeVoList": built_day_types,
-                })
+            for i, existing_s in enumerate(existing_seasons):
+                if i == target_idx:
+                    # Replace this season's blocks with the new schedule.
+                    strategyList.append({
+                        "id": null,
+                        "seasonName": existing_s.get("seasonName", "Season 1"),
+                        "month": existing_s.get("month", "1,2,3,4,5,6,7,8,9,10,11,12"),
+                        "templateId": null,
+                        "dayTypeVoList": built_day_types,
+                    })
+                else:
+                    # Preserve all other seasons exactly as they are.
+                    strategyList.append({
+                        "id": null,
+                        "seasonName": existing_s.get("seasonName", f"Season {i+1}"),
+                        "month": existing_s.get("month", ""),
+                        "templateId": null,
+                        "dayTypeVoList": existing_s.get("dayTypeVoList", built_day_types),
+                    })
         else:
-            # Default: single season covering all months
+            # ── Path 3: No existing config — fresh single all-months season ───
             strategyList = [{
                 "id": null,
                 "seasonName": "Season 1",
@@ -1318,6 +1371,14 @@ class TouMixin:
         cover_content: bool = False,
     ) -> dict:
         """Set a full multi-season, multi-day-type TOU schedule.
+
+        .. deprecated::
+            For targeted single-season dispatch updates, prefer
+            ``set_tou_schedule(touMode, touSchedule=[...], month=N)`` which
+            transparently resolves the correct season by date and preserves
+            all other seasons. ``set_tou_schedule_multi`` remains the correct
+            path for full schedule creation, template restore, or when you need
+            independent per-season weekday/weekend splits with distinct rates.
 
         Unlike set_tou_schedule(), which applies a single detailVoList to all
         seasons and day types, this method accepts a fully-specified strategyList
