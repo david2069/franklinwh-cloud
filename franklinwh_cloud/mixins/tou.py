@@ -889,7 +889,30 @@ class TouMixin:
             detailVoList = sorted(detailVoList.copy(), key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
             logger.info(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
         else:
-            logger.info(f"set_tou_schedule: predefined mode '{touMode}' — no schedule blocks; preserving existing strategyList structure")
+            # Predefined mode (SELF, HOME, STANDBY, SOLAR, GRID_CHARGE, GRID_EXPORT)
+            # called without a touSchedule. Synthesise a full 24-hour single block
+            # so the strategyList is valid. Each mode maps to a distinct dispatchId,
+            # so SELF → 6 (self-consumption) and GRID_CHARGE → 8 (charge from grid)
+            # produce different and correct schedules.
+            mode_key = str(touMode).upper()
+            dispatch_id = DISPATCH_CODES.get(mode_key)
+            if dispatch_id is None:
+                raise InvalidTOUScheduleOption(
+                    f"Unknown predefined mode '{touMode}'. "
+                    f"Valid: SELF, HOME, STANDBY, SOLAR, GRID_CHARGE, GRID_EXPORT, CUSTOM"
+                )
+            mode_name = WAVE_TYPES.get(dispatch_id, mode_key)
+            detailVoList = [{
+                "startHourTime": "00:00",
+                "endHourTime":   "24:00",
+                "waveType":      WaveType.OFF_PEAK.value,
+                "name":          mode_name,
+                "dispatchId":    dispatch_id,
+            }]
+            logger.info(
+                f"set_tou_schedule: predefined mode '{touMode}' → "
+                f"synthesised full-day block dispatchId={dispatch_id} ({mode_name})"
+            )
 
 
         # ── Read existing config from current schedule ──────────────────────
