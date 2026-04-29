@@ -804,41 +804,190 @@ await client.update_soc(requestedSOC=20, workMode=SELF_CONSUMPTION)
 
 ### TOU Scheduling
 
+> [!CAUTION]
+> **Every `set_tou_schedule` / `set_tou_schedule_multi` call is DESTRUCTIVE.**
+> `saveTouDispatch` validates, saves, AND switches the gateway to TOU mode in one
+> atomic call. There is no "save without activating" path.
+> Always back up the current schedule with `get_tou_dispatch_detail()` before
+> dispatching so you can restore it on completion.
+
 ```python
 from franklinwh_cloud.const import (
-    dispatchCodeType,  # SELF=6, GRID_CHARGE=8, GRID_EXPORT=7, ...
+    dispatchCodeType,  # SELF=6, GRID_CHARGE=8, GRID_EXPORT=7, STANDBY=2 ...
     WaveType,          # OFF_PEAK=0, MID_PEAK=1, ON_PEAK=2, SUPER_OFF_PEAK=4
 )
 
-# View current schedule
+# ── View current schedule ──────────────────────────────────────────────────
 schedule = await client.get_tou_dispatch_detail()
+# Returns raw API envelope: {"code": 200, "result": {"template": {...}, "strategyList": [...]}}
+strategy_list = schedule.get("result", {}).get("strategyList", [])
 
-# Set full-day self-consumption
+# ── Set full-day self-consumption ──────────────────────────────────────────
 await client.set_tou_schedule(touMode="SELF")
+```
 
-# Set grid charge window 11:30–15:00, rest = self-consumption
+#### Example 1 — Single Season: Grid Charge for 1 Hour
+
+Use this pattern when you want to force a charge window across ALL days,
+all months. The library fills the rest of the 24-hour day with
+`default_mode` automatically.
+
+**Do NOT omit `seasons=`** — without it the library reads your existing
+cloud TOU (which may have a complex multi-season structure), merges the
+dispatch block into every season, and saves them ALL back. Pass an
+explicit single-season to isolate the dispatch.
+
+```python
+# ── Backup first — always ─────────────────────────────────────────────────
+backup = await client.get_tou_dispatch_detail()
+original_strategy = backup.get("result", {}).get("strategyList", [])
+
+# ── Set 1-hour grid charge window, single season, every day ───────────────
 await client.set_tou_schedule(
     touMode="CUSTOM",
     touSchedule=[{
-        "startTime": "11:30", "endTime": "15:00",
-        "dispatchId": dispatchCodeType.GRID_CHARGE.value,   # 8 = aPower charges from solar+grid
-        "waveType": WaveType.OFF_PEAK.value,             # 0 = Off-peak pricing tier
+        "name": "Grid Charge",
+        "startHourTime": "01:00",
+        "endHourTime":   "02:00",
+        "dispatchId": dispatchCodeType.GRID_CHARGE.value,   # 8 — charge from solar/grid
+        "waveType":   WaveType.OFF_PEAK.value,              # 0 — off-peak rate tier
+        "gridChargeMax": 5000,                              # Watts — cap at 5 kW
     }],
-    default_mode="SELF",       # Outside window = self-consumption
+    seasons=[{
+        "name":   "Dispatch",           # Friendly label — does NOT appear in user's TOU
+        "months": "1,2,3,4,5,6,7,8,9,10,11,12",  # All months
+    }],
+    default_mode="SELF",   # Rest of day = self-consumption (dispatchId=6)
+    day_type=3,            # 3 = everyDay (weekday + weekend)
 )
 
-# View current pricing tier, active block, and rates
-price = await client.get_current_tou_price()
-print(f"Current Tier: {price.get('wave_type_name')} — {price.get('minutes_remaining')} mins left")
+# ── Restore original multi-season TOU when done ───────────────────────────
+if original_strategy:
+    await client.set_tou_schedule_multi(original_strategy)
+```
 
-# Set a complex multi-season / weekday-weekend schedule
-import json
-with open("seasons.json", "r") as f:
-    strategy_list = json.load(f).get("strategyList")
+**Dispatch codes confirmed from mobile app HAR captures:**
+
+| `dispatchId` | Code | Meaning | Use when |
+|---|---|---|---|
+| `1` | `F` | aPower to home | Battery powers home; solar exports |
+| `2` | `B` | aPower on standby | Battery idles; solar/grid handles home |
+| `3` | `E` | aPower charges from solar | Solar charges battery; grid covers home |
+| `6` | `D` | Self-consumption | Normal: solar → battery → grid priority |
+| `7` | `H` | aPower to home/grid | Battery discharges to home + exports excess |
+| `8` | `G` | aPower charges from solar/grid | Force charge from both solar and grid |
+
+> [!WARNING]
+> **FranklinWH has changed `dispatchId` numbering in past API updates.**
+> Always verify against a live `franklinwh-cli tou --dispatch` output
+> before hardcoding IDs. The `Code` letter (B/D/E/F/G/H) is a secondary
+> cross-reference from `getCustomEnergyDispatchList`.
+
+#### Example 2 — Multi-Season: Weekday/Weekend Split
+
+Use `set_tou_schedule_multi()` when you need to write a full multi-season
+TOU schedule with different weekday and weekend profiles per season.
+
+> [!NOTE]
+> This is also the correct restore path after a dispatch. Save the full
+> `strategyList` before dispatching and call `set_tou_schedule_multi`
+> to restore it exactly — preserving season names, month ranges, and
+> day-type structures.
+
+```python
+# ── Build a two-season weekday/weekend schedule ───────────────────────────
+summer_weekday_blocks = [
+    {"name": "Off-peak",  "startHourTime": "00:00", "endHourTime": "07:00",
+     "dispatchId": 6,  "waveType": 0},   # Self-consumption overnight
+    {"name": "Charge",    "startHourTime": "07:00", "endHourTime": "10:00",
+     "dispatchId": 8,  "waveType": 0},   # Charge from cheap morning solar
+    {"name": "On-peak",   "startHourTime": "17:00", "endHourTime": "21:00",
+     "dispatchId": 7,  "waveType": 2},   # Discharge to grid during peak
+    {"name": "Off-peak",  "startHourTime": "21:00", "endHourTime": "24:00",
+     "dispatchId": 6,  "waveType": 0},   # Self-consumption late night
+]
+
+summer_weekend_blocks = [
+    {"name": "Off-peak",  "startHourTime": "00:00", "endHourTime": "10:00",
+     "dispatchId": 6,  "waveType": 0},   # Sleep in — self-consumption
+    {"name": "Solar",     "startHourTime": "10:00", "endHourTime": "17:00",
+     "dispatchId": 3,  "waveType": 0},   # Charge from daytime solar
+    {"name": "On-peak",   "startHourTime": "17:00", "endHourTime": "21:00",
+     "dispatchId": 7,  "waveType": 2},   # Discharge to grid during peak
+    {"name": "Off-peak",  "startHourTime": "21:00", "endHourTime": "24:00",
+     "dispatchId": 6,  "waveType": 0},
+]
+
+winter_blocks = [
+    {"name": "Off-peak",  "startHourTime": "00:00", "endHourTime": "06:00",
+     "dispatchId": 8,  "waveType": 0},   # Cheap overnight grid charge
+    {"name": "Self",      "startHourTime": "06:00", "endHourTime": "16:00",
+     "dispatchId": 6,  "waveType": 0},   # Self-consumption during day
+    {"name": "Peak",      "startHourTime": "16:00", "endHourTime": "21:00",
+     "dispatchId": 7,  "waveType": 2},   # Peak export
+    {"name": "Off-peak",  "startHourTime": "21:00", "endHourTime": "24:00",
+     "dispatchId": 6,  "waveType": 0},
+]
+
+strategy_list = [
+    {
+        "id": None,
+        "seasonName": "Summer",
+        "month": "10,11,12,1,2,3",    # Oct–Mar
+        "templateId": None,
+        "dayTypeVoList": [
+            {
+                "dayName": "weekDay", "dayType": 1,   # 1 = Mon–Fri
+                "detailVoList": summer_weekday_blocks,
+                "eleticRateValley": 0.08, "eleticSellValley": 0.05,
+                "eleticRatePeak": None, "eleticRateSharp": None,
+                "eleticRateShoulder": None, "eleticRateSuperOffPeak": None,
+                "eleticSellPeak": None, "eleticSellSharp": None,
+                "eleticSellShoulder": None, "eleticSellSuperOffPeak": None,
+                "eleticRateGridFee": None,
+            },
+            {
+                "dayName": "weekendDay", "dayType": 2,  # 2 = Sat–Sun
+                "detailVoList": summer_weekend_blocks,
+                "eleticRateValley": 0.08, "eleticSellValley": 0.05,
+                "eleticRatePeak": None, "eleticRateSharp": None,
+                "eleticRateShoulder": None, "eleticRateSuperOffPeak": None,
+                "eleticSellPeak": None, "eleticSellSharp": None,
+                "eleticSellShoulder": None, "eleticSellSuperOffPeak": None,
+                "eleticRateGridFee": None,
+            },
+        ],
+    },
+    {
+        "id": None,
+        "seasonName": "Winter",
+        "month": "4,5,6,7,8,9",        # Apr–Sep
+        "templateId": None,
+        "dayTypeVoList": [
+            {
+                "dayName": "everyDay", "dayType": 3,  # 3 = all days
+                "detailVoList": winter_blocks,
+                "eleticRateValley": 0.06, "eleticSellValley": 0.03,
+                "eleticRatePeak": None, "eleticRateSharp": None,
+                "eleticRateShoulder": None, "eleticRateSuperOffPeak": None,
+                "eleticSellPeak": None, "eleticSellSharp": None,
+                "eleticSellShoulder": None, "eleticSellSuperOffPeak": None,
+                "eleticRateGridFee": None,
+            },
+        ],
+    },
+]
+
 await client.set_tou_schedule_multi(strategy_list)
 ```
 
-> **Dispatch codes** — see [reference table](#dispatch-code-reference) below.
+> [!TIP]
+> **Reading back what you wrote**: immediately after `set_tou_schedule_multi`,
+> call `franklinwh-cli tou` or `get_tou_dispatch_detail()` to verify the
+> gateway received the schedule. The gateway cloud sync takes ~30–60 seconds.
+
+> **Dispatch code reference** — see [Dispatch Code Reference](#dispatch-code-reference) below.
+
 
 ### Power Control (PCS)
 
