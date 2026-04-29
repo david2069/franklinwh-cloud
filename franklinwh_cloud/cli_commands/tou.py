@@ -38,8 +38,17 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
               show_next: bool = False, show_price: bool = False,
               active_only: bool = False, multi_season_file: str | None = None,
               show_current: bool = False,
-              show_all_rates: bool = False, extended: bool = False):
+              show_all_rates: bool = False, extended: bool = False,
+              tou_restore: bool = False):
     """Execute the TOU command."""
+
+    # ── tou --restore ─────────────────────────────────────────────
+    if tou_restore:
+        await _handle_restore(client, json_output)
+        return
+
+    # ── Stale backup check (always, every tou invocation) ─────────
+    await _check_stale_backups(client)
 
     # ── tou --price ───────────────────────────────────────────────
     if show_price:
@@ -554,6 +563,23 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
     if extra_kwargs is None:
         return  # error loading rates file
 
+    # Capture existing strategyList before dispatch (for --wait backup/restore)
+    existing_strategy = None
+    cli_args = " ".join(filter(None, [
+        "tou", "--set", set_mode,
+        f"--start {start}" if start else None,
+        f"--end {end}" if end else None,
+        f"--default {default_mode}" if default_mode else None,
+        f"--month {tou_month}" if tou_month else None,
+        "--wait" if wait_confirm else None,
+    ]))
+    if wait_confirm:
+        try:
+            existing = await client.get_tou_dispatch_detail()
+            existing_strategy = existing.get("result", {}).get("strategyList", [])
+        except Exception:
+            pass  # non-fatal — restore will warn if None
+
     # ── CUSTOM --file ────────────────────────────────────────────
     if mode == "CUSTOM" and schedule_file:
         try:
@@ -581,7 +607,8 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 month=tou_month,
                 **extra_kwargs,
             )
-            if await _print_set_result(result, json_output, client, wait_confirm):
+            if await _print_set_result(result, json_output, client, wait_confirm,
+                                       existing_strategy, cli_args):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -645,7 +672,8 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 month=tou_month,
                 **extra_kwargs,
             )
-            if await _print_set_result(result, json_output, client, wait_confirm):
+            if await _print_set_result(result, json_output, client, wait_confirm,
+                                       existing_strategy, cli_args):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -666,7 +694,8 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
 
         try:
             result = await client.set_tou_schedule(touMode=mode, month=tou_month, **extra_kwargs)
-            if await _print_set_result(result, json_output, client, wait_confirm):
+            if await _print_set_result(result, json_output, client, wait_confirm,
+                                       existing_strategy, cli_args):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -677,9 +706,17 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
     print(f"  Usage: franklinwh-cli tou --set {set_mode} --start HH:MM --end HH:MM")
 
 
+
 async def _print_set_result(result: dict, json_output: bool, client=None,
-                            wait_confirm: bool = False):
-    """Print the result of a set_tou_schedule call."""
+                            wait_confirm: bool = False,
+                            existing_strategy: list | None = None,
+                            cli_args: str = ""):
+    """Print the result of a set_tou_schedule call.
+
+    When wait_confirm=True and client is provided, runs the full supervised
+    dispatch: confirm delivery, hold until Ctrl+C/SIGTERM, then restore
+    the original strategyList from backup.
+    """
     if json_output:
         output = dict(result)
         if wait_confirm and client and result.get("code") == 200:
@@ -693,13 +730,17 @@ async def _print_set_result(result: dict, json_output: bool, client=None,
         print_success(f"Schedule submitted — touId={tou_id}")
 
         if wait_confirm and client:
-            await _wait_for_dispatch(client, verbose=True)
+            # ── Supervised dispatch ──────────────────────────────────────
+            # 1. Backup was already saved before dispatch (backup_path passed in)
+            # 2. Confirm delivery
+            # 3. Hold until Ctrl+C / SIGTERM
+            # 4. Restore original schedule
+            await _supervised_dispatch(client, existing_strategy, cli_args)
         else:
             print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
 
         print()
-        # Show the resulting schedule
-        if client:
+        if client and not wait_confirm:
             await _handle_next(client, json_output=False)
         return True
     else:
@@ -707,6 +748,105 @@ async def _print_set_result(result: dict, json_output: bool, client=None,
         msg = result.get("msg", result.get("message", "Unknown error"))
         print_error(f"API returned code={code}: {msg}")
         return False
+
+
+async def _supervised_dispatch(client, existing_strategy, cli_args=""):
+    """Backup → confirm → hold → restore supervised dispatch transaction.
+
+    Called after a successful set_tou_schedule submit when --wait is used.
+    Saves a backup of the prior strategyList, waits for dispatch confirmation,
+    then holds until interrupted, at which point the original schedule is
+    restored from the backup file.
+
+    Parameters
+    ----------
+    client : Client
+        Authenticated FranklinWH API client.
+    existing_strategy : list or None
+        The strategyList read before the dispatch was submitted. If None,
+        a warning is shown and restore is skipped.
+    cli_args : str
+        The original CLI invocation string for backup metadata.
+    """
+    import asyncio, signal, sys
+
+    backup_path = None
+
+    # ── Save backup ──────────────────────────────────────────────
+    if existing_strategy:
+        try:
+            backup_path = await client.tou_backup_save(existing_strategy, cli_args)
+            seasons = len(existing_strategy)
+            print(f"  {c('dim', f'Backup saved: {backup_path.name} ({seasons} season(s))')}")
+        except Exception as e:
+            print_warning(f"Could not save backup: {e} — restore will be skipped")
+    else:
+        print_warning("No prior schedule captured — restore will be skipped on exit")
+
+    # ── Confirm delivery ──────────────────────────────────────────
+    await _wait_for_dispatch(client, verbose=True)
+
+    # ── Show current schedule after dispatch ──────────────────────
+    print()
+    await _handle_next(client, json_output=False)
+    print()
+
+    # ── Hold + restore on exit ────────────────────────────────────
+    restored = [False]   # mutable flag shared with handler
+
+    async def _restore_and_exit():
+        if restored[0]:
+            return
+        restored[0] = True
+        print()
+        if backup_path and existing_strategy:
+            print(f"  Restoring original schedule...")
+            try:
+                await client.tou_backup_restore(backup_path)
+                seasons = len(existing_strategy)
+                print_success(f"Schedule restored ({seasons} season(s), checksum verified)")
+                await client.tou_backup_delete(backup_path)
+                print(f"  {c('dim', f'Backup deleted: {backup_path.name}')}")
+                print()
+                await _handle_next(client, json_output=False)
+            except Exception as e:
+                print_error(f"Restore failed: {e}")
+                print_warning(f"Manual recovery: franklinwh-cli tou --restore")
+        else:
+            print_warning("No backup to restore — original schedule unchanged")
+
+    def _signal_handler(signum, frame):
+        """Sync trampoline for signal → async restore."""
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_restore_and_exit())
+        else:
+            asyncio.run(_restore_and_exit())
+
+    # Register SIGINT (Ctrl+C) and SIGTERM
+    original_sigint  = signal.getsignal(signal.SIGINT)
+    original_sigterm = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGINT,  _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
+    print(f"  {c('bold', '✓ Dispatch active')} — press {c('bold', 'Ctrl+C')} to restore original and exit")
+
+    HEARTBEAT_INTERVAL = 30  # seconds
+    elapsed = 0
+    try:
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+            elapsed += HEARTBEAT_INTERVAL
+            mins, secs = divmod(elapsed, 60)
+            hrs,  mins = divmod(mins, 60)
+            duration_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+            print(f"  {c('dim', f'Dispatch active — {duration_str} elapsed — Ctrl+C to restore')}")
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        pass
+    finally:
+        signal.signal(signal.SIGINT,  original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
+        await _restore_and_exit()
 
 
 async def _wait_for_dispatch(client, *, verbose: bool = False,
@@ -777,6 +917,86 @@ def _print_set_error(error: Exception, json_output: bool):
         print_json_output({"error": str(error), "type": type(error).__name__})
     else:
         print_error(f"{type(error).__name__}: {error}")
+
+
+async def _check_stale_backups(client):
+    """Check for stale TOU backups on disk and warn/auto-expire.
+
+    Called at the start of every tou command invocation. Backups older than
+    7 days are auto-deleted (with a log WARNING). Younger stale backups prompt
+    the user to run tou --restore.
+    """
+    import logging
+    logger = logging.getLogger("franklinwh_cloud")
+    TTL_DAYS = 7
+    try:
+        backups = await client.tou_backup_list()
+        for b in backups:
+            if b["age_days"] > TTL_DAYS:
+                logger.warning(f"tou backup expired (>{TTL_DAYS}d), auto-deleting: {b['path']}")
+                await client.tou_backup_delete(b["path"])
+            else:
+                logger.warning(f"stale tou backup found: {b['path']}")
+                print_warning(
+                    f"Unrestored TOU backup from {b['timestamp'][:16]} "
+                    f"(pid={b['pid']}) — run: franklinwh-cli tou --restore"
+                )
+    except Exception:
+        pass  # never block normal operation
+
+
+async def _handle_restore(client, json_output: bool):
+    """Handle tou --restore: list stale backups and let user pick one.
+
+    If only one backup exists for this gateway, auto-selects it.
+    Verifies checksum, restores the schedule, and deletes the backup file.
+    """
+    backups = await client.tou_backup_list()
+    if not backups:
+        if json_output:
+            print_json_output({"status": "no_backups", "message": "No pending TOU backups."})
+        else:
+            print(f"  {c('dim', 'No pending TOU backups for this gateway.')}")
+        return
+
+    if json_output:
+        print_json_output({"backups": [
+            {"path": str(b["path"]), "timestamp": b["timestamp"],
+             "seasons": b["seasons"], "age_days": b["age_days"]}
+            for b in backups
+        ]})
+        return
+
+    # Display backup list
+    print()
+    print(f"  {'#':<4} {'Timestamp':<22} {'Seasons':<8} {'Age':<8} {'CLI Args'}")
+    print(f"  {'─'*4} {'─'*22} {'─'*8} {'─'*8} {'─'*40}")
+    for i, b in enumerate(backups):
+        age = f"{b['age_days']}d" if b['age_days'] else "<1d"
+        print(f"  {i:<4} {b['timestamp'][:19]:<22} {b['seasons']:<8} {age:<8} {b['cli_args'][:40]}")
+    print()
+
+    if len(backups) == 1:
+        chosen = backups[0]
+        print(f"  Auto-selecting the only backup: {chosen['path'].name}")
+    else:
+        try:
+            idx = int(input("  Select backup # to restore (Ctrl+C to cancel): "))
+            chosen = backups[idx]
+        except (ValueError, IndexError, KeyboardInterrupt):
+            print_warning("Restore cancelled.")
+            return
+
+    print(f"  Restoring from {chosen['path'].name}...")
+    try:
+        await client.tou_backup_restore(chosen["path"])
+        print_success(f"Schedule restored ({chosen['seasons']} season(s), checksum verified)")
+        await client.tou_backup_delete(chosen["path"])
+        print(f"  {c('dim', 'Backup deleted.')}")
+        print()
+        await _handle_next(client, json_output=False)
+    except Exception as e:
+        print_error(f"Restore failed: {e}")
 
 
 # ── tou --next handler ──────────────────────────────────────────────
