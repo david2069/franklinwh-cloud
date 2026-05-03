@@ -260,7 +260,7 @@ def _render_flags(snap):
 
     for name, enabled, detail in flags:
         icon = c("green", "✅") if enabled else c("dim", "❌")
-        print_kv(f"  {icon} {name}", detail)
+        print(f"     {icon} {c('cyan', name)}: {detail}")
 
 
 def _render_state(snap):
@@ -557,7 +557,7 @@ def _render_whats_missing(snap):
     print_section("🏥", "System Readiness")
     for name, ok, detail in readiness:
         icon = c("green", "✅") if ok else c("yellow", "⚠")
-        print_kv(f"  {icon} {name}", detail)
+        print(f"     {icon} {c('cyan', name)}: {detail}")
 
     # ── Informational notes ───────────────────────────────────────
     notes = []
@@ -579,5 +579,5 @@ def _render_whats_missing(snap):
     if notes:
         print_section("📌", "Notes")
         for icon, msg in notes:
-            print_kv(icon, msg)
+            print(f"     {icon}  {msg}")
 
