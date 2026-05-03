@@ -436,6 +436,26 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list (Tier 1 modes) failed: {e}")
 
+        # 11. aGate detailed info (MAC-1 and full firmware versions)
+        try:
+            agate_info = await self.get_agate_info()
+            result = agate_info.get("result", {}) if isinstance(agate_info, dict) else {}
+            if result:
+                snap.agate.ibg_version = result.get("ibgVersion", "")
+                snap.agate.sl_version = result.get("slVersion", "")
+                snap.agate.aws_version = result.get("awsVersion", "")
+                snap.agate.app_version = result.get("appVersion", "")
+                snap.agate.meter_version = result.get("meterVersion", "")
+                snap.agate.msa_model = result.get("msaModel")
+                snap.agate.msa_serial = result.get("msaSn")
+                snap.agate.ad_module_hd_ver = result.get("adModuleHdVer")
+                snap.agate.ad_module_app_ver = result.get("adModuleAppVer")
+                if snap.agate.msa_model or snap.agate.msa_serial:
+                    snap.flags.mac1_detected = True
+                    snap.accessories.has_mac1 = True
+        except Exception as e:
+            logger.warning(f"discover: get_agate_info failed: {e}")
+
     # ── Tier 2 ────────────────────────────────────────────────────
 
     async def _discover_tier2(self, snap, catalog):
@@ -680,26 +700,6 @@ class DiscoverMixin:
 
     async def _discover_tier3(self, snap, catalog):
         """Tier 3: Network, full firmware, TOU, site detail, programmes deep."""
-
-        # 12. aGate firmware detail
-        try:
-            agate = await self.get_agate_info()
-            result = agate.get("result", {}) if isinstance(agate, dict) else {}
-            if result:
-                snap.agate.ibg_version = result.get("ibgVersion", "")
-                snap.agate.sl_version = result.get("slVersion", "")
-                snap.agate.aws_version = result.get("awsVersion", "")
-                snap.agate.app_version = result.get("appVersion", "")
-                snap.agate.meter_version = result.get("meterVersion", "")
-                snap.agate.msa_model = result.get("msaModel")
-                snap.agate.msa_serial = result.get("msaSn")
-                snap.agate.ad_module_hd_ver = result.get("adModuleHdVer")
-                snap.agate.ad_module_app_ver = result.get("adModuleAppVer")
-                if snap.agate.msa_model or snap.agate.msa_serial:
-                    snap.flags.mac1_detected = True
-                    snap.accessories.has_mac1 = True
-        except Exception as e:
-            logger.warning(f"discover: get_agate_info failed: {e}")
 
         # 13. Site and device info — skip if already populated from Tier 1
         try:
