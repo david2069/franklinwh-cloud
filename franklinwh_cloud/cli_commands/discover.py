@@ -498,6 +498,10 @@ def _render_firmware(snap):
         print_kv("MAC-1 Model", a.msa_model)
     if a.msa_serial:
         print_kv("MAC-1 Serial", a.msa_serial)
+    if a.ad_module_hd_ver:
+        print_kv("AD Module HW", a.ad_module_hd_ver)
+    if a.ad_module_app_ver:
+        print_kv("AD Module App", a.ad_module_app_ver)
 
 
 def _render_whats_missing(snap):

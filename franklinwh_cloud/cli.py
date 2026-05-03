@@ -522,7 +522,7 @@ async def async_main():
                     mock_flag  = getattr(args, 'mock', False)
                     diag_flag  = getattr(args, 'diag', False)
                     if mock_flag:
-                        support.mock_diag_output()
+                        support.mock_diag_output(json_output=args.json)
                     else:
                         await support.run(client, json_output=args.json,
                                           save=args.save,

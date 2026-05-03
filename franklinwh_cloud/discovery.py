@@ -68,6 +68,8 @@ class AgateInfo:
     # MAC-1 / MSA detection
     msa_model: Optional[str] = None
     msa_serial: Optional[str] = None
+    ad_module_hd_ver: Optional[str] = None
+    ad_module_app_ver: Optional[str] = None
     # Timestamps
     activated: Optional[str] = None
     installed: Optional[str] = None

@@ -608,7 +608,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 **extra_kwargs,
             )
             if await _print_set_result(result, json_output, client, wait_confirm,
-                                       existing_strategy, cli_args):
+                                       existing_strategy, cli_args, end_time=None):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -673,7 +673,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
                 **extra_kwargs,
             )
             if await _print_set_result(result, json_output, client, wait_confirm,
-                                       existing_strategy, cli_args):
+                                       existing_strategy, cli_args, end_time=end):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -695,7 +695,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
         try:
             result = await client.set_tou_schedule(touMode=mode, month=tou_month, **extra_kwargs)
             if await _print_set_result(result, json_output, client, wait_confirm,
-                                       existing_strategy, cli_args):
+                                       existing_strategy, cli_args, end_time=None):
                 return
         except (InvalidTOUScheduleOption, Exception) as e:
             _print_set_error(e, json_output)
@@ -710,12 +710,13 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
 async def _print_set_result(result: dict, json_output: bool, client=None,
                             wait_confirm: bool = False,
                             existing_strategy: list | None = None,
-                            cli_args: str = ""):
+                            cli_args: str = "",
+                            end_time: str | None = None):
     """Print the result of a set_tou_schedule call.
 
     When wait_confirm=True and client is provided, runs the full supervised
-    dispatch: confirm delivery, hold until Ctrl+C/SIGTERM, then restore
-    the original strategyList from backup.
+    dispatch: confirm delivery, hold until Ctrl+C/SIGTERM or end_time passes,
+    then restore the original strategyList from backup.
     """
     if json_output:
         output = dict(result)
@@ -733,9 +734,10 @@ async def _print_set_result(result: dict, json_output: bool, client=None,
             # ── Supervised dispatch ──────────────────────────────────────
             # 1. Backup was already saved before dispatch (backup_path passed in)
             # 2. Confirm delivery
-            # 3. Hold until Ctrl+C / SIGTERM
+            # 3. Hold until Ctrl+C / SIGTERM / scheduled end_time
             # 4. Restore original schedule
-            await _supervised_dispatch(client, existing_strategy, cli_args)
+            await _supervised_dispatch(client, existing_strategy, cli_args,
+                                       end_time=end_time)
         else:
             print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
 
@@ -750,13 +752,15 @@ async def _print_set_result(result: dict, json_output: bool, client=None,
         return False
 
 
-async def _supervised_dispatch(client, existing_strategy, cli_args=""):
+async def _supervised_dispatch(client, existing_strategy, cli_args="",
+                               end_time: str | None = None):
     """Backup → confirm → hold → restore supervised dispatch transaction.
 
     Called after a successful set_tou_schedule submit when --wait is used.
     Saves a backup of the prior strategyList, waits for dispatch confirmation,
-    then holds until interrupted, at which point the original schedule is
-    restored from the backup file.
+    then holds until interrupted (Ctrl+C / SIGTERM) **or** until the
+    scheduled end_time wall-clock passes, whichever comes first.
+    The original schedule is then restored from the backup file.
 
     Parameters
     ----------
@@ -767,10 +771,34 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
         a warning is shown and restore is skipped.
     cli_args : str
         The original CLI invocation string for backup metadata.
+    end_time : str or None
+        HH:MM wall-clock end time (e.g. "13:00").  When provided the hold
+        loop will auto-exit and trigger a restore once the clock passes that
+        time.  A 24-hour window is assumed (the end is always "today",
+        unless end_time is before "now" at dispatch time in which case it is
+        treated as "tomorrow").
     """
     import asyncio, signal
 
     backup_path = None
+
+    # ── Compute auto-exit deadline ────────────────────────────────
+    deadline: datetime | None = None
+    if end_time:
+        try:
+            h, m = (int(p) for p in end_time.split(":"))
+            now = datetime.now()
+            candidate = now.replace(hour=h % 24, minute=m, second=0, microsecond=0)
+            # Handle HH:MM == 24:00 edge-case (clamp to midnight next day)
+            if h == 24:
+                candidate = (now + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0)
+            # If the end time is already in the past today, it rolls to tomorrow
+            elif candidate <= now:
+                candidate += timedelta(days=1)
+            deadline = candidate
+        except (ValueError, AttributeError):
+            pass  # ignore malformed end_time — fall back to manual Ctrl+C only
 
     # ── Save backup ──────────────────────────────────────────────
     if existing_strategy:
@@ -802,6 +830,7 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
     # cancels the Event.wait() coroutine with no background tasks.
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
+    auto_expired = False
 
     def _set_stop():
         stop_event.set()
@@ -809,29 +838,57 @@ async def _supervised_dispatch(client, existing_strategy, cli_args=""):
     loop.add_signal_handler(signal.SIGINT,  _set_stop)
     loop.add_signal_handler(signal.SIGTERM, _set_stop)
 
-    print(f"  {c('bold', '✓ Dispatch active')} — press {c('bold', 'Ctrl+C')} to restore original and exit")
+    if deadline:
+        remaining_hint = int((deadline - datetime.now()).total_seconds())
+        mins_hint = remaining_hint // 60
+        print(f"  {c('bold', '✓ Dispatch active')} — will auto-restore at {end_time} "
+              f"({mins_hint}m remaining) or press {c('bold', 'Ctrl+C')} to restore now")
+    else:
+        print(f"  {c('bold', '✓ Dispatch active')} — press {c('bold', 'Ctrl+C')} to restore original and exit")
 
     HEARTBEAT_INTERVAL = 30  # seconds
     elapsed = 0
     try:
         while True:
+            # Compute how long to sleep this tick — never past the deadline
+            sleep_secs = HEARTBEAT_INTERVAL
+            if deadline:
+                secs_to_deadline = (deadline - datetime.now()).total_seconds()
+                if secs_to_deadline <= 0:
+                    # Deadline already passed (e.g. confirmation took time)
+                    auto_expired = True
+                    break
+                sleep_secs = min(sleep_secs, secs_to_deadline)
+
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=HEARTBEAT_INTERVAL)
+                await asyncio.wait_for(stop_event.wait(), timeout=sleep_secs)
                 break  # stop_event was set — exit hold loop
             except asyncio.TimeoutError:
+                # Check deadline first
+                if deadline and datetime.now() >= deadline:
+                    auto_expired = True
+                    break
                 elapsed += HEARTBEAT_INTERVAL
                 mins, secs = divmod(elapsed, 60)
                 hrs,  mins = divmod(mins, 60)
                 duration_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
-                print(f"  {c('dim', f'Dispatch active — {duration_str} elapsed — Ctrl+C to restore')}")
+                if deadline:
+                    secs_left = max(0, int((deadline - datetime.now()).total_seconds()))
+                    ml, sl = divmod(secs_left, 60)
+                    print(f"  {c('dim', f'Dispatch active — {duration_str} elapsed — auto-restore in {ml}m{sl:02d}s — Ctrl+C to restore now')}")
+                else:
+                    print(f"  {c('dim', f'Dispatch active — {duration_str} elapsed — Ctrl+C to restore')}")
     finally:
         loop.remove_signal_handler(signal.SIGINT)
         loop.remove_signal_handler(signal.SIGTERM)
 
         # ── Restore ───────────────────────────────────────────────
         print()
-        if backup_path and existing_strategy:
+        if auto_expired:
+            print(f"  {c('bold', f'Schedule window ended ({end_time}) — restoring original schedule...')}")
+        else:
             print("  Restoring original schedule...")
+        if backup_path and existing_strategy:
             try:
                 await client.tou_backup_restore(backup_path)
                 seasons = len(existing_strategy)

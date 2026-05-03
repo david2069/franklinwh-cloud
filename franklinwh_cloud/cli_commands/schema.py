@@ -161,6 +161,28 @@ TOTALS_SCHEMA = {
     "mpan_pv2_wh":          ("mpanPv2Wh",          "203/runtimeData",  "Wh",   "APbox/MPPT"),
 }
 
+# ── Grid Power Control Settings ─────────────────────────────────────────────
+# Source: get_power_control_settings()  (REST — not MQTT/cmdType)
+# Encoding: -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW power cap
+GRID_LIMITS_SCHEMA = {
+    "globalGridChargeMax":      ("globalGridChargeMax",      "get_power_control_settings", "kW / -1", "Global Limits"),
+    "globalGridDischargeMax":   ("globalGridDischargeMax",   "get_power_control_settings", "kW / -1", "Global Limits"),
+    "globalSettingStatus":      ("globalSettingStatus",      "get_power_control_settings", "int",     "Global Limits"),
+    "gridFeedMax":              ("gridFeedMax",              "get_power_control_settings", "kW / -1", "Feed-In (Export)"),
+    "gridFeedMaxFlag":          ("gridFeedMaxFlag",          "get_power_control_settings", "int",     "Feed-In (Export)"),
+    "gridMax":                  ("gridMax",                  "get_power_control_settings", "kW / -1", "Import"),
+    "gridMaxFlag":              ("gridMaxFlag",              "get_power_control_settings", "int",     "Import"),
+    "gridFlag":                 ("gridFlag",                 "get_power_control_settings", "bool",    "Grid Connection"),
+    "solarFlag":                ("solarFlag",                "get_power_control_settings", "bool",    "Grid Connection"),
+    "notControlExportSolar":    ("notControlExportSolar",    "get_power_control_settings", "bool",    "Feed-In (Export)"),
+    "peakDemandGridMax":        ("peakDemandGridMax",        "get_power_control_settings", "kW / -1", "Peak Demand"),
+    "bbDischargePower":         ("bbDischargePower",         "get_power_control_settings", "kW",      "Backup Battery"),
+    "sgipFlag":                 ("sgipFlag",                 "get_power_control_settings", "0/1",     "Programmes"),
+    "itcFlag":                  ("itcFlag",                  "get_power_control_settings", "0/1",     "Programmes"),
+    "isNem3":                   ("isNem3",                   "get_power_control_settings", "0/1",     "Programmes"),
+    "isCalifornia":             ("isCalifornia",             "get_power_control_settings", "0/1",     "Programmes"),
+}
+
 TOU_SCHEMA = {
     "startHourTime":        ("startHourTime",      "setTouSchedule",   "HH:MM", "Time Block"),
     "endHourTime":          ("endHourTime",        "setTouSchedule",   "HH:MM", "Time Block"),
@@ -232,16 +254,26 @@ async def run(client, json_output: bool = False, show_live: bool = False,
             if not json_output:
                 print(f"⚠ Could not fetch live data: {e}")
 
+    # Grid limits — fetched independently (REST, not MQTT)
+    live_grid_limits = None
+    if show_live:
+        try:
+            pcs_res = await client.get_power_control_settings()
+            live_grid_limits = pcs_res.get("result", {}) if isinstance(pcs_res, dict) else {}
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ Could not fetch grid limits: {e}")
+
     if json_output:
-        _json_output(live_current, live_totals, filter_group)
+        _json_output(live_current, live_totals, live_grid_limits, filter_group)
         return
 
-    _terminal_output(live_current, live_totals, filter_group)
+    _terminal_output(live_current, live_totals, live_grid_limits, filter_group)
 
 
-def _json_output(live_current, live_totals, filter_group):
+def _json_output(live_current, live_totals, live_grid_limits, filter_group):
     """Emit JSON schema output."""
-    result = {"current": {}, "totals": {}}
+    result = {"current": {}, "totals": {}, "grid_limits": {}}
 
     for field, (api_key, source, units, group) in CURRENT_SCHEMA.items():
         if filter_group and filter_group.lower() not in group.lower():
@@ -258,6 +290,14 @@ def _json_output(live_current, live_totals, filter_group):
         if live_totals is not None:
             entry["live_value"] = live_totals.get(field)
         result["totals"][field] = entry
+
+    for field, (api_key, source, units, group) in GRID_LIMITS_SCHEMA.items():
+        if filter_group and filter_group.lower() not in group.lower() and (filter_group.lower() not in "grid"):
+            continue
+        entry = {"api_key": api_key, "source": source, "units": units, "group": group}
+        if live_grid_limits is not None:
+            entry["live_value"] = live_grid_limits.get(api_key)
+        result["grid_limits"][field] = entry
 
     result["tou"] = {}
     for field, (api_key, source, units, group) in TOU_SCHEMA.items():
@@ -284,7 +324,7 @@ def _json_output(live_current, live_totals, filter_group):
     print_json_output(result)
 
 
-def _terminal_output(live_current, live_totals, filter_group):
+def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
     """Emit human-readable schema table."""
     print_header("API Field Schema — Current & Totals")
 
@@ -424,5 +464,51 @@ def _terminal_output(live_current, live_totals, filter_group):
     print("  cmdType 211 fields only populated when get_stats(include_electrical=True)")
     print("  cmdType 311 fields require Smart Circuit accessory installed")
     print("  kwhSolarLoad / kwhGridLoad / kwhFhpLoad values may be cumulative Wh (not daily kWh)")
+
+    # ── Grid Power Control Limits ─────────────────────────────────────────
+    grid_filtered = (
+        not filter_group
+        or filter_group.lower() in "grid"
+        or any(filter_group.lower() in g.lower()
+               for _, (_, _, _, g) in GRID_LIMITS_SCHEMA.items())
+    )
+    if grid_filtered:
+        print()
+        print_section("⚡", "Grid Power Control Limits  (get_power_control_settings)")
+        print("  -1 = Unlimited,  0 = Not allowed/Disabled,  >0 = kW power cap")
+        print()
+        print(_header_row())
+        print(_divider())
+
+        def _decode_limit(val):
+            if val is None: return "—"
+            try:
+                v = float(val)
+                if v < 0:  return "Unlimited (-1)"
+                if v == 0: return "Not allowed (0)"
+                return f"{v:.1f} kW"
+            except (TypeError, ValueError):
+                return str(val)
+
+        grid_group = None
+        for field, (api_key, source, units, group) in GRID_LIMITS_SCHEMA.items():
+            if filter_group and filter_group.lower() not in group.lower() and filter_group.lower() not in "grid":
+                continue
+            if group != grid_group:
+                print(f"\n  ── {group}")
+                grid_group = group
+            row = (f"  {field:<30}  "
+                   f"{api_key:<22}  "
+                   f"{source:<20}  "
+                   f"{units:<7}")
+            if live_grid_limits is not None:
+                raw = live_grid_limits.get(api_key)
+                # Decode kW limit fields; show others as-is
+                if "kW" in units:
+                    row += f"  {_decode_limit(raw)}"
+                else:
+                    row += f"  {_fmt_value(raw)}"
+            print(row)
+
     if live_current is None:
         print("\n  Tip: run with --live to show current values alongside the schema")

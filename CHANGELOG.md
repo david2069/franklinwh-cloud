@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-05-04
+
 ### Added
+- **MAC-1 / AD Module Discovery (`FEAT-MAC1-DISCOVERY`)** — Expanded `DeviceSnapshot` and `discover`/`support` CLI commands to catalog the Meter Adaptor Collar (MAC-1) via `msaModel` and `msaSn`, as well as `adModuleHdVer` and `adModuleAppVer` from `get_agate_info`. Added redaction for `msaSn` in the `support` snapshot.
 - **Emulator Foundation (`FEAT-TEST-API-PROXY`)** — Created top-level `emulator/` directory with a fully decoupled FastAPI proxy server (`emulator/main.py`) that intercepts `franklinwh-cloud` library requests and returns synthetic responses. Includes request-logging middleware simulating `@NotNull` Java Spring Boot constraints. Documented in `emulator/README.md` with instructions for routing `franklinwh-cli` against `localhost:8080` for offline structural failure experiments.
 - **`emulator` dependency group** — Added `fastapi[standard]>=0.110.0` and `uvicorn` as an isolated optional dependency group in `pyproject.toml` (`pip install -e ".[emulator]"`), keeping emulator deps fully decoupled from the core library and test suite.
 - **Live JSON schema validation (`FEAT-TEST-INTEGRATION`)** — Added `_assert_live_schema(path, method, payload)` helper to `tests/test_live.py`. Dynamically loads `docs/franklinwh_openapi.json` and validates live API payloads against the formal spec using `jsonschema`, providing automatic detection of undocumented upstream API mutations.

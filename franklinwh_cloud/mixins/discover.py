@@ -693,6 +693,8 @@ class DiscoverMixin:
                 snap.agate.meter_version = result.get("meterVersion", "")
                 snap.agate.msa_model = result.get("msaModel")
                 snap.agate.msa_serial = result.get("msaSn")
+                snap.agate.ad_module_hd_ver = result.get("adModuleHdVer")
+                snap.agate.ad_module_app_ver = result.get("adModuleAppVer")
                 if snap.agate.msa_model or snap.agate.msa_serial:
                     snap.flags.mac1_detected = True
                     snap.accessories.has_mac1 = True

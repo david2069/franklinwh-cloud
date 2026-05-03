@@ -30,7 +30,7 @@ from franklinwh_cloud.cli_output import (
 
 logger = logging.getLogger("franklinwh_cloud")
 
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 
 # FranklinWH mobile app identifiers
 APPLE_TRACK_ID = 1562630432
@@ -136,7 +136,8 @@ def compute_schema_fingerprint(snapshot: dict) -> dict:
     # Collect keys from all data sections (skip metadata)
     all_keys = []
     for section in ("identity", "versions", "network", "connectivity",
-                    "wifi_config", "switches", "batteries", "power", "relays"):
+                    "wifi_config", "switches", "batteries", "power",
+                    "totals", "relays", "electrical"):
         data = snapshot.get(section, {})
         if isinstance(data, dict) and "error" not in data:
             section_keys = _collect_keys(data, section)
@@ -237,6 +238,11 @@ def redact_snapshot(data: dict, mode: str = "partial") -> dict:
     for gw in identity.get("gateway_sns", []):
         pass  # Already redacted via serial
 
+    # Versions
+    versions = d.get("versions", {})
+    if "msaSn" in versions and versions["msaSn"]:
+        versions["msaSn"] = _redact_serial(versions["msaSn"], mode)
+
     # Network
     net = d.get("network", {})
     for iface in ("wifi", "eth0", "eth1", "operator"):
@@ -277,10 +283,13 @@ async def collect_snapshot(client) -> dict:
         "wifi_config": {},
         "switches": {},
         "power": {},
+        "totals": {},
         "batteries": {},
         "relays": {},
+        "electrical": {},
         "warranty": {},
         "tou_status": {},
+        "programmes": {},
         "api_health": {},
     }
 
@@ -303,6 +312,8 @@ async def collect_snapshot(client) -> dict:
             "sku": model_info.get("sku", "?"),
             "hardware": gw.get("realSysHdVersion", "?"),
             "country": COUNTRY_ID.get(gw.get("countryId", 0), "Unknown"),
+            "countryId": gw.get("countryId", 0),
+            "provinceId": gw.get("provinceId", 0),
             "timezone": gw.get("zoneInfo", "?"),
             "email": gw.get("account", "?"),
             "status": gw.get("status"),
@@ -328,6 +339,10 @@ async def collect_snapshot(client) -> dict:
         snapshot["versions"]["meterVersion"] = result.get("meterVersion")
         snapshot["versions"]["protocolVer"] = result.get("protocolVer")
         snapshot["versions"]["connType"] = result.get("connType")
+        snapshot["versions"]["msaModel"] = result.get("msaModel")
+        snapshot["versions"]["msaSn"] = result.get("msaSn")
+        snapshot["versions"]["adModuleHdVer"] = result.get("adModuleHdVer")
+        snapshot["versions"]["adModuleAppVer"] = result.get("adModuleAppVer")
     except Exception as e:
         snapshot["versions"]["error"] = str(e)
 
@@ -369,38 +384,88 @@ async def collect_snapshot(client) -> dict:
     except Exception as e:
         snapshot["batteries"]["error"] = str(e)
 
-    # ── Power snapshot ───────────────────────────────────────────
+    # ── Power snapshot + Totals ───────────────────────────────────────
     try:
         stats = await client.get_stats()
         cur = stats.current
+        tot = stats.totals
         snapshot["power"] = {
-            "solar_kw": cur.solar_production,
-            "battery_kw": cur.battery_use,
-            "battery_soc": cur.battery_soc,
-            "grid_kw": cur.grid_use,
-            "grid_status": cur.grid_connection_state.value,
-            "home_load_kw": cur.home_load,
-            "operating_mode": cur.work_mode_desc,
-            "run_status": cur.run_status_desc,
+            # ─ Core flow
+            "solar_kw":           cur.solar_production,
+            "battery_kw":         cur.battery_use,
+            "battery_soc":        cur.battery_soc,
+            "grid_kw":            cur.grid_use,
+            "grid_status":        cur.grid_connection_state.value,
+            "home_load_kw":       cur.home_load,
+            # ─ Mode
+            "operating_mode":     cur.work_mode_desc,
+            "effective_mode":     cur.effective_mode,
+            "run_status":         cur.run_status_desc,
+            "tou_mode_desc":      cur.tou_mode_desc,
+            "alarms_count":       cur.alarms_count,
+            "device_status":      cur.device_status,
+            "ambient_temp_c":     cur.agate_ambient_temparture,
+            # ─ Power flow breakdown
+            "power_flow": {
+                "grid_charging_battery_kw":  cur.grid_charging_battery,
+                "solar_export_to_grid_kw":   cur.solar_export_to_grid,
+                "solar_charging_battery_kw": cur.solar_charging_battery,
+                "battery_export_to_grid_kw": cur.battery_export_to_grid,
+            },
+            # ─ Signal quality
+            "wifi_signal_pct":    cur.wifi_signal,
+            "mobile_signal_dbm":  cur.mobile_signal,
+            # ─ Per-pack aPower state
+            "apower_serials":     cur.apower_serial_numbers,
+            "apower_soc":         cur.apower_soc,
+            "apower_power":       cur.apower_power,
+            "apower_bms_mode":    cur.apower_bms_mode,
+            # ─ Smart circuit states
+            "switch_1_state":     cur.switch_1_state,
+            "switch_2_state":     cur.switch_2_state,
+            "switch_3_state":     cur.switch_3_state,
+        }
+        snapshot["totals"] = {
+            "solar_kwh":              tot.solar,
+            "grid_import_kwh":        tot.grid_import,
+            "grid_export_kwh":        tot.grid_export,
+            "battery_charge_kwh":     tot.battery_charge,
+            "battery_discharge_kwh":  tot.battery_discharge,
+            "home_use_kwh":           tot.home_use,
+            "switch_1_kwh":           tot.switch_1_use,
+            "switch_2_kwh":           tot.switch_2_use,
+            "v2l_export_kwh":         tot.v2l_export,
+            "v2l_import_kwh":         tot.v2l_import,
         }
     except Exception as e:
         snapshot["power"]["error"] = str(e)
+        snapshot["totals"]["error"] = str(e)
 
     # ── Relays ───────────────────────────────────────────────────
+    # Primary relays sourced from runtimeData.main_sw[] via get_device_composite_info().
+    # Extended 211-relay fields (grid_relay2, pv_relay2, black_start_relay) require a
+    # separate get_stats(include_electrical=True) call — omitted here to avoid an extra
+    # MQTT round-trip. They are displayed by `franklinwh-cli diag` instead.
+    _comp_result = None
+    _rt = {}
     try:
         comp = await client.get_device_composite_info()
-        rt = comp.get("result", {}).get("runtimeData", {})
-        main_sw = rt.get("main_sw", [])
+        _comp_result = comp.get("result", {})
+        _rt = _comp_result.get("runtimeData", {})
+        main_sw = _rt.get("main_sw", [])
         snapshot["relays"] = {
-            "grid_relay": main_sw[0] if len(main_sw) > 0 else None,
+            "grid_relay":      main_sw[0] if len(main_sw) > 0 else None,
             "generator_relay": main_sw[1] if len(main_sw) > 1 else None,
-            "solar_pv_relay": main_sw[2] if len(main_sw) > 2 else None,
-            "grid_relay2": stats.grid_relay2 if 'stats' in locals() else None,
-            "solar_pv_relay2": stats.pv_relay2 if 'stats' in locals() else None,
-            "black_start": stats.black_start if 'stats' in locals() else None,
+            "solar_pv_relay":  main_sw[2] if len(main_sw) > 2 else None,
         }
+    except Exception as e:
+        snapshot["relays"]["error"] = str(e)
 
-        # Extrapolate custom names and pure equipment listings
+    # ── Accessories ──────────────────────────────────────────────
+    # Independent try-block: accessories must not fail due to relay errors.
+    try:
+        rt = _rt  # reuse runtimeData from composite if available
+
         try:
             sc_info = await client.get_smart_circuits_info()
         except Exception:
@@ -414,15 +479,20 @@ async def collect_snapshot(client) -> dict:
 
         snapshot["accessories"] = {
             "smart_circuits": {
-                "Sw1Name": sc_info.get("Sw1Name"),
-                "Sw1Mode": rt.get("Sw1Mode"),
-                "Sw1ProLoad": rt.get("Sw1ProLoad"),
-                "Sw1MsgType": rt.get("Sw1MsgType"),
-                "Sw2Name": sc_info.get("Sw2Name"),
-                "Sw2Mode": rt.get("Sw2Mode"),
-                "Sw3Name": sc_info.get("Sw3Name"),
-                "Sw3Mode": rt.get("Sw3Mode"),
-                "SwMerge": sc_info.get("SwMerge"),
+                "Sw1Name":           sc_info.get("Sw1Name"),
+                "Sw1Mode":           rt.get("Sw1Mode"),
+                "Sw1ProLoad":        rt.get("Sw1ProLoad"),
+                "Sw1AtuoEn":         sc_info.get("Sw1AtuoEn"),
+                "Sw1SocLowSet":      sc_info.get("Sw1SocLowSet"),
+                "Sw1LoadLimit":      sc_info.get("Sw1LoadLimit"),
+                "Sw2Name":           sc_info.get("Sw2Name"),
+                "Sw2Mode":           rt.get("Sw2Mode"),
+                "Sw2AtuoEn":         sc_info.get("Sw2AtuoEn"),
+                "Sw2SocLowSet":      sc_info.get("Sw2SocLowSet"),
+                "Sw2LoadLimit":      sc_info.get("Sw2LoadLimit"),
+                "Sw3Name":           sc_info.get("Sw3Name"),
+                "Sw3Mode":           rt.get("Sw3Mode"),
+                "SwMerge":           sc_info.get("SwMerge"),
                 "CarSwConsSupEnable": sc_info.get("CarSwConsSupEnable"),
             },
             "generator": {
@@ -435,23 +505,101 @@ async def collect_snapshot(client) -> dict:
                 "pe_stat": rt.get("pe_stat"),
             },
             "apbox": {
-                "di": rt.get("di"),
+                "di":       rt.get("di"),
                 "doStatus": rt.get("doStatus"),
             },
             "hardware_registry_dump": equip_list,
         }
     except Exception as e:
-        snapshot["relays"]["error"] = str(e)
         snapshot["accessories"] = {"error": str(e)}
+
+    # ── Electrical measurements (cmdType 211) ────────────────────────
+    # One extra MQTT call (get_power_info). Best-effort: graceful on failure.
+    try:
+        pwr = await client.get_power_info()
+        snapshot["electrical"] = {
+            "grid_voltage_l1_v":   pwr.get("gridVol1"),
+            "grid_voltage_l2_v":   pwr.get("gridVol2"),
+            "grid_current_l1_a":   pwr.get("gridCurr1"),
+            "grid_current_l2_a":   pwr.get("gridCurr2"),
+            "load_current_l1_a":   pwr.get("loadCurr1"),
+            "load_current_l2_a":   pwr.get("loadCurr2"),
+            "grid_frequency_hz":   pwr.get("gridFreq"),
+            "grid_set_freq_hz":    pwr.get("dspSetFreq"),
+            "grid_line_voltage_v": (pwr.get("gridLineVol") or 0) / 10 if pwr.get("gridLineVol") is not None else None,
+            "generator_voltage_v": pwr.get("genVoltage"),
+            "dsp_run_status":      pwr.get("dspRunStatus"),
+            "ibg_run_status":      pwr.get("ibgRunStatus"),
+            "electricity_type":    pwr.get("electricity_type"),
+        }
+    except Exception as e:
+        snapshot["electrical"] = {"error": str(e)}
 
     # ── Warranty ─────────────────────────────────────────────────
     try:
+        from datetime import date as _date, datetime as _dt
         w_res = await client.get_warranty_info()
         w = w_res.get("result", {})
+        today = _date.today()
+
+        # ─ Rated / remaining throughput (API returns MWh, convert to kWh)
+        tp_kwh  = (w.get("throughput", 0) or 0) * 1000   # total rated kWh
+        rem_kwh = w.get("remainThroughput", 0) or 0       # remaining kWh
+        used_kwh = max(tp_kwh - rem_kwh, 0)
+
+        # ─ Parse reference dates (nullable; compute only what we can)
+        def _parse_d(s):
+            if not s:
+                return None
+            try:
+                return _dt.strptime(str(s)[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return None
+
+        expiry_date  = _parse_d(w.get("expirationTime"))
+        install_date = _parse_d(snapshot.get("identity", {}).get("installedDate"))
+        # ptoDate lives in tou_status — fetch it directly here rather than relying
+        # on tou_status being populated (execution order may vary).
+        try:
+            _tou_r = await client.get_tou_dispatch_detail()
+            _pto_raw = _tou_r.get("result", {}).get("ptoDate")
+        except Exception:
+            _pto_raw = None
+        pto_date = _parse_d(_pto_raw)
+
+        days_to_expiry     = (expiry_date  - today).days if expiry_date  else None
+        days_since_install = (today - install_date).days  if install_date else None
+        days_since_pto     = (today - pto_date).days      if pto_date     else None
+
+        # ─ Average daily kWh throughput (from install and from PTO)
+        avg_per_day_install = round(used_kwh / days_since_install, 2) \
+            if days_since_install and days_since_install > 0 else None
+        avg_per_day_pto     = round(used_kwh / days_since_pto, 2) \
+            if days_since_pto and days_since_pto > 0 else None
+
+        # ─ Forecast: rated kWh/day over full warranty term (install → expiry)
+        total_warranty_days = (expiry_date - install_date).days \
+            if (expiry_date and install_date) else None
+        daily_kwh_forecast  = round(tp_kwh / total_warranty_days, 2) \
+            if (total_warranty_days and total_warranty_days > 0 and tp_kwh > 0) else None
+
+        # ─ Pace needed to exhaust remaining budget by expiry date
+        daily_rem_needed = round(rem_kwh / days_to_expiry, 2) \
+            if (days_to_expiry and days_to_expiry > 0 and rem_kwh > 0) else None
+
         snapshot["warranty"] = {
-            "expirationTime": w.get("expirationTime"),
-            "throughput_kWh": (w.get("throughput", 0) or 0) * 1000,
-            "remainThroughput_kWh": w.get("remainThroughput", 0) or 0,
+            "expirationTime":          w.get("expirationTime"),
+            "days_to_expiry":          days_to_expiry,
+            "throughput_kWh":          tp_kwh,
+            "remainThroughput_kWh":    rem_kwh,
+            "used_kWh":                round(used_kwh, 1),
+            "days_since_install":      days_since_install,
+            "days_since_pto":          days_since_pto,
+            "avg_kwh_per_day_install": avg_per_day_install,
+            "avg_kwh_per_day_pto":     avg_per_day_pto,
+            "total_warranty_days":     total_warranty_days,
+            "daily_kwh_forecast":      daily_kwh_forecast,
+            "daily_rem_needed":        daily_rem_needed,
         }
         devices = w.get("deviceExpirationList", [])
         if devices:
@@ -477,15 +625,180 @@ async def collect_snapshot(client) -> dict:
             "sendStatus": tou.get("sendStatus"),
             "batteryRatedCapacity_kWh": tou.get("batteryRatedCapacity"),
             "apowerCount": tou.get("apowerCount"),
-            "tariffPlan": template.get("name"),
-            "electricCompany": template.get("electricCompany"),
-            "workMode": template.get("workMode"),
-            "lastUpdated": template.get("updateTime"),
+            # Template / tariff identifiers
+            "tariffPlan":        template.get("name"),
+            "electricCompany":   template.get("electricCompany") or template.get("eleCompanyFullName"),
+            "electricCompanyId": template.get("eletricCompanyId"),   # -1 = no vendor ID / custom
+            "templateId":        template.get("templateId"),          # 0 = user-defined
+            "templateInstanceId": template.get("id"),                # DB row ID for this gateway's config
+            "workMode":          template.get("workMode"),
+            "electricityType":   template.get("electricityType"),
+            "provinceEn":        template.get("provinceEn"),
+            "provinceId":        template.get("provinceId"),
+            "lastUpdated":       template.get("updateTime"),
         }
     except Exception as e:
         snapshot["tou_status"]["error"] = str(e)
 
-    # ── API health ───────────────────────────────────────────────
+    # ── Operating Modes availability ──────────────────────────────
+    # Known work modes and their prerequisites:
+    #   workMode 1 = Time-Of-Use       → requires tariff schedule configured
+    #   workMode 2 = Self-Consumption  → requires solar connected (solarFlag)
+    #   workMode 3 = Emergency Backup  → always available
+    snapshot["operating_modes"] = {}
+    try:
+        _ml_res  = await client.get_gateway_tou_list()
+        _ml      = _ml_res.get("result", {}) if isinstance(_ml_res, dict) else {}
+        _ml_list = _ml.get("list", []) or []
+        _configured_wm = {int(m.get("workMode", 0)): m for m in _ml_list if m.get("workMode") is not None}
+
+        # Flags from programmes (already captured above, but re-read safely here)
+        _solar_ok  = bool(snapshot.get("programmes", {}).get("solar_connected", True))
+        _tariff_ok = bool(snapshot.get("tou_status", {}).get("tariffSettingFlag", False))
+
+        KNOWN_MODES = [
+            (1, "Time-Of-Use",      _tariff_ok,  "TOU schedule not configured (tariffSettingFlag=False)"),
+            (2, "Self-Consumption", _solar_ok,   "Solar not connected to aGate ports (solarFlag=False)"),
+            (3, "Emergency Backup", True,         None),   # always available
+        ]
+        _mode_summary = []
+        for wm_id, wm_name, prereq, reason in KNOWN_MODES:
+            configured = wm_id in _configured_wm
+            available  = prereq and configured
+            entry = {
+                "workMode":   wm_id,
+                "name":       wm_name,
+                "configured": configured,
+                "available":  available,
+                "reason":     reason if not available else None,
+            }
+            if configured:
+                m = _configured_wm[wm_id]
+                entry["displayName"] = m.get("name", wm_name)   # e.g. "Ausgrid EA11 TOU"
+                entry["soc"]         = m.get("soc")
+                entry["minSoc"]      = m.get("minSoc")
+                entry["maxSoc"]      = m.get("maxSoc")
+            _mode_summary.append(entry)
+
+        snapshot["operating_modes"] = {
+            "modes": _mode_summary,
+            "stop_mode": bool(_ml.get("stopMode")),
+            "grid_charge_enabled": bool(_ml.get("gridChargeEn")),
+            "backup_forever_flag": bool(_ml.get("backupForeverFlag")),
+        }
+    except Exception as e:
+        snapshot["operating_modes"]["error"] = str(e)
+
+    # ── Programmes, Schemes & VPP ────────────────────────────────
+    # Sources: get_entrance_info() + get_programme_info() + get_grid_profile_info()
+    # + vppSocVo / todayVppVo / nemType from tou_dispatch_detail (already fetched above).
+    # Country-aware: NEM type is a US (country_id=2) / CA state concept only.
+    try:
+        _country_id = snapshot.get("identity", {}).get("countryId", 0)
+        _is_us = (_country_id == 2)
+        _is_au = (_country_id == 3)
+
+        # ─ Grid compliance profile (actual API name)
+        _grid_profile = None
+        try:
+            _gp = await client.get_grid_profile_info(requestType=1)
+            if isinstance(_gp, dict):
+                _profiles = _gp.get("list", [])
+                _current_id = _gp.get("currentId", 0)
+                for _p in _profiles:
+                    if _p.get("id") == _current_id:
+                        _grid_profile = _p.get("name", "")
+                        break
+        except Exception:
+            pass
+
+        # ─ Entrance info — scheme eligibility flags + grid limits
+        _ent = {}
+        try:
+            _ent = await client.get_entrance_info() or {}
+        except Exception:
+            pass
+
+        # ─ VPP programme enrollment
+        _prog = {}
+        try:
+            _prog_raw = await client.get_programme_info()
+            if isinstance(_prog_raw, dict):
+                _prog = _prog_raw
+            elif isinstance(_prog_raw, list) and _prog_raw:
+                _prog = _prog_raw[0]  # some firmware returns list
+        except Exception:
+            pass
+
+        # ─ VPP SoC window + NEM type + DER schedule from TOU dispatch (already fetched)
+        _tou_disp = {}
+        try:
+            _td = await client.get_tou_dispatch_detail()
+            _tou_disp = _td.get("result", {}) if isinstance(_td, dict) else {}
+        except Exception:
+            pass
+
+        _template = _tou_disp.get("template", {}) or {}
+        _vpp_soc_vo = _tou_disp.get("vppSocVo", {}) or {}
+        _today_vpp = _tou_disp.get("todayVppVo", {}) or {}
+        _nem_raw = _tou_disp.get("nemType", None)
+        _der_schedule = _template.get("derSchdule", None)
+
+        # NEM type is US-CA specific — only include for US gateways
+        _nem_label = None
+        if _is_us and _nem_raw is not None:
+            _NEM_TYPES = {0: "None", 1: "NEM 1.0", 2: "NEM 2.0", 3: "NEM 3.0", 4: "NEM Aggregation"}
+            _nem_label = _NEM_TYPES.get(int(_nem_raw), f"NEM type {_nem_raw}")
+
+        # ─ Global grid power limits (authoritative source: get_power_control_settings)
+        # Encoding: -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW cap
+        _pcs_raw = {}
+        try:
+            _pcs_res = await client.get_power_control_settings()
+            _pcs_raw = _pcs_res.get("result", {}) if isinstance(_pcs_res, dict) else {}
+        except Exception:
+            pass
+
+        snapshot["programmes"] = {
+            # Grid compliance
+            "grid_profile":          _grid_profile,
+            # Core operational flags (from entrance info)
+            "solar_connected":        bool(_ent.get("solarFlag", True)),    # False = no solar on aGate ports
+            "grid_connected":         bool(_ent.get("gridFlag", True)),     # False = off-grid; grid ops invalid
+            "tariff_configured":      bool(_ent.get("tariffSettingFlag", False)),
+            # Scheme eligibility
+            "sgip":                  bool(_ent.get("sgipEntrance", 0)),
+            "bb":                    bool(_ent.get("bbEntrance", 0)),
+            "ja12":                  bool(_ent.get("ja12Entrance", 0)),
+            "sdcp":                  bool(_ent.get("sdcpFlag", False)),
+            "pcs_enabled":           bool(_ent.get("pcsEntrance", 0)),
+            # Grid limits (authoritative: get_power_control_settings)
+            # Encoding: -1 = Unlimited, 0 = Not allowed, >0.1 = kW cap
+            "grid_limits_raw": _pcs_raw,
+            # Hardware flags
+            "ahub_detected":          bool(_ent.get("ahubAddressingFlag")),
+            "charging_power_limited": bool(_ent.get("chargingPowerLimited", False)),
+            "need_ct_test":           bool(_ent.get("needCtTest", False)),
+            # VPP enrollment
+            "vpp_enrolled":          bool(_prog.get("flag", 0)),
+            "vpp_programme_name":    _prog.get("programName"),
+            "vpp_partner_name":      _prog.get("partnerName"),
+            # VPP SoC operating window
+            "vpp_soc_pct":           _vpp_soc_vo.get("vppSoc"),
+            "vpp_min_soc_pct":       _vpp_soc_vo.get("vppMinSoc"),
+            "vpp_max_soc_pct":       _vpp_soc_vo.get("vppMaxSoc"),
+            # VPP today status
+            "vpp_active_today":      bool(_today_vpp.get("vppFlag", 0)) if _today_vpp else False,
+            # NEM type (US-CA only)
+            "nem_type":              _nem_label,
+            # DER schedule
+            "der_schedule":          _der_schedule,
+            # Battery savings flag
+            "battery_savings_flag":  bool(_tou_disp.get("batterySavingsFlag", 0)),
+        }
+    except Exception as e:
+        snapshot["programmes"]["error"] = str(e)
+
     metrics = client.get_metrics()
     snapshot["api_health"] = {
         "total_calls": metrics["total_api_calls"],
@@ -675,7 +988,7 @@ SCOPE_KEYS = {
     "all": None,  # Compare everything
     "network": ["network", "connectivity", "wifi_config", "switches"],
     "software": ["versions"],
-    "power": ["power", "relays"],
+    "power": ["power", "totals", "relays", "electrical"],
 }
 
 
@@ -1233,14 +1546,191 @@ def _display_nettest_summary(total_ms: float, all_ok: bool, failures: list):
 
 # ── Account Info ─────────────────────────────────────────────────────
 
-def mock_diag_output():
+
+def mock_snapshot() -> dict:
+    """Return a schema-valid v3 snapshot envelope populated with simulated data.
+
+    Mirrors the real snapshot produced by collect_snapshot() + build_envelope().
+    Safe to use in tests, CI, and --compare workflows without any API calls.
+    All serial numbers, emails, and addresses are fictional.
+    """
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).isoformat()
+    return {
+        "snapshot_version": 3,
+        "timestamp": ts,
+        "gateway": "10060006A0AAAAAA0001",
+        "label": "mock",
+        "checksum": "sha256:mock000000000000000000000000000000000000000000000000000000000000",
+        "data": {
+            "identity": {
+                "serial": "10060006A0AAAAAA0001",
+                "model": "aGate X-02-US",
+                "sku": "AGT-R2V1-US",
+                "hardware": "FranklinWH System1.2",
+                "country": "United States",
+                "countryId": 2,
+                "provinceId": 5,
+                "timezone": "America/Los_Angeles",
+                "email": "john.doe@anymail.com",
+                "status": 1,
+                "activeStatus": 1,
+                "simCardStatus": 2,
+                "connType": 3,
+                "activatedDate": "2024-04-01",
+                "createdDate": "2024-01-15",
+                "installedDate": None,
+                "deviceTime": ts[:19].replace("T", " "),
+            },
+            "power": {
+                "solar_kw": 7.6,
+                "battery_kw": -2.5,
+                "battery_soc": 85,
+                "grid_kw": 0.0,
+                "grid_state": "Connected",
+                "home_load_kw": 5.1,
+                "operating_mode": "Time-Of-Use",
+                "tou_mode_desc": "PG&E Peak Day Pricing",
+                "run_status": "Charging",
+                "apower_serials": ["10050013A0AAAAAAA01", "10050013A0AAAAAAA02", "10050013A0AAAAAAS01"],
+                "apower_soc": [85.0, 84.5, 85.5],
+                "apower_bms_mode": [6, 6, 6],
+                "ambient_temp_c": 22.5,
+                "wifi_signal_pct": 78,
+                "mobile_signal_dbm": -85,
+                "grid_charging_battery_kw": 2.5,
+                "solar_export_to_grid_kw": 0.0,
+                "solar_charging_battery_kw": 5.1,
+                "battery_export_to_grid_kw": 0.0,
+            },
+            "totals": {
+                "battery_charge_kwh": 18540.2,
+                "battery_discharge_kwh": 17820.1,
+                "grid_import_kwh": 4210.5,
+                "grid_export_kwh": 3150.8,
+                "solar_kwh": 28750.3,
+                "home_load_kwh": 21630.4,
+            },
+            "batteries": [
+                {"type": "battery", "model": "aPower S", "serial": "10050013A0AAAAAAS01", "capacity_kwh": 15.0},
+                {"type": "battery", "model": "aPower",   "serial": "10050013A0AAAAAAA01", "capacity_kwh": 13.6},
+                {"type": "battery", "model": "aPower",   "serial": "10050013A0AAAAAAA02", "capacity_kwh": 13.6},
+            ],
+            "warranty": {
+                "expirationTime": "2036-04-01",
+                "throughput_kWh": 129000,
+                "used_kWh": 18540,
+                "remainThroughput_kWh": 110460,
+                "days_to_expiry": 3998,
+                "days_since_install": 387,
+                "days_since_pto": 357,
+                "avg_kwh_per_day_install": 47.9,
+                "avg_kwh_per_day_pto": 51.9,
+                "daily_kwh_forecast": 35.3,
+                "daily_rem_needed": 27.6,
+                "total_warranty_days": 4383,
+                "devices": [
+                    {"model": "aGate X-02-US", "expires": "2036-04-01"},
+                    {"model": "aPower S",       "expires": "2036-04-01"},
+                    {"model": "aPower",         "expires": "2036-04-01"},
+                    {"model": "aPower",         "expires": "2036-04-01"},
+                ],
+            },
+            "programmes": {
+                "grid_profile": "IEEE 1547a (Default)",
+                "solar_connected": True,
+                "grid_connected": True,
+                "tariff_configured": True,
+                "sgip": True,
+                "bb": False,
+                "ja12": False,
+                "sdcp": True,
+                "pcs_enabled": True,
+                "grid_limits_raw": {
+                    "gridMax": -1.0,
+                    "gridFeedMax": -1.0,
+                    "globalGridChargeMax": -1.0,
+                    "globalGridDischargeMax": -1.0,
+                    "notControlExportSolar": False,
+                    "peakDemandGridMax": None,
+                    "sgipFlag": 1,
+                    "itcFlag": 1,
+                    "isNem3": 1,
+                    "isCalifornia": 1,
+                },
+                "ahub_detected": True,
+                "charging_power_limited": True,
+                "need_ct_test": False,
+                "vpp_enrolled": True,
+                "vpp_programme_name": "Virtual Peakers",
+                "vpp_partner_name": "Pacific Gas & Electric",
+                "vpp_soc_pct": 30,
+                "vpp_min_soc_pct": 10,
+                "vpp_max_soc_pct": 100,
+                "vpp_active_today": True,
+                "nem_type": "NEM 3.0",
+                "der_schedule": "SGIP",
+                "battery_savings_flag": False,
+            },
+            "tou_status": {
+                "ptoDate": "2024-05-01",
+                "onlineFlag": True,
+                "tariffSettingFlag": True,
+                "nemType": 3,
+                "batterySavingsFlag": False,
+                "alertMessage": None,
+                "sendStatus": None,
+                "batteryRatedCapacity_kWh": 42.2,
+                "apowerCount": 3,
+                "tariffPlan": "PG&E Peak Day Pricing",
+                "electricCompany": "Pacific Gas and Electric",
+                "electricCompanyId": 12,
+                "templateId": 1042,
+                "templateInstanceId": 88001,
+                "workMode": 1,
+                "electricityType": 1,
+                "provinceEn": "California",
+                "provinceId": 5,
+                "lastUpdated": "2026-01-15 08:00:00",
+            },
+            "versions": {
+                "meterVersion": "1.0.0",
+                "protocolVer": "1.0",
+                "connType": "WIFI",
+                "msaModel": "MAC-1",
+                "msaSn": "mock-redacted-msa-sn",
+                "adModuleHdVer": "V1.0",
+                "adModuleAppVer": "V1.2.3",
+            },
+            "api_health": {
+                "total_calls": 0,
+                "avg_response_s": 0.0,
+                "total_errors": 0,
+            },
+            "schema_fingerprint": {
+                "fingerprint": "mock-fingerprint",
+                "key_count": 0,
+            },
+        },
+    }
+
+
+def mock_diag_output(json_output: bool = False):
     """Print a simulated max-config support --info --diag output.
 
+    With --json: emits a schema-valid v3 snapshot envelope (no real data).
+    Without --json: prints the human-readable topology tree (no API calls).
+
     Shows every possible feature enabled on a fictional two-gateway grouped
-    site. Useful for understanding output format without API calls.
+    site. Useful for understanding output format and testing without API calls.
     No real account data is used or implied.
     """
     from franklinwh_cloud.cli_output import c
+
+    if json_output:
+        from franklinwh_cloud.cli_output import print_json_output
+        print_json_output(mock_snapshot())
+        return
 
     BANNER = "  ⚠  SIMULATED DATA — no real API calls made  ⚠"
     print(c("yellow", "─" * len(BANNER)))
@@ -1294,6 +1784,7 @@ def mock_diag_output():
             "CT: Split Grid ✓  (two utility services)",
             "CT: Split PV ✓  (multiple PV strings metered)",
             "aHub: Detected  (remote SC / solar / generator input)",
+            "MAC-1 (MSA): Detected (Meter Socket Adaptor)",
             "aPBox: Detected, Remote Solar Enabled",
             "aPower S / DC MPPT: Enabled (1 unit(s))",
             "Smart Circuit: Living Room [Auto]",
@@ -1346,6 +1837,7 @@ def mock_diag_output():
             (True,  "Generator Module: Enabled"),
             (True,  "Remote Solar (aPBox): Connected"),
             (True,  "aHub: Detected"),
+            (True,  "MAC-1 (MSA): Detected"),
             (True,  "VPP Programme: Enrolled"),
         ]
         for ok, lbl in more_flags:
@@ -2229,10 +2721,117 @@ async def run(client, *, json_output: bool = False, save: bool = False,
         if "error" not in power:
             print_section("⚡", "Power")
             print_kv("Solar", f'{power.get("solar_kw", 0):.1f} kW')
-            print_kv("Battery", f'{power.get("battery_kw", 0):.1f} kW  (SoC: {power.get("battery_soc", 0):.0f}%)')
+            print_kv("Battery", f'{power.get("battery_kw", 0):.1f} kW')
+            print_kv("Battery SoC", f'{power.get("battery_soc", 0):.0f}%')
             print_kv("Grid", f'{power.get("grid_kw", 0):.1f} kW  ({power.get("grid_status", "?")})')
             print_kv("Home", f'{power.get("home_load_kw", 0):.1f} kW')
-            print_kv("Mode", power.get("operating_mode", "?"))
+            print_kv("Mode", power.get("operating_mode", "?"))   # work_mode_desc: Time-Of-Use / Self-Consumption etc.
+            tou_desc = power.get("tou_mode_desc")
+            if tou_desc:
+                print_kv("TOU Programme", tou_desc)                # vendor schedule name: Ausgrid EA11 TOU etc.
+            run_st = power.get("run_status")
+            if run_st:
+                print_kv("Run Status", run_st)                     # Standby / Charging / Discharging / VPP Mode
+            alarms = power.get("alarms_count", 0)
+            if alarms:
+                print_kv("Alarms", c("red", str(alarms)))
+            temp = power.get("ambient_temp_c")
+            if temp is not None and temp != 0.0:
+                print_kv("Ambient Temp", f"{temp:.1f} °C")
+            # Power flow breakdown
+            pf = power.get("power_flow", {})
+            if pf and any(v for v in pf.values() if v):
+                print_kv("→ Grid→Bat", f'{pf.get("grid_charging_battery_kw", 0):.2f} kW')
+                print_kv("→ Sol→Grid", f'{pf.get("solar_export_to_grid_kw", 0):.2f} kW')
+                print_kv("→ Sol→Bat", f'{pf.get("solar_charging_battery_kw", 0):.2f} kW')
+                print_kv("→ Bat→Grid", f'{pf.get("battery_export_to_grid_kw", 0):.2f} kW')
+            # Signals
+            wifi = power.get("wifi_signal_pct")
+            mob = power.get("mobile_signal_dbm")
+            if wifi is not None or mob is not None:
+                sig_parts = []
+                if wifi is not None:
+                    sig_parts.append(f"WiFi {wifi}%")
+                if mob is not None:
+                    sig_parts.append(f"4G {mob} dBm")
+                print_kv("Signal", "  ".join(sig_parts))
+            # Per-pack aPower state
+            from franklinwh_cloud.const.states import BMS_STATE as _BMS_STATE
+            _ap_serials = power.get("apower_serials")
+            _ap_soc     = power.get("apower_soc")
+            _ap_bms     = power.get("apower_bms_mode")
+            # Normalise: model stores these as list or str repr of list
+            def _as_list(v):
+                if isinstance(v, list):
+                    return v
+                if isinstance(v, str):
+                    import ast
+                    try:
+                        r = ast.literal_eval(v)
+                        return r if isinstance(r, list) else [r]
+                    except Exception:
+                        return [v]
+                return [v] if v is not None else []
+            _serials = _as_list(_ap_serials)
+            _socs    = _as_list(_ap_soc)
+            _bmss    = _as_list(_ap_bms)
+            if _serials or _socs or _bmss:
+                # Header: aPower [SN1, SN2, ...]
+                if _serials:
+                    print_kv("aPower", f"[{', '.join(str(s) for s in _serials)}]")
+                # SoC per pack
+                if _socs:
+                    soc_vals = ", ".join(f"{float(s):.1f}%" for s in _socs)
+                    print_kv("  SoC", soc_vals)
+                # BMS mode per pack, decoded
+                if _bmss:
+                    bms_vals = ", ".join(_BMS_STATE.get(int(b), f"mode {b}") for b in _bmss)
+                    print_kv("  BMS", bms_vals)
+
+        # Daily Totals
+        totals = data.get("totals", {})
+        if "error" not in totals and totals:
+            print_section("📊", "Today's Totals")
+            print_kv("Solar", f'{totals.get("solar_kwh", 0):.2f} kWh')
+            grid_imp = totals.get("grid_import_kwh", 0)
+            grid_exp = totals.get("grid_export_kwh", 0)
+            print_kv("Grid Import", f'{grid_imp:.2f} kWh')
+            print_kv("Grid Export", f'{grid_exp:.2f} kWh')
+            print_kv("Battery Charge", f'{totals.get("battery_charge_kwh", 0):.2f} kWh')
+            print_kv("Battery Discharge", f'{totals.get("battery_discharge_kwh", 0):.2f} kWh')
+            print_kv("Home Use", f'{totals.get("home_use_kwh", 0):.2f} kWh')
+
+        # Electrical (211)
+        elec = data.get("electrical", {})
+        if "error" not in elec and elec:
+            print_section("🔌", "Electrical (211)")
+            v1 = elec.get("grid_voltage_l1_v")
+            v2 = elec.get("grid_voltage_l2_v")
+            if v1 is not None:
+                vstr = f"{v1:.0f} V"
+                if v2 is not None and v2 != 0:
+                    vstr += f" / {v2:.0f} V"
+                print_kv("Grid Voltage", vstr)
+            lv = elec.get("grid_line_voltage_v")
+            if lv is not None and lv != 0:
+                print_kv("Line Voltage", f"{lv:.0f} V")
+            freq = elec.get("grid_frequency_hz")
+            set_freq = elec.get("grid_set_freq_hz")
+            if freq is not None:
+                fstr = f"{freq:.2f} Hz"
+                if set_freq is not None:
+                    fstr += f"  (set: {set_freq:.2f} Hz)"
+                print_kv("Frequency", fstr)
+            i1 = elec.get("grid_current_l1_a")
+            i2 = elec.get("grid_current_l2_a")
+            if i1 is not None:
+                istr = f"{i1:.2f} A"
+                if i2 is not None:
+                    istr += f" / {i2:.2f} A"
+                print_kv("Grid Current", istr)
+            dsp = elec.get("dsp_run_status")
+            if dsp is not None:
+                print_kv("DSP Run Status", str(dsp))
 
         # Run analysis inline
         findings = analyze_connectivity(data)
@@ -2249,15 +2848,211 @@ async def run(client, *, json_output: bool = False, save: bool = False,
         warranty = data.get("warranty", {})
         if "error" not in warranty and warranty.get("expirationTime"):
             print_section("📋", "Warranty")
-            print_kv("Expires", warranty.get("expirationTime", "?"))
-            tp = warranty.get("throughput_kWh", 0)
-            rem = warranty.get("remainThroughput_kWh", 0)
+
+            def _days_human(n):
+                """Format a day count as 'X years, Y days (N days)'."""
+                if n is None:
+                    return None
+                n = int(n)
+                yrs, rem = divmod(abs(n), 365)
+                if yrs:
+                    return f"{yrs} year{'s' if yrs != 1 else ''}, {rem} day{'s' if rem != 1 else ''}  ({abs(n):,} days)"
+                return f"{abs(n)} day{'s' if abs(n) != 1 else ''}"
+
+            # ─ Expiry
+            expires = warranty.get("expirationTime", "?")
+            days_left = warranty.get("days_to_expiry")
+            if days_left is not None:
+                if days_left < 0:
+                    expiry_color = "red"
+                    expiry_tag = f"EXPIRED {_days_human(abs(days_left))} ago"
+                elif days_left <= 90:
+                    expiry_color, expiry_tag = "yellow", f"{_days_human(days_left)} remaining"
+                else:
+                    expiry_color, expiry_tag = "green", f"{_days_human(days_left)} remaining"
+                print_kv("Expires", f"{expires}  {c(expiry_color, expiry_tag)}")
+            else:
+                print_kv("Expires", expires)
+
+            # ─ Age since installation
+            d_install = warranty.get("days_since_install")
+            if d_install is not None:
+                print_kv("Since Install", _days_human(d_install))
+
+            # ─ Age since PTO
+            d_pto = warranty.get("days_since_pto")
+            if d_pto is not None:
+                print_kv("Since PTO", _days_human(d_pto))
+
+            # ─ Throughput
+            tp   = warranty.get("throughput_kWh", 0)
+            rem  = warranty.get("remainThroughput_kWh", 0)
+            used = warranty.get("used_kWh", 0)
             if tp > 0:
-                used = tp - rem
-                pct = round((used / tp) * 100)
-                print_kv("Throughput", f"{tp:.0f} kWh ({pct}% used)")
+                pct_used = round((used / tp) * 100, 1)
+                pct_rem  = round((rem  / tp) * 100, 1)
+                tp_color = "red" if pct_rem < 15 else "yellow" if pct_rem < 30 else "green"
+                print_kv("Throughput", f"{tp:,.0f} kWh rated  | {used:,.0f} kWh used ({pct_used}%)  |  {c(tp_color, f'{rem:,.0f} kWh left ({pct_rem}%)')}")
+
+            # ─ Average daily throughput
+            avg_inst = warranty.get("avg_kwh_per_day_install")
+            avg_pto  = warranty.get("avg_kwh_per_day_pto")
+            if avg_inst is not None or avg_pto is not None:
+                avg_parts = []
+                if avg_inst is not None:
+                    avg_parts.append(f"{avg_inst:.2f} kWh/day since install")
+                if avg_pto is not None and avg_pto != avg_inst:
+                    avg_parts.append(f"{avg_pto:.2f} kWh/day since PTO")
+                print_kv("Avg Daily kWh", "  |  ".join(avg_parts))
+
+            # ─ Budget/day = rated kWh ÷ total warranty term
+            #   (what the warranty ALLOWS you to use each day on average)
+            forecast = warranty.get("daily_kwh_forecast")
+            total_wdays = warranty.get("total_warranty_days")
+            if forecast is not None:
+                tw_h = _days_human(total_wdays) if total_wdays else f"{total_wdays} days"
+                print_kv("Budget/day", f"{forecast:.2f} kWh/day  ({tp:,.0f} kWh ÷ {tw_h} warranty term)")
+
+            # ─ Remaining/day = remaining kWh ÷ days to expiry
+            #   (the pace required from today to exhaust remaining budget by expiry)
+            needed = warranty.get("daily_rem_needed")
+            if needed is not None and days_left and days_left > 0:
+                needed_color = "green" if (avg_inst or 0) <= needed else "yellow"
+                print_kv("Remaining/day", c(needed_color, f"{needed:.2f} kWh/day  ({rem:,.0f} kWh remaining ÷ {_days_human(days_left)} to expiry)"))
+
+            # ─ Per-device
             for dev in warranty.get("devices", []):
                 print_kv(f"  {dev.get('model', '?')}", f"Expires: {dev.get('expires', '?')}")
+
+        # Programmes, Schemes & VPP
+        prog = data.get("programmes", {})
+        if "error" not in prog and prog:
+            print_section("🔌", "Grid & Schemes")
+
+            # Grid compliance profile (from API — never hardcoded)
+            gp = prog.get("grid_profile")
+            if gp:
+                print_kv("Grid Profile", gp)
+
+            # ─ Operational validity flags — red warning when False
+            solar_ok = prog.get("solar_connected", True)
+            grid_ok  = prog.get("grid_connected", True)
+            if not solar_ok:
+                print_kv("Solar", c("red", "⚠️  Not connected to aGate ports — solar relay/MPPT/CT functions invalid"))
+            if not grid_ok:
+                print_kv("Grid", c("red", "⚠️  Off-grid configuration — grid charge/export operations not valid"))
+
+            # aHub
+            if prog.get("ahub_detected"):
+                print_kv("aHub", c("green", "✅ Detected"))
+
+            # CT calibration required
+            if prog.get("need_ct_test"):
+                print_kv("CT Test", c("yellow", "⚠️  CT calibration required"))
+
+            # NEM type (US-CA only — omitted entirely for AU/other)
+            nem = prog.get("nem_type")
+            if nem and nem != "None":
+                print_kv("NEM Type", nem)
+
+            # DER schedule (relevant where SGIP/AS/DEMS applies)
+            der = prog.get("der_schedule")
+            if der and der not in ("", "Other", "None", None):
+                print_kv("DER Schedule", der)
+
+            # Scheme eligibility flags — only print those that are True
+            _scheme_flags = [
+                ("sgip",       "SGIP",          "Self-Generation Incentive Program (CA)"),
+                ("bb",         "Backup Battery", "Backup Battery scheme"),
+                ("ja12",       "JA12",           "JA12 grid compliance"),
+                ("sdcp",       "SDCP",           "Smart Device Control Program"),
+                ("pcs_enabled","PCS",            "Power Control System enabled"),
+            ]
+            active_schemes = [(label, desc) for key, label, desc in _scheme_flags if prog.get(key)]
+            for label, desc in active_schemes:
+                print_kv(label, c("green", f"✅ Enrolled  ({desc})"))
+
+            # Grid limits (from get_power_control_settings)
+            # -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW cap
+            def _grid_limit_label(val, unlimited_txt="Unlimited", disabled_txt="Not allowed"):
+                if val is None:
+                    return c("dim", "—")
+                val = float(val)
+                if val < 0:           return c("green", unlimited_txt)
+                if val == 0:          return c("yellow", disabled_txt)
+                return f"{val:.1f} kW"
+
+            _pcs = prog.get("grid_limits_raw", {}) or {}
+            if _pcs:
+                print_kv("Grid Import",    _grid_limit_label(_pcs.get("gridMax"),               "Unlimited import",  "Charge from grid not allowed"))
+                print_kv("Grid Export",    _grid_limit_label(_pcs.get("gridFeedMax"),            "Unlimited export",  "Export not allowed"))
+                print_kv("Global Charge",  _grid_limit_label(_pcs.get("globalGridChargeMax"),    "Unlimited",         "Disabled"))
+                print_kv("Global Export",  _grid_limit_label(_pcs.get("globalGridDischargeMax"), "Unlimited",         "Disabled"))
+                if _pcs.get("notControlExportSolar"):
+                    print_kv("Solar Export", c("dim", "Not controlled (solar export unmetered)"))
+                if _pcs.get("peakDemandGridMax") is not None:
+                    print_kv("Peak Demand",  _grid_limit_label(_pcs.get("peakDemandGridMax")))
+
+            # ─ Charge derating (aPower 2+)
+            if prog.get("charging_power_limited"):
+                print_kv("Charge Derating", c("yellow", "⚠️  Active — charge power limited to protect service breaker (aPower 2+)"))
+
+            # Battery savings
+            if prog.get("battery_savings_flag"):
+                print_kv("Battery Savings", c("green", "✅ Active"))
+
+            # VPP
+            print_section("🏭", "VPP Programme")
+            vpp_enrolled = prog.get("vpp_enrolled", False)
+            if vpp_enrolled:
+                prog_name    = prog.get("vpp_programme_name") or ""
+                partner_name = prog.get("vpp_partner_name") or ""
+                label = prog_name or "Enrolled"
+                if partner_name:
+                    label += f"  ({partner_name})"
+                print_kv("Enrolled", c("green", f"✅ {label}"))
+                soc     = prog.get("vpp_soc_pct")
+                min_soc = prog.get("vpp_min_soc_pct")
+                max_soc = prog.get("vpp_max_soc_pct")
+                if soc is not None:
+                    print_kv("VPP SoC", f"{soc}%  (range: {min_soc}% – {max_soc}%)")
+                if prog.get("vpp_active_today"):
+                    print_kv("Today", c("yellow", "⚡ VPP dispatch active today"))
+            else:
+                print_kv("Enrolled", c("dim", "Not enrolled"))
+        # Operating Modes
+        om = data.get("operating_modes", {})
+        if "error" not in om and om.get("modes"):
+            print_section("⚙️", "Operating Modes")
+
+            if om.get("stop_mode"):
+                print_kv("WARNING", c("red", "⚠️  STOP MODE active — gateway may be locked out"))
+
+            for m in om["modes"]:
+                wm_name = m.get("displayName") or m.get("name", "?")
+                available = m.get("available", False)
+                configured = m.get("configured", False)
+
+                if available:
+                    soc = m.get("soc")
+                    min_soc = m.get("minSoc")
+                    max_soc = m.get("maxSoc")
+                    soc_str = f"  SoC: {soc}%" if soc is not None else ""
+                    if min_soc is not None and max_soc is not None and (min_soc != 0 or max_soc != 100):
+                        soc_str += f"  (range: {min_soc}–{max_soc}%)"
+                    print_kv(f"✅ {wm_name}", c("green", f"Available{soc_str}"))
+                elif not configured:
+                    reason = m.get("reason") or "Not configured"
+                    print_kv(f"❌ {m.get('name', '?')}", c("yellow", f"Not configured — {reason}"))
+                else:
+                    # Configured but prereq not met (shouldn't normally happen but handle gracefully)
+                    reason = m.get("reason") or "Prerequisite not met"
+                    print_kv(f"❌ {wm_name}", c("yellow", f"Not available — {reason}"))
+
+            if om.get("grid_charge_enabled"):
+                print_kv("Grid Charge", c("green", "✅ Enabled"))
+            if om.get("backup_forever_flag"):
+                print_kv("Backup Forever", c("dim", "Enabled"))
 
         # TOU / Grid status
         tou = data.get("tou_status", {})
@@ -2266,10 +3061,35 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             pto = tou.get("ptoDate")
             if pto:
                 print_kv("PTO Date", pto)
-            plan = tou.get("tariffPlan")
+
+            # Utility / tariff identity
+            plan    = tou.get("tariffPlan")
+            company = tou.get("electricCompany", "")
+            co_id   = tou.get("electricCompanyId")
             if plan:
-                company = tou.get("electricCompany", "")
-                print_kv("Tariff", f"{plan} ({company})" if company else plan)
+                print_kv("Tariff", plan)
+            if company:
+                co_str = company.strip()
+                if co_id is not None and int(co_id) != -1:
+                    co_str += f"  (ID: {co_id})"
+                print_kv("Utility", co_str)
+
+            # Template / schedule IDs (useful for support tickets and compare)
+            tmpl_id  = tou.get("templateId")
+            inst_id  = tou.get("templateInstanceId")
+            province = tou.get("provinceEn")
+            if tmpl_id is not None:
+                id_str = f"Template {tmpl_id}" if int(tmpl_id) != 0 else "User-defined (templateId=0)"
+                if inst_id:
+                    id_str += f"  ·  Instance {inst_id}"
+                print_kv("Schedule ID", id_str)
+            if province:
+                print_kv("Province", province)
+
+            updated = tou.get("lastUpdated")
+            if updated:
+                print_kv("Last Updated", updated)
+
             tariff_set = tou.get("tariffSettingFlag")
             print_kv("Tariff Configured", c("green", "Yes") if tariff_set else c("red", "No"))
             online = tou.get("onlineFlag")
