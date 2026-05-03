@@ -1,9 +1,10 @@
 # CLI Reference: `franklinwh-cli schema`
 
 > **Purpose:** The `schema` command is the authoritative reference for the
-> `franklinwh_cloud` data model. It prints every field in `stats.current`
-> and `stats.totals` alongside the raw API JSON key, the MQTT cmdType source,
-> units, and (optionally) the live value from your gateway.
+> `franklinwh_cloud` data model. It prints every field in `stats.current`,
+> `stats.totals`, and the grid power control settings alongside the raw API JSON
+> key, the MQTT cmdType source, units, and (optionally) the live value from your
+> gateway.
 
 ---
 
@@ -19,6 +20,7 @@ Without a reference, there is no way to know that:
 - `grid_use` ← raw field `p_uti` (utility power, kW)
 - `grid_line_voltage` ← raw field `gridLineVol` **÷ 10** (raw is tenths of a volt)
 - `switch_1_load` comes from cmdType **311** (not 203)
+- `gridFeedMax = -1` means **unlimited export**, not a bug
 
 `franklinwh-cli schema` answers all of these questions in one command.
 
@@ -28,16 +30,29 @@ Without a reference, there is no way to know that:
 
 ```bash
 franklinwh-cli schema                           # full schema — no login required
-franklinwh-cli schema --live                    # + live values from get_stats()
+franklinwh-cli schema --live                    # + live values from get_stats() + get_power_control_settings()
 franklinwh-cli schema --filter 211              # only cmdType 211 electrical fields
 franklinwh-cli schema --filter power            # only power flow fields
 franklinwh-cli schema --filter mode             # only global Operating Mode configurations (SOC limiters)
 franklinwh-cli schema --filter tou              # only TOU schedule blocks
 franklinwh-cli schema --filter relay            # only relay fields
+franklinwh-cli schema --filter grid             # only Grid Power Control Limits section
 franklinwh-cli schema --json                    # machine-readable JSON
 franklinwh-cli schema --live --json             # JSON + live values
-franklinwh-cli schema --live --filter power     # filtered JSON
+franklinwh-cli schema --live --filter power     # filtered with live values
 ```
+
+---
+
+## Output sections
+
+| Section | Header | Source | Login required? |
+|---------|--------|--------|-----------------|
+| `stats.current` | `📊 stats.current` | `getDeviceCompositeInfo` / cmdType 203, 211, 311 | No (static) / Yes (live) |
+| `stats.totals` | `📈 stats.totals` | `getDeviceCompositeInfo` / cmdType 203, 311 | No (static) / Yes (live) |
+| Operating Mode Config | `⚙️` | `getGatewayTouListV2` | No (static) |
+| TOU Schedule Blocks | `📅` | `setTouSchedule` / `getTouList` | No (static) |
+| Grid Power Control Limits | `⚡` | `get_power_control_settings` (REST) | Yes (live only) |
 
 ---
 
@@ -48,7 +63,7 @@ franklinwh-cli schema --live --filter power     # filtered JSON
 | **Python Attribute** | The field name on `stats.current` or `stats.totals` |
 | **Raw API Key** | The JSON key in the FranklinWH API response |
 | **Source** | Which API endpoint or transport provides this field |
-| **Units** | Physical unit (kW, kWh, V, A, Hz, %, °C) |
+| **Units** | Physical unit (kW, kWh, V, A, Hz, %, °C, `kW / -1`) |
 | **Live Value** | (with `--live` only) current reading from the gateway |
 
 ### Source prefix notation
@@ -69,12 +84,23 @@ franklinwh-cli schema --live --filter power     # filtered JSON
 | `311/runtimeData` | **MQTT Relay** → `get_smart_circuits_info()` (cmdType 311) | Higher — aGate round-trip | Only if smart circuits accessory present |
 | `311/sw_data` | **MQTT Relay** → `_switch_usage()` (cmdType 353, not 311) | Higher — aGate round-trip | Only if smart circuits active in `pro_load[]` |
 | `get_tou_info` | **REST GET** → TOU schedule endpoint | Low-medium | Only in TOU mode, opt-in |
+| `get_power_control_settings` | **REST GET** | Low — cached | `--live` only |
 | `derived` | Local computation | **Free** — no API call | Always |
 
 ### Relay encoding
 
 All relay fields use firmware convention: **`1 = OPEN (disconnected)`, `0 = CLOSED (connected)`**
 This is the inverse of what you might expect — the firmware reports relay coil state, not contact state.
+
+### Grid limit encoding (`kW / -1` units)
+
+Fields sourced from `get_power_control_settings` use a three-state encoding:
+
+| Raw value | Meaning | Display |
+|-----------|---------|---------|
+| `-1` | Unlimited | `Unlimited (-1)` |
+| `0` | Not allowed / Disabled | `Not allowed (0)` |
+| `> 0` | kW power cap | `{value:.1f} kW` |
 
 ---
 
@@ -106,140 +132,69 @@ Python Attribute                Raw API Key             Source                Un
   switch_2_load                   pro_load_pwr[1]         311/sw_data           kW
   v2l_use                         CarSWPower              311/sw_data           kW
 
-  ── Grid State
-  grid_connection_state           derived                 derived               enum
-
   ── Mode
   work_mode                       currentWorkMode         203/result            int
   work_mode_desc                  derived                 derived               str
-  device_status                   deviceStatus            203/result            int
   tou_mode                        mode                    203/runtimeData       int
   tou_mode_desc                   name                    203/runtimeData       str
   run_status                      run_status              203/runtimeData       int
-  run_status_desc                  derived                 derived               str
+  run_status_desc                 RUN_STATUS[run_status]  derived               str
+  effective_mode                  derived                 derived               str
 
   ── Battery Packs
   apower_serial_numbers           fhpSn                   203/runtimeData       list
   apower_soc                      fhpSoc                  203/runtimeData       list
   apower_power                    fhpPower                203/runtimeData       list
   apower_bms_mode                 bms_work                203/runtimeData       list
+  ...
 
-  ── Environment
-  agate_ambient_temparture        t_amb                   203/runtimeData       °C
+⚡ Grid Power Control Limits  (get_power_control_settings)
+  -1 = Unlimited,  0 = Not allowed/Disabled,  >0 = kW power cap
 
-  ── Relays
-  grid_relay1                     main_sw[0]              203/runtimeData       relay
-  generator_relay                 main_sw[1]              203/runtimeData       relay
-  solar_relay1                    main_sw[2]              203/runtimeData       relay
+  ── Global Limits
+  globalGridChargeMax             globalGridChargeMax     get_power_control_settings  kW / -1
+  globalGridDischargeMax          globalGridDischargeMax  get_power_control_settings  kW / -1
+  globalSettingStatus             globalSettingStatus     get_power_control_settings  int
 
-  ── Connectivity
-  mobile_signal                   signal                  203/runtimeData       dBm
-  wifi_signal                     wifiSignal              203/runtimeData       %
-  network_connection              connType                203/runtimeData       int
+  ── Feed-In (Export)
+  gridFeedMax                     gridFeedMax             get_power_control_settings  kW / -1
+  notControlExportSolar           notControlExportSolar   get_power_control_settings  bool
 
-  ── V2L
-  v2l_enabled                     v2lModeEnable           203/runtimeData       bool
-  v2l_status                      v2lRunState             203/runtimeData       int
+  ── Import
+  gridMax                         gridMax                 get_power_control_settings  kW / -1
 
-  ── Generator
-  generator_enabled               genEn                   203/runtimeData       bool
-  generator_status                genStat                 203/runtimeData       int
+  ── Programmes
+  sgipFlag                        sgipFlag                get_power_control_settings  0/1
+  itcFlag                         itcFlag                 get_power_control_settings  0/1
+  isNem3                          isNem3                  get_power_control_settings  0/1
+  isCalifornia                    isCalifornia            get_power_control_settings  0/1
+```
 
-  ── Power Flow
-  grid_charging_battery           gridChBat               203/runtimeData       kW
-  solar_export_to_grid            soOutGrid               203/runtimeData       kW
-  solar_charging_battery          soChBat                 203/runtimeData       kW
-  battery_export_to_grid          batOutGrid              203/runtimeData       kW
+---
 
-  ── APbox/MPPT
-  apbox_remote_solar              apbox20Pv               203/runtimeData       kW
-  remote_solar_enabled            remoteSolarEn           203/runtimeData       bool
-  mppt_status                     mpptSta                 203/runtimeData       int
-  mppt_all_power                  mpptAllPower            203/runtimeData       kW
-  mppt_active_power               mpptActPower            203/runtimeData       kW
-  mpan_pv1_power                  mPanPv1Power            203/runtimeData       kW
-  mpan_pv2_power                  mPanPv2Power            203/runtimeData       kW
-  remote_solar_pv1                remoteSolar1Power       203/runtimeData       kW
-  remote_solar_pv2                remoteSolar2Power       203/runtimeData       kW
+### Grid Power Control Limits (with live values)
 
-  ── Alarms
-  alarms_count                    currentAlarmVOList      203/result            count
+```bash
+$ franklinwh-cli schema --live --filter grid
+```
 
-  ── Extended Relays (211)
-  grid_relay2                     gridRelayStat           211/result            relay
-  black_start_relay               bFpVApboxRelay          211/result            relay
-  pv_relay2                       pvRelay2                211/result            relay
-  bfpv_apbox_relay                BFPVApboxRelay          211/result            relay
+```
+⚡ Grid Power Control Limits  (get_power_control_settings)
+  -1 = Unlimited,  0 = Not allowed/Disabled,  >0 = kW power cap
 
-  ── Electrical (211)
-  grid_voltage1                   gridVol1                211/result            V
-  grid_voltage2                   gridVol2                211/result            V
-  grid_current1                   gridCur1                211/result            A
-  grid_current2                   gridCur2                211/result            A
-  grid_frequency                  gridFreq                211/result            Hz
-  grid_set_frequency              gridSetFreq             211/result            Hz
-  grid_line_voltage               gridLineVol÷10          211/result            V
-  generator_voltage               oilVol                  211/result            V
+  ── Global Limits
+  globalGridChargeMax             globalGridChargeMax     ...  kW / -1   Unlimited (-1)
+  globalGridDischargeMax          globalGridDischargeMax  ...  kW / -1   Unlimited (-1)
+  globalSettingStatus             globalSettingStatus     ...  int       0
 
-  ── Operating Mode Config (getGatewayTouListV2)
-  soc                             soc                     getTouList            float  
-  maxSoc                          maxSoc                  getTouList            float  
-  minSoc                          minSoc                  getTouList            float  
-  dischargeDepthSoc               dischargeDepthSoc       getTouList            float  
-  complianceSoc                   complianceSoc           getTouList            float  
+  ── Feed-In (Export)
+  gridFeedMax                     gridFeedMax             ...  kW / -1   10.0 kW
+  gridFeedMaxFlag                 gridFeedMaxFlag         ...  int       2
+  notControlExportSolar           notControlExportSolar   ...  bool      True
 
-  ── TOU Schedule Blocks (detailVoList)
-  startHourTime                   startHourTime           setTouSchedule        HH:MM  
-  endHourTime                     endHourTime             setTouSchedule        HH:MM  
-  name                            name                    getTouList            str    
-  dispatchId                      dispatchId              setTouSchedule        int      [1=Home, 2=Standby, 3=SolarCharge, 6=SelfCons, 7=Export, 8=GridCharge]
-  waveType                        waveType                setTouSchedule        int      [0=OffPeak, 1=MidPeak, 2=Peak, 4=SuperOff]
-  targetSoc                       targetSoc               setTouSchedule        int
-
-  ── Smart Circuits
-  switch_1_state                  pro_load[0]             311/runtimeData       0/1
-  switch_2_state                  pro_load[1]             311/runtimeData       0/1
-  switch_3_state                  pro_load[2]             311/runtimeData       0/1
-
-
-📈 stats.totals  (getDeviceCompositeInfo / cmdType 203)
-Python Attribute                Raw API Key             Source                Units
------------------------------------------------------------------------------------------
-
-  ── Battery
-  battery_charge                  kwh_fhp_chg             203/runtimeData       kWh
-  battery_discharge               kwh_fhp_di              203/runtimeData       kWh
-
-  ── Grid
-  grid_import                     kwh_uti_in              203/runtimeData       kWh
-  grid_export                     kwh_uti_out             203/runtimeData       kWh
-
-  ── Generation
-  solar                           kwh_sun                 203/runtimeData       kWh
-  generator                       kwh_gen                 203/runtimeData       kWh
-  home_use                        kwh_load                203/runtimeData       kWh
-
-  ── Smart Circuits
-  switch_1_use                    SW1ExpEnergy            311/sw_data           kWh
-  switch_2_use                    SW2ExpEnergy            311/sw_data           kWh
-
-  ── V2L
-  v2l_export                      CarSWExpEnergy          311/sw_data           kWh
-  v2l_import                      CarSWImpEnergy          311/sw_data           kWh
-
-  ── Load Breakdown
-  solar_load_kwh                  kwhSolarLoad            203/runtimeData       kWh
-  grid_load_kwh                   kwhGridLoad             203/runtimeData       kWh
-  battery_load_kwh                kwhFhpLoad              203/runtimeData       kWh
-  generator_load_kwh              kwhGenLoad              203/runtimeData       kWh
-
-  ── APbox/MPPT
-  mpan_pv1_wh                     mpanPv1Wh               203/runtimeData       Wh
-  mpan_pv2_wh                     mpanPv2Wh               203/runtimeData       Wh
-
-  Relay encoding: 1=OPEN (disconnected), 0=CLOSED (connected)
-  cmdType 211 fields only populated when get_stats(include_electrical=True)
-  cmdType 311 fields require Smart Circuit accessory installed
+  ── Import
+  gridMax                         gridMax                 ...  kW / -1   Unlimited (-1)
+  gridMaxFlag                     gridMaxFlag             ...  int       2
 ```
 
 ---
@@ -257,15 +212,17 @@ $ franklinwh-cli schema --filter 211
   pv_relay2                       pvRelay2                211/result            relay
   bfpv_apbox_relay                BFPVApboxRelay          211/result            relay
 
-  ── Electrical (211)
+  ── Power Measurements (211)
   grid_voltage1                   gridVol1                211/result            V
   grid_voltage2                   gridVol2                211/result            V
-  grid_current1                   gridCur1                211/result            A
-  grid_current2                   gridCur2                211/result            A
+  grid_current1                   gridCurr1               211/result            A
+  grid_current2                   gridCurr2               211/result            A
   grid_frequency                  gridFreq                211/result            Hz
-  grid_set_frequency              gridSetFreq             211/result            Hz
+  grid_set_frequency              dspSetFreq              211/result            Hz
   grid_line_voltage               gridLineVol÷10          211/result            V
-  generator_voltage               oilVol                  211/result            V
+  generator_voltage               genVoltage              211/result            V
+  dsp_run_status                  dspRunStatus            211/result            int
+  ibg_run_status                  ibgRunStatus            211/result            int
 ```
 
 > [!NOTE]
@@ -277,19 +234,17 @@ $ franklinwh-cli schema --filter 211
 
 ### Operating Mode & TOU Blocks
 
-Recent updates have decoupled the global Operating Mode configurations (like global SOC limiters) from the individual Time of Use schedule blocks. You can view their respective structures using `--filter mode` and `--filter tou`.
-
 ```bash
 $ franklinwh-cli schema --filter mode
 ```
 
 ```
   ── SOC Limits
-  soc                             soc                     getTouList            float  
-  maxSoc                          maxSoc                  getTouList            float  
-  minSoc                          minSoc                  getTouList            float  
-  dischargeDepthSoc               dischargeDepthSoc       getTouList            float  
-  complianceSoc                   complianceSoc           getTouList            float  
+  soc                             soc                     getTouList            float
+  maxSoc                          maxSoc                  getTouList            float
+  minSoc                          minSoc                  getTouList            float
+  dischargeDepthSoc               dischargeDepthSoc       getTouList            float
+  complianceSoc                   complianceSoc           getTouList            float
 ```
 
 ```bash
@@ -298,16 +253,16 @@ $ franklinwh-cli schema --filter tou
 
 ```
   ── Time Block
-  startHourTime                   startHourTime           setTouSchedule        HH:MM  
-  endHourTime                     endHourTime             setTouSchedule        HH:MM  
+  startHourTime                   startHourTime           setTouSchedule        HH:MM
+  endHourTime                     endHourTime             setTouSchedule        HH:MM
 
   ── Configuration
-  name                            name                    getTouList            str    
-  dispatchId                      dispatchId              setTouSchedule        int      [1=Home, 2=Standby, 3=SolarCharge, 6=SelfCons, 7=Export, 8=GridCharge]
-  targetSoc                       targetSoc               setTouSchedule        int    
+  name                            name                    getTouList            str
+  dispatchId                      dispatchId              setTouSchedule        int    [1=Home, 2=Standby, 3=SolarCharge, 6=SelfCons, 7=Export, 8=GridCharge]
+  targetSoc                       targetSoc               setTouSchedule        int
 
   ── Tariff/Pricing
-  waveType                        waveType                setTouSchedule        int      [0=OffPeak, 1=MidPeak, 2=Peak, 4=SuperOff]
+  waveType                        waveType                setTouSchedule        int    [0=OffPeak, 1=MidPeak, 2=Peak, 4=SuperOff]
 ```
 
 ---
@@ -327,24 +282,6 @@ $ franklinwh-cli --json schema --filter power
       "units": "kW",
       "group": "Power Flow"
     },
-    "battery_use": {
-      "api_key": "p_fhp",
-      "source": "203/runtimeData",
-      "units": "kW",
-      "group": "Power Flow"
-    },
-    "grid_use": {
-      "api_key": "p_uti",
-      "source": "203/runtimeData",
-      "units": "kW",
-      "group": "Power Flow"
-    },
-    "home_load": {
-      "api_key": "p_load",
-      "source": "203/runtimeData",
-      "units": "kW",
-      "group": "Power Flow"
-    },
     "battery_soc": {
       "api_key": "soc",
       "source": "203/runtimeData",
@@ -352,28 +289,30 @@ $ franklinwh-cli --json schema --filter power
       "group": "Power Flow"
     }
   },
-  "totals": {}
+  "totals": {},
+  "grid_limits": {}
 }
 ```
 
-When `--live` is added, each entry gains a `"live_value"` key:
+When `--live` is added, each entry gains a `"live_value"` key. The `grid_limits`
+object is populated from `get_power_control_settings`:
 
 ```json
 {
-  "current": {
-    "solar_production": {
-      "api_key": "p_sun",
-      "source": "203/runtimeData",
-      "units": "kW",
-      "group": "Power Flow",
-      "live_value": 4.82
+  "grid_limits": {
+    "gridFeedMax": {
+      "api_key": "gridFeedMax",
+      "source": "get_power_control_settings",
+      "units": "kW / -1",
+      "group": "Feed-In (Export)",
+      "live_value": 10.0
     },
-    "battery_soc": {
-      "api_key": "soc",
-      "source": "203/runtimeData",
-      "units": "%",
-      "group": "Power Flow",
-      "live_value": 87.0
+    "gridMax": {
+      "api_key": "gridMax",
+      "source": "get_power_control_settings",
+      "units": "kW / -1",
+      "group": "Import",
+      "live_value": -1.0
     }
   }
 }
@@ -389,16 +328,15 @@ $ franklinwh-cli schema --live --filter power
 
 ```
   ── Power Flow
-  solar_production                p_sun                   203/runtimeData       kW       4.82
-  generator_production            p_gen                   203/runtimeData       kW       0.00
-  battery_use                     p_fhp                   203/runtimeData       kW       -1.20
+  solar_production                p_sun                   203/runtimeData       kW       1.20
+  battery_use                     p_fhp                   203/runtimeData       kW       -0.70
   grid_use                        p_uti                   203/runtimeData       kW       0.00
-  home_load                       p_load                  203/runtimeData       kW       3.62
-  battery_soc                     soc                     203/runtimeData       %        87.00
-  grid_charging_battery           gridChBat               203/runtimeData       kW       0.00
-  solar_export_to_grid            soOutGrid               203/runtimeData       kW       0.00
-  solar_charging_battery          soChBat                 203/runtimeData       kW       1.20
-  battery_export_to_grid          batOutGrid              203/runtimeData       kW       0.00
+  home_load                       p_load                  203/runtimeData       kW       0.50
+  battery_soc                     soc                     203/runtimeData       %        96.00
+  grid_charging_battery           gridChBat               203/runtimeData       kW       0.21
+  solar_export_to_grid            soOutGrid               203/runtimeData       kW       0.23
+  solar_charging_battery          soChBat                 203/runtimeData       kW       8.85
+  battery_export_to_grid          batOutGrid              203/runtimeData       kW       0.04
 ```
 
 > [!TIP]
@@ -424,18 +362,21 @@ schema = json.loads(result.stdout)
 
 for field, meta in schema["current"].items():
     print(f"{field}: {meta['units']} from {meta['api_key']} ({meta['source']})")
-```
 
-Or simply reference it when mapping library fields to Home Assistant sensor
-configuration — every `stats.current.<field>` value corresponds to exactly
-one `api_key` in exactly one `source` cmdType.
+# Grid limits
+for field, meta in schema["grid_limits"].items():
+    print(f"{field}: {meta['units']} → {meta.get('live_value')}")
+```
 
 ---
 
 ## Implementation notes
 
 - **No login required** for the base schema — the registry is static and local
-- **One MQTT call** with `--live` (same as `franklinwh-cli status`)
-- The schema registry is in `franklinwh_cloud/cli_commands/schema.py` (`CURRENT_SCHEMA`, `TOTALS_SCHEMA`)
+- **`--live`** makes two calls: `get_stats(include_electrical=True)` (MQTT+REST) + `get_power_control_settings()` (REST)
+- The schema registries are in `franklinwh_cloud/cli_commands/schema.py`:
+  - `CURRENT_SCHEMA` — `stats.current` fields
+  - `TOTALS_SCHEMA` — `stats.totals` fields
+  - `GRID_LIMITS_SCHEMA` — `get_power_control_settings` fields (added v3)
 - The same mapping is documented as inline comments in `franklinwh_cloud/models.py`
-- `--filter` matches case-insensitively against the `group` field (e.g. `211`, `power`, `relay`, `battery`)
+- `--filter` matches case-insensitively against the `group` field (e.g. `211`, `power`, `relay`, `battery`, `grid`)

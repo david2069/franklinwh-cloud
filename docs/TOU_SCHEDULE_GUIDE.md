@@ -533,68 +533,29 @@ Key log messages to watch for:
 
 ## CLI Usage
 
-### Reading schedules (available now)
+> [!TIP]
+> The `franklinwh-cli tou` command is fully implemented. See the dedicated
+> **[CLI_TOU_COMMAND.md](CLI_TOU_COMMAND.md)** for the complete flag reference,
+> implementation status matrix, and worked examples.
+
+### Quick examples
 
 ```bash
-franklinwh-cli tou                    # Schedule overview with dispatch blocks
+# Read
+franklinwh-cli tou                    # Full schedule (all seasons)
+franklinwh-cli tou --next             # Current block + remaining time
+franklinwh-cli tou --price            # Active pricing tier and rates
 franklinwh-cli tou --dispatch         # Include raw dispatch metadata
 franklinwh-cli tou --json             # Machine-readable JSON
-```
 
-### Setting schedules from CLI
-
-> [!NOTE]
-> `tou --set` writes to your aGate's TOU schedule. For time-window commands
-> (`--start`/`--end`), the library automatically targets today's active season.
-> Use `--month N` to target a different season. Use `--wait` to poll until
-> the aGate confirms the schedule has been applied.
-
-**Workarounds to set from CLI:**
-
-**Option A** — Use `mode --set` for simple whole-day modes:
-```bash
-franklinwh-cli mode --set self_consumption
-franklinwh-cli mode --set tou
-franklinwh-cli mode --set emergency_backup --soc 30
-```
-
-**Option B** — Use `raw` for direct API passthrough:
-```bash
-# Read current schedule
-franklinwh-cli raw get_tou_dispatch_detail --json
-
-# Read with option=2 (full detailVoList)
-franklinwh-cli raw get_tou_info 2 --json
-```
-
-**Option C** — Python one-liner:
-```bash
-python3 -c "
-import asyncio
-from franklinwh_cloud.client import Client, TokenFetcher
-from franklinwh_cloud.const import dispatchCodeType as D, WaveType as W
-
-async def go():
-    f = TokenFetcher('email', 'pass')
-    await f.get_token()
-    c = Client(f, 'AGATE-SN')
-    r = await c.set_tou_schedule('CUSTOM', [
-        {'name':'Off-Peak','startHourTime':'11:49','endHourTime':'14:59',
-         'waveType':W.OFF_PEAK.value,'dispatchId':D.GRID_CHARGE.value}
-    ])
-    print(f'touId={r[\"result\"][\"id\"]}' if r['code']==200 else f'ERROR: {r}')
-
-asyncio.run(go())
-"
-```
-
-### Future CLI Enhancement
-
-A `tou --set` subcommand could accept:
-```bash
-# Proposed (not yet built):
-franklinwh-cli tou --set GRID_CHARGE --start 11:49 --end 14:59
+# Write
+franklinwh-cli tou --set GRID_CHARGE --start 11:30 --end 15:00
+franklinwh-cli tou --set GRID_EXPORT --start 18:00 --end 20:00 --default HOME
 franklinwh-cli tou --set CUSTOM --file schedule.json
+franklinwh-cli tou --multi-season seasons.json
+
+# Supervised (auto-restore when window ends)
+franklinwh-cli tou --set GRID_CHARGE --start 23:00 --end 01:00 --wait
 ```
 
 ---
