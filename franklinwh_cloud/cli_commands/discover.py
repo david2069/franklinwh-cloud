@@ -119,6 +119,14 @@ def _render_agate(snap):
         print_kv("SKU", a.sku)
     if a.serial:
         print_kv("Serial", a.serial)
+    if a.msa_model:
+        print_kv("MAC-1 Model", a.msa_model)
+    if a.msa_serial:
+        print_kv("MAC-1 Serial", a.msa_serial)
+    if a.ad_module_hd_ver:
+        print_kv("AD Module HW", a.ad_module_hd_ver)
+    if a.ad_module_app_ver:
+        print_kv("AD Module App", a.ad_module_app_ver)
     if a.generation:
         print_kv("Generation", f"Gen {a.generation}")
     if a.hw_version_str:
@@ -238,12 +246,13 @@ def _render_flags(snap):
         ("aHub", f.ahub_detected, "Detected" if f.ahub_detected else "Not detected"),
     ])
 
-    # US-only accessory flags
+    # MAC-1 flag
     api_nulls = snap.region_quirks.get("api_null_fields", [])
     is_us = snap.site.country_id == 2
-    if is_us:
-        flags.append(("MAC-1 (MSA)", f.mac1_detected,
-                       "Detected" if f.mac1_detected else "Not detected"))
+    if f.mac1_detected:
+        flags.append(("MAC-1 (MSA)", True, "Detected"))
+    else:
+        flags.append(("MAC-1 (MSA)", False, "Not detected" if is_us else "Not applicable in this region"))
 
     # Programme flags (region-filtered via catalog)
     if "nemType" not in api_nulls:
@@ -494,15 +503,6 @@ def _render_firmware(snap):
     for label, ver in fw_fields:
         if ver:
             print_kv(label, ver)
-    if a.msa_model:
-        print_kv("MAC-1 Model", a.msa_model)
-    if a.msa_serial:
-        print_kv("MAC-1 Serial", a.msa_serial)
-    if a.ad_module_hd_ver:
-        print_kv("AD Module HW", a.ad_module_hd_ver)
-    if a.ad_module_app_ver:
-        print_kv("AD Module App", a.ad_module_app_ver)
-
 
 def _render_whats_missing(snap):
     """Render system readiness and diagnostics."""
