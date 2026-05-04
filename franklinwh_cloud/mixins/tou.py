@@ -103,7 +103,7 @@ class TouMixin:
         }
         data = {"meta": meta, "strategyList": strategy_list}
         backup_path.write_text(_json.dumps(data, indent=2))
-        logger.info(f"tou_backup_save: wrote {backup_path} (seasons={meta['seasons']}, checksum={checksum[:8]})")
+        logger.debug(f"tou_backup_save: wrote {backup_path} (seasons={meta['seasons']}, checksum={checksum[:8]})")
         return backup_path
 
     async def tou_backup_restore(self, backup_path):
@@ -151,9 +151,9 @@ class TouMixin:
                 f"Backup may be corrupted."
             )
 
-        logger.info(f"tou_backup_restore: restoring from {backup_path} (checksum OK)")
+        logger.debug(f"tou_backup_restore: restoring from {backup_path} (checksum OK)")
         await self.set_tou_schedule_multi(strategy_list)
-        logger.info(f"tou_backup_restore: restore complete")
+        logger.debug(f"tou_backup_restore: restore complete")
         return strategy_list
 
     async def tou_backup_list(self, gateway=None):
@@ -213,7 +213,7 @@ class TouMixin:
         p = Path(backup_path)
         if p.exists():
             p.unlink()
-            logger.info(f"tou_backup_delete: deleted {p}")
+            logger.debug(f"tou_backup_delete: deleted {p}")
         else:
             logger.warning(f"tou_backup_delete: file not found (already deleted?): {p}")
 
@@ -291,7 +291,7 @@ class TouMixin:
         import tempfile
         import os
         default_tmpdir = tempfile.gettempdir()
-        logger.info(f"default_tmpdir = {default_tmpdir}")
+        logger.debug(f"default_tmpdir = {default_tmpdir}")
 
         if payload is None:
             payload = await self.get_tou_dispatch_detail()
@@ -301,7 +301,7 @@ class TouMixin:
             formatted_dt.replace(":", "")
             filename = f"tou_schedule_{self.gateway}_{formatted_dt}.json"
 
-        logger.info(f"backup_tou_schedule: Writing TOU schedule backup to filename: {filename}")
+        logger.debug(f"backup_tou_schedule: Writing TOU schedule backup to filename: {filename}")
 
         if isinstance(payload, str):
             template = payload["result"]["template"]
@@ -309,7 +309,7 @@ class TouMixin:
             detailDefaultVo = payload["result"]["detailDefaultVo"]
             if filename is not None and not os.path.isabs(filename):
                 filename = os.path.join(default_tmpdir, filename)
-            logger.info(f"backup_tou_schedule: Using default temp directory for filename: {filename}")
+            logger.debug(f"backup_tou_schedule: Using default temp directory for filename: {filename}")
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(f"# Backup of TOU schedule details {formatted_dt} to filename: {filename}\n")
                 json.dump(template, f)
@@ -716,12 +716,12 @@ class TouMixin:
         The touSchedule list format matches the FranklinWH saveTouDispatch API.
         See const/test_fixtures.py for example schedule formats.
         """
-        logger.info(f"set_tou_schedule:  touMode = '{touMode}' for aGate {self.gateway}")
+        logger.debug(f"set_tou_schedule:  touMode = '{touMode}' for aGate {self.gateway}")
         validate_tou_mode = str(touMode).upper().replace(' ', '_').replace('-', '_')
-        logger.info(f"set_tou_schedule: Validating TOU mode '{validate_tou_mode}' for aGate {self.gateway}")
+        logger.debug(f"set_tou_schedule: Validating TOU mode '{validate_tou_mode}' for aGate {self.gateway}")
 
         if validate_tou_mode in valid_tou_modes:
-            logger.info(f"set_mode: Validated requested TOU mode: {touMode}")
+            logger.debug(f"set_mode: Validated requested TOU mode: {touMode}")
         else:
             try:
                 numeric_tou = int(touMode)
@@ -734,13 +734,13 @@ class TouMixin:
                     if DISPATCH_CODES.get(mode_str) == numeric_tou:
                         touMode = mode_str
                         matched = True
-                        logger.info(f"set_mode: Mapped numeric dispatch ID {numeric_tou} to canonical string mode: {touMode}")
+                        logger.debug(f"set_mode: Mapped numeric dispatch ID {numeric_tou} to canonical string mode: {touMode}")
                         break
             
             if not matched:
                 raise InvalidTOUScheduleOption(f"Invalid TOU mode requested: {touMode}")
 
-        logger.info(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {self.gateway}")
+        logger.debug(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {self.gateway}")
         res = await self.get_tou_dispatch_detail()
         template = res.get("result", {}).get("template", None)
 
@@ -750,7 +750,7 @@ class TouMixin:
         if template:
             account = null
             res = await self.get_home_gateway_list()
-            logger.info(f"set_tou_schedule: Retrieved Home Gateway List for aGate {self.gateway}")
+            logger.debug(f"set_tou_schedule: Retrieved Home Gateway List for aGate {self.gateway}")
             for agate in res["result"]:
                 if agate["id"] == self.gateway:
                     account = res["result"][0]["account"]
@@ -839,7 +839,7 @@ class TouMixin:
                 try:
                     return datetime.strptime(value, date_format)
                 except ValueError:
-                    logger.info(f"set_tou_schedule: Warning: Invalid date format '{value}'. Skipping.")
+                    logger.debug(f"set_tou_schedule: Warning: Invalid date format '{value}'. Skipping.")
                     return None
             return None
 
@@ -861,7 +861,7 @@ class TouMixin:
             "gap_schedule": gap_schedule,
         }
 
-        logger.info(f"default_mode = {default_mode}, default_tariff = {default_tariff}")
+        logger.debug(f"default_mode = {default_mode}, default_tariff = {default_tariff}")
         detailVoList = []
         if default_mode is not None:
             default_dispatchId = DISPATCH_CODES[default_mode]
@@ -872,9 +872,9 @@ class TouMixin:
             default_tariff = WaveType.OFF_PEAK.value
             default_name = WAVE_TYPES.get(default_dispatchId, "Unknwown")
 
-        logger.info(f"default_mode = {default_mode}")
-        logger.info(f"default_dispatchId = {default_dispatchId}, default_tariff = {default_tariff},  default_name = {default_name}")
-        logger.info(f"set_tou_schedule: Setup default values default_dispatchId={default_dispatchId}, default_tariff={default_tariff}, default_name={default_name}")
+        logger.debug(f"default_mode = {default_mode}")
+        logger.debug(f"default_dispatchId = {default_dispatchId}, default_tariff = {default_tariff},  default_name = {default_name}")
+        logger.debug(f"set_tou_schedule: Setup default values default_dispatchId={default_dispatchId}, default_tariff={default_tariff}, default_name={default_name}")
 
         match touMode:
             case "PREDEFINED":
@@ -883,7 +883,7 @@ class TouMixin:
                     logger.error(f"set_tou_schedule: tou_predefined specified is invalid: {tou_predefined}")
                     raise InvalidTOUScheduleOption(f"tou_predefined specified is invalid: {tou_predefined}")
                 else:
-                    logger.info(f"set_mode: Predfined schedule = {tou_predefined}")
+                    logger.debug(f"set_mode: Predfined schedule = {tou_predefined}")
                     detailVoList = tou_predefined_builtin.get(tou_predefined)
                     print(tou_predefined_builtin)
 
@@ -908,44 +908,44 @@ class TouMixin:
                         return False, msg
 
                 msg = f"type = {type(touSchedule)}"
-                logger.info(f"set_mode: CUSTOM/JSON schedule = {touSchedule} - {msg}")
+                logger.debug(f"set_mode: CUSTOM/JSON schedule = {touSchedule} - {msg}")
                 if isinstance(touSchedule, dict):
                     detailVoList = [touSchedule]
                 else:
                     detailVoList = touSchedule
                     if is_valid_json(touSchedule):
-                        logger.info("JSON basic structure validated")
+                        logger.debug("JSON basic structure validated")
                         is_valid, validation_msg = validate_json_object(detailVoList)
                         if is_valid:
-                            logger.info("set_tou_schedule: Success: The JSON data is valid.")
+                            logger.debug("set_tou_schedule: Success: The JSON data is valid.")
                         else:
                             msg = f"set_tou_schedule: {validation_msg}"
                             logger.error(msg)
                             raise InvalidTOUScheduleOption(msg)
                     else:
-                        logger.info(f"set_mode: invalid JSON - exiting with error")
-                        logger.info(f"set_mode: JSON ={touSchedule}")
+                        logger.debug(f"set_mode: invalid JSON - exiting with error")
+                        logger.debug(f"set_mode: JSON ={touSchedule}")
                         raise ValueError("Error: failed to parse JSON string")
 
             case _:
                 if touSchedule is not None:
                     detailVoList = touSchedule
                 # else: leave detailVoList = [] (predefined modes: SELF, HOME, STANDBY, etc.)
-                logger.info(f"set_tou_schedule: predefined/simple mode '{touMode}' — detailVoList={detailVoList}")
+                logger.debug(f"set_tou_schedule: predefined/simple mode '{touMode}' — detailVoList={detailVoList}")
 
-        logger.info(f"set_tou_schedule: Generated detailVoList = {detailVoList}")
+        logger.debug(f"set_tou_schedule: Generated detailVoList = {detailVoList}")
         dict_count = False
         SINGLE_ENTRY = False
         if isinstance(detailVoList, dict):
             try:
                 dict_count = count_dicts_in_list(detailVoList)
             except TypeError as e:
-                logger.info(f"Error: {e}")
+                logger.debug(f"Error: {e}")
         else:
             dict_count = True
             SINGLE_ENTRY = True
 
-        logger.info(f"set_tou_schedule: touMode = {touMode} detailVoList has {dict_count} dict entries = {detailVoList}")
+        logger.debug(f"set_tou_schedule: touMode = {touMode} detailVoList has {dict_count} dict entries = {detailVoList}")
         elapsed_minutes = 0
         add_one_minute = False
         entries = []
@@ -975,14 +975,14 @@ class TouMixin:
                     endTime = "24:00"
                 entries.append({"id": seq, "elapsed_minutes": elapsed_minutes, "duration": str(duration), "startHourTime": str(startTime), "endHourTime": str(endTime), "waveType": waveType, "name": name, "dispatchId": dispatchId})
 
-            logger.info("set_tou_schedule: Inserted duration and elapsed minutes - ready for sorting / parsing...")
+            logger.debug("set_tou_schedule: Inserted duration and elapsed minutes - ready for sorting / parsing...")
             if add_one_minute:
                 elapsed_minutes = elapsed_minutes + 1
 
-            logger.info(f"set_tou_schedule: Checking scheduled total elapsed time: {elapsed_minutes} minutes")
+            logger.debug(f"set_tou_schedule: Checking scheduled total elapsed time: {elapsed_minutes} minutes")
             sorted_data = sorted(entries, key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
-            logger.info("set_tou_schedule: Checking for missing time periods in sorted_data...")
-            logger.info(f"set_tou_schedule: Sorted data = {sorted_data}")
+            logger.debug("set_tou_schedule: Checking for missing time periods in sorted_data...")
+            logger.debug(f"set_tou_schedule: Sorted data = {sorted_data}")
 
             repaired_entries = []
             repaired_entries = detailVoList.copy()
@@ -997,10 +997,10 @@ class TouMixin:
 
                 if key == 0:
                     if startTime != "00:00":
-                        logger.info(f"set_tou_schedule: Validate time entries - first entry does not start at 00:00 - found startHourTime = {startTime}")
+                        logger.debug(f"set_tou_schedule: Validate time entries - first entry does not start at 00:00 - found startHourTime = {startTime}")
                         insert_list = {"startHourTime": "00:00", "endHourTime": str(startTime), "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
                         repaired_entries.insert(0, insert_list)
-                        logger.info(f"set_tou_schedule: Inserting missing time period entry at start: {insert_list} ")
+                        logger.debug(f"set_tou_schedule: Inserting missing time period entry at start: {insert_list} ")
                         amended = True
                 else:
                     if dict_count > 1:
@@ -1016,17 +1016,17 @@ class TouMixin:
 
                 if key == (len(sorted_data) - 1):
                     if endTime != "24:00":
-                        logger.info(f"set_tou_schedule: Last entry does not end at 24:00 - found endHourTime = {endTime}")
+                        logger.debug(f"set_tou_schedule: Last entry does not end at 24:00 - found endHourTime = {endTime}")
                         if SINGLE_ENTRY:
                             priorEndTime = endTime
                         if priorEndTime != "24:00":
                             insert_list = {"startHourTime": str(priorEndTime), "endHourTime": "24:00", "waveType": default_tariff, "name": default_name, "dispatchId": default_dispatchId}
                             repaired_entries.append(insert_list)
-                            logger.info(f"set_tou_schedule: Inserting missing time period entry at end: {insert_list} ")
+                            logger.debug(f"set_tou_schedule: Inserting missing time period entry at end: {insert_list} ")
                             amended = True
 
             if amended:
-                logger.info(f"set_tou_schedule: Amended sorted_data with missing time periods: {repaired_entries}")
+                logger.debug(f"set_tou_schedule: Amended sorted_data with missing time periods: {repaired_entries}")
                 detailVoList = repaired_entries
 
             elapsed_minutes = 0
@@ -1047,14 +1047,14 @@ class TouMixin:
 
             if add_one_minute:
                 elapsed_minutes = elapsed_minutes + 1
-            logger.info(f"DetailVoList Entry {key}: startHourTime={startTime}, endHourTime={endTime}, waveType={waveType}, name={name}, dispatchId={dispatchId}, duration={duration}, elapsed_minutes={elapsed_minutes}")
+            logger.debug(f"DetailVoList Entry {key}: startHourTime={startTime}, endHourTime={endTime}, waveType={waveType}, name={name}, dispatchId={dispatchId}, duration={duration}, elapsed_minutes={elapsed_minutes}")
             if elapsed_minutes != 1440:
                 msg = f"set_tou_schedule: Error: Total elapsed minutes not equal to 1440 minutes (24 hours)! elapsed_minutes = {elapsed_minutes}"
-                logger.info(msg)
+                logger.debug(msg)
                 raise ValidationError(msg)
 
             detailVoList = sorted(detailVoList.copy(), key=lambda x: parse_datetime(x.get("startHourTime"), date_format="%H:%M") or datetime.max)
-            logger.info(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
+            logger.debug(f"set_tou_schedule: Final detailVoList ready for submission:\n{detailVoList}\n")
         else:
             # Predefined mode (SELF, HOME, STANDBY, SOLAR, GRID_CHARGE, GRID_EXPORT)
             # called without a touSchedule. Synthesise a full 24-hour single block
@@ -1076,7 +1076,7 @@ class TouMixin:
                 "name":          mode_name,
                 "dispatchId":    dispatch_id,
             }]
-            logger.info(
+            logger.debug(
                 f"set_tou_schedule: predefined mode '{touMode}' → "
                 f"synthesised full-day block dispatchId={dispatch_id} ({mode_name})"
             )
@@ -1206,7 +1206,7 @@ class TouMixin:
                     f"existing season — updating season[0] as fallback"
                 )
             else:
-                logger.info(
+                logger.debug(
                     f"set_tou_schedule: month {target_month} → season[{target_idx}] "
                     f"'{existing_seasons[target_idx].get('seasonName', '?')}'"
                 )
@@ -1242,23 +1242,23 @@ class TouMixin:
             }]
 
         payload = {"template": saveTOUdispatch_template, "strategyList": strategyList, "nemType": 0, "coverContentFlag": false}
-        logger.info("set_tou_schedule: Finalised payload now sending to saveTouDispatch")
+        logger.debug("set_tou_schedule: Finalised payload now sending to saveTouDispatch")
         key = "dispatchId"
         dispatchIdList = list(dict.fromkeys(
             d[key] for d in (detailVoList or []) if key in d
         ))
 
         res = await self.get_pcs_hintinfo(dispatchIdList)
-        logger.info(f"set_tou_schedule: JSON: {payload}")
-        logger.info("set_tou_schedule: Convert payload to JSON prior to calling saveTouDispatch")
+        logger.debug(f"set_tou_schedule: JSON: {payload}")
+        logger.debug("set_tou_schedule: Convert payload to JSON prior to calling saveTouDispatch")
 
         res = await self.save_tou_dispatch(payload)
         if res["code"] == 200:
             touId = res["result"]["id"]
-            logger.info(f"set_tou_schedule: saveTouDispatch successful, touId = {touId}")
+            logger.debug(f"set_tou_schedule: saveTouDispatch successful, touId = {touId}")
         else:
             msg = f"set_tou_schedule: Error: saveTouDispatch failed with response: {res}"
-            logger.info(msg)
+            logger.debug(msg)
             raise ValidationError(msg)
 
         return res
@@ -1634,7 +1634,7 @@ class TouMixin:
 
         See also: docs/TOU_SCHEDULE_GUIDE.md, docs/API_COOKBOOK.md
         """
-        logger.info(
+        logger.debug(
             f"set_tou_schedule_multi: {len(strategy_list)} seasons for aGate {self.gateway}"
         )
 
@@ -1768,13 +1768,13 @@ class TouMixin:
             "coverContentFlag": cover_content,
         }
 
-        logger.info(
+        logger.debug(
             f"set_tou_schedule_multi: submitting {len(normalised)} seasons to saveTouDispatch"
         )
         res = await self.save_tou_dispatch(payload)
         if res.get("code") == 200:
             tou_id = res.get("result", {}).get("id")
-            logger.info(f"set_tou_schedule_multi: success — touId={tou_id}")
+            logger.debug(f"set_tou_schedule_multi: success — touId={tou_id}")
         else:
             msg = f"set_tou_schedule_multi: saveTouDispatch failed: {res}"
             logger.error(msg)
@@ -1835,7 +1835,7 @@ class TouMixin:
         result = res.get("result", {})
         strategy_list = result.get("strategyList", [])
         if not strategy_list:
-            logger.info("get_current_tou_price: no strategyList in response")
+            logger.debug("get_current_tou_price: no strategyList in response")
             return {}
 
         # Determine active season by current month

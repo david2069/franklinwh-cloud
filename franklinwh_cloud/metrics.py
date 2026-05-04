@@ -136,7 +136,7 @@ class RateLimiter:
             oldest = self._minute_window[0]
             wait = 60 - (time.time() - oldest) + 0.1
             if wait > 0:
-                logger.info(f"Throttling: {self.calls_per_minute}/min limit reached. Waiting {wait:.1f}s")
+                logger.debug(f"Throttling: {self.calls_per_minute}/min limit reached. Waiting {wait:.1f}s")
                 await asyncio.sleep(wait)
                 self._clean_windows()
 
@@ -230,7 +230,7 @@ class StaleDataCache:
         ts, data = entry
         if self.max_age_s > 0 and (time.time() - ts) > self.max_age_s:
             self.misses += 1
-            logger.info(f"Stale cache expired for {endpoint} "
+            logger.debug(f"Stale cache expired for {endpoint} "
                         f"(age: {time.time() - ts:.0f}s > {self.max_age_s}s)")
             return None
         self.hits += 1
