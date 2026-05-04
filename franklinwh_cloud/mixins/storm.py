@@ -101,7 +101,7 @@ class StormMixin:
             data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
             if data.get("code") == 200:
                 mode = "enabled" if stormEn == 1 else "disabled"
-                logger.info(f"Storm Hedge set to: {mode}")
+                logger.debug(f"Storm Hedge set to: {mode}")
             else:
                 rc = False
                 logger.error(f"Storm Hedge update to {stormEn} failed: {data.get('code')} {data.get('message')}")
@@ -111,7 +111,7 @@ class StormMixin:
             payload = {"equipNo": self.gateway, "advanceBackupTime": setAdvanceBackupTime}
             data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
             if data.get("code") == 200:
-                logger.info(f"Advanced backup start set to {setAdvanceBackupTime} minutes")
+                logger.debug(f"Advanced backup start set to {setAdvanceBackupTime} minutes")
             else:
                 rc = False
                 logger.error(f"Advanced backup update failed: {data.get('code')} {data.get('message')}")
@@ -125,7 +125,7 @@ class StormMixin:
                 payload["advanceTime"] = advanceTime
             data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
             if data.get("code") == 200:
-                logger.info("Storm notification settings updated")
+                logger.debug("Storm notification settings updated")
             else:
                 rc = False
                 logger.error(f"Storm notification update failed: {data.get('code')} {data.get('message')}")

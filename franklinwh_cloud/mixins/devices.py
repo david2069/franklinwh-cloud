@@ -155,7 +155,7 @@ class DevicesMixin:
         apower_serial_no : str
             Serial number of the aPower battery.
         """
-        logger.info(f"get_bms_info: sending type 2 then type 3 for aPower {apower_serial_no}")
+        logger.debug(f"get_bms_info: sending type 2 then type 3 for aPower {apower_serial_no}")
 
         # Type 2 — send first (must be sequential, not concurrent)
         data2 = None
@@ -192,7 +192,7 @@ class DevicesMixin:
         # Log response status
         got2 = data2 is not None
         got3 = data3 is not None
-        logger.info(f"get_bms_info: type2={'received' if got2 else 'LOST'}, "
+        logger.debug(f"get_bms_info: type2={'received' if got2 else 'LOST'}, "
                      f"type3={'received' if got3 else 'LOST'}")
 
         # If both responded, log the delta
@@ -225,12 +225,12 @@ class DevicesMixin:
                 diffs[k] = {"type2": data2[k], "type3": data3[k]}
 
         if only_in_2 or only_in_3 or diffs:
-            logger.info(f"get_bms_info delta: "
+            logger.debug(f"get_bms_info delta: "
                         f"only_in_type2={only_in_2 or '{}'}, "
                         f"only_in_type3={only_in_3 or '{}'}, "
                         f"value_diffs={diffs or '{}'}")
         else:
-            logger.info("get_bms_info delta: type2 and type3 responses are identical")
+            logger.debug("get_bms_info delta: type2 and type3 responses are identical")
 
     async def led_light_settings(self, mode, dataArea):
         """Get or set the LED strip settings for a specified aPower battery.
@@ -261,7 +261,7 @@ class DevicesMixin:
         https://www.franklinwh.com/support/overview/smart-circuits
         """
         payload = {"opt": 0}
-        logger.info(f"get_smart_circuits_info: cmdType: 311 Type 2 on aGate {self.gateway}")
+        logger.debug(f"get_smart_circuits_info: cmdType: 311 Type 2 on aGate {self.gateway}")
         wire_payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, payload)  # cmdType 311
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
@@ -788,10 +788,10 @@ class DevicesMixin:
         for attempt in range(max_attempts):
             result = await self.scan_wifi_networks()
             if result.get("result") == 0:
-                logger.info(f"WiFi scan complete on attempt {attempt + 1}")
+                logger.debug(f"WiFi scan complete on attempt {attempt + 1}")
                 return result
             if attempt < max_attempts - 1:
-                logger.info(f"WiFi scan pending (attempt {attempt + 1}/{max_attempts}), "
+                logger.debug(f"WiFi scan pending (attempt {attempt + 1}/{max_attempts}), "
                             f"retrying in {delay_s}s...")
                 await asyncio.sleep(delay_s)
         logger.warning(f"WiFi scan did not complete after {max_attempts} attempts")
@@ -1132,13 +1132,13 @@ class DevicesMixin:
         final_send_status = None
         final_alert_message = ""
         _gw = self.gateway  # short label for log lines
-        logger.info(
+        logger.debug(
             f"[{_gw}] reset_tou_mode: starting sync verification "
             f"(max {max_verify_attempts} attempts × {verify_interval_s} s)."
         )
         for attempt in range(1, max_verify_attempts + 1):
             msg = f"[{_gw}] reset_tou_mode: attempt {attempt}/{max_verify_attempts} — waiting {verify_interval_s} s before poll."
-            logger.info(msg)
+            logger.debug(msg)
             steps.append(f"Step 4 attempt {attempt}/{max_verify_attempts}: waiting {verify_interval_s} s…")
             await asyncio.sleep(verify_interval_s)
             try:
@@ -1152,7 +1152,7 @@ class DevicesMixin:
                         f"[{_gw}] reset_tou_mode: attempt {attempt} — "
                         f"touSendStatus=null. Gateway ACK received, sync confirmed. ✓"
                     )
-                    logger.info(msg)
+                    logger.debug(msg)
                     steps.append(
                         f"Step 4 attempt {attempt}: touSendStatus=null — "
                         f"gateway ACK received, sync confirmed."
@@ -1175,7 +1175,7 @@ class DevicesMixin:
                 steps.append(f"Step 4 attempt {attempt}: poll failed ({exc}). Retrying…")
 
         if sync_cleared:
-            logger.info(f"[{_gw}] reset_tou_mode: COMPLETE — schedule sync confirmed.")
+            logger.debug(f"[{_gw}] reset_tou_mode: COMPLETE — schedule sync confirmed.")
             steps.append("TOU mode reset complete — schedule sync confirmed.")
         else:
             logger.warning(

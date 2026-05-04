@@ -260,7 +260,7 @@ class ModesMixin:
             url = url + "&soc=20"
 
         mode_name = MODE_MAP.get(requestedOperatingMode, f"Unknown Mode {requestedOperatingMode}")
-        logger.info(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
+        logger.debug(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
         logger.debug(f"set_mode: POST URL = {url}")
 
         res = await self._post(url, payload=None)
@@ -271,7 +271,7 @@ class ModesMixin:
             if res_code == 176:
                 logger.warning(f"set_mode: Mode '{mode_name}' queued for offline sync (code 176) for aGate {self.gateway}")
             else:
-                logger.info(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")
+                logger.debug(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")
         else:
             logger.error(f"set_mode: failed switched operating mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex} for aGate {self.gateway}: {res}")
             result = False
