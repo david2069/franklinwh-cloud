@@ -114,9 +114,13 @@ class ModesMixin:
                 requestedOperatingMode = SELF_CONSUMPTION
             case "3" | "emergency_backup" | "emergencybackup" | "emergency" | "backup":
                 requestedOperatingMode = EMERGENCY_BACKUP
-                if reqnextWorkMode not in [TIME_OF_USE, SELF_CONSUMPTION]:
-                    raise InvalidOperatingMode(f"Emergency Backup Next Working Mode must be TIME_OF_USE or SELF_CONSUMPTION and NOT: {requestedOperatingMode}")
-                reqnextWorkMode = int(reqnextWorkMode)
+                if reqnextWorkMode is not None:
+                    try:
+                        reqnextWorkMode = int(reqnextWorkMode)
+                    except ValueError:
+                        pass
+                    if reqnextWorkMode not in [TIME_OF_USE, SELF_CONSUMPTION]:
+                        raise InvalidOperatingMode(f"Emergency Backup Next Working Mode must be TIME_OF_USE or SELF_CONSUMPTION and NOT: {reqnextWorkMode}")
                 if reqbackupForeverFlag:
                     if reqbackupForeverFlag not in ["1", "2", 1, 2]:
                         raise InvalidOperatingModeOption(f"Invalid for this mode: backupForeverFlag requested: '{reqbackupForeverFlag}'. Must be '1' (Indefinite) or '2' (Fixed Duration)")
