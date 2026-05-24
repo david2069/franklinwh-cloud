@@ -231,6 +231,13 @@ class TouMixin:
         data = await self._post(url, {}, params=params)
         if data["code"] != 200:
             print(f"data = {data}")
+
+        # Overwrite the name of the operating mode if oldIndex == 3 and workMode == 1
+        if isinstance(data, dict) and "result" in data and isinstance(data["result"], dict) and "list" in data["result"]:
+            for item in data["result"]["list"]:
+                if isinstance(item, dict) and item.get("oldIndex") == 3 and item.get("workMode") == 1:
+                    item["name"] = "Time-of-Use "
+
         return data
 
     async def get_charge_power_details(self):

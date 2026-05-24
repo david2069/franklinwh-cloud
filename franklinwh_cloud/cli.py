@@ -132,6 +132,10 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Set mode (tou, self_consumption, emergency_backup, or 1/2/3)")
     sub_mode.add_argument("--soc", type=int, metavar="PCT",
                           help="Set SOC percentage (used with --set)")
+    sub_mode.add_argument("--duration", type=int, metavar="MINS",
+                          help="Duration in minutes for Emergency Backup mode (0 for indefinite, min 30)")
+    sub_mode.add_argument("--resume-mode", dest="resume_mode", metavar="MODE",
+                          help="Mode to switch to after duration expires (tou or self_consumption)")
 
     # tou
     sub_tou = subs.add_parser("tou", help="Time-of-Use schedule inspection and control")
@@ -440,7 +444,9 @@ async def async_main():
             case "mode":
                 from franklinwh_cloud.cli_commands import mode
                 await mode.run(client, json_output=args.json,
-                               set_mode=args.set_mode, soc=args.soc)
+                               set_mode=args.set_mode, soc=args.soc,
+                               duration=getattr(args, 'duration', None),
+                               resume_mode=getattr(args, 'resume_mode', None))
 
             case "tou":
                 from franklinwh_cloud.cli_commands import tou

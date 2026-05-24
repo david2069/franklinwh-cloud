@@ -8,32 +8,74 @@ from franklinwh_cloud.const import OPERATING_MODES, MODE_MAP
 
 
 async def run(client, *, json_output: bool = False, set_mode: str | None = None,
-              soc: int | None = None):
+              soc: int | None = None, duration: int | None = None, resume_mode: str | None = None):
     """Execute the mode command."""
 
     if set_mode:
         # Setting a mode
         mode_val = None
         # Try by name (v is the string description, k is the integer mode ID)
-        for mode_num, mode_name in MODE_MAP.items():
-            if isinstance(mode_name, str) and set_mode.lower() in mode_name.lower():
-                mode_val = mode_num
-                break
+        mode_str = set_mode.lower().replace('-', '_').replace(' ', '_')
+        if mode_str in ["1", "time_of_use", "timeofuse", "tou"]:
+            mode_val = 1
+        elif mode_str in ["2", "self_consumption", "selfconsumption", "self"]:
+            mode_val = 2
+        elif mode_str in ["3", "emergency_backup", "emergencybackup", "emergency", "backup"]:
+            mode_val = 3
+        else:
+            for mode_num, mode_name in MODE_MAP.items():
+                if isinstance(mode_name, str) and mode_str in mode_name.lower():
+                    mode_val = mode_num
+                    break
+                    
         # Try by number
         if mode_val is None:
             try:
                 mode_val = int(set_mode)
             except ValueError:
                 print_warning(f"Unknown mode: {set_mode}")
-                print(f"  Available modes: {', '.join(str(k) for k in MODE_MAP.keys())}")
+                print(f"  Available modes: tou (1), self_consumption (2), emergency_backup (3)")
                 return
 
         kwargs = {"requestedOperatingMode": mode_val}
         if soc is not None:
             kwargs["requestedSOC"] = soc
-        kwargs["reqbackupForeverFlag"] = None
-        kwargs["reqnextWorkMode"] = None
-        kwargs["reqdurationMinutes"] = None
+            
+        if duration is not None:
+            if duration == 0:
+                kwargs["reqbackupForeverFlag"] = 1
+                kwargs["reqdurationMinutes"] = None
+            else:
+                kwargs["reqbackupForeverFlag"] = 2
+                kwargs["reqdurationMinutes"] = duration
+        else:
+            kwargs["reqbackupForeverFlag"] = None
+            kwargs["reqdurationMinutes"] = None
+            
+        if resume_mode is not None:
+            resume_val = None
+            r_str = resume_mode.lower().replace('-', '_').replace(' ', '_')
+            if r_str in ["1", "time_of_use", "timeofuse", "tou"]:
+                resume_val = 1
+            elif r_str in ["2", "self_consumption", "selfconsumption", "self"]:
+                resume_val = 2
+            elif r_str in ["3", "emergency_backup", "emergencybackup", "emergency", "backup"]:
+                resume_val = 3
+            else:
+                for m_num, m_name in MODE_MAP.items():
+                    if isinstance(m_name, str) and r_str in m_name.lower():
+                        resume_val = m_num
+                        break
+            if resume_val is None:
+                try:
+                    resume_val = int(resume_mode)
+                except ValueError:
+                    print_warning(f"Unknown resume mode: {resume_mode}")
+                    return
+            kwargs["reqnextWorkMode"] = resume_val
+        else:
+            kwargs["reqnextWorkMode"] = None
+
 
         print(f"Setting mode to {OPERATING_MODES.get(mode_val, set_mode)}...")
         result = await client.set_mode(**kwargs)

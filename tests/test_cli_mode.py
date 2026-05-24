@@ -63,7 +63,7 @@ class TestCliMode:
         mock_client.set_mode.assert_not_called()
         captured = capsys.readouterr()
         assert "Unknown mode: UNKNOWN_PLANET" in captured.out
-        assert "Available modes: 1, 2, 3" in captured.out
+        assert "Available modes: tou (1), self_consumption (2), emergency_backup (3)" in captured.out
         
     async def test_run_set_mode_json_output(self, mock_client):
         """Test setting the mode and rendering JSON response."""
