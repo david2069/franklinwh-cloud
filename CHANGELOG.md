@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **`DEF-TOU-STRATEGY-REJECT`** — Resolved severe Spring Boot backend validation rejections (`"strategy table is wrong"`) by dynamically preserving season `id` and `templateId` values (in `set_tou_schedule` and `set_tou_schedule_multi`) instead of overwriting them with `null`.
+- **`DEF-TOU-DAY-TYPE-METADATA`** — Retained database `id`, `ccociateType`, and `ladderRate` fields when constructing or updating day type entries inside `dayTypeVoList`.
+- **`DEF-TOU-BLOCK-ENRICHMENT`** — Automatically enriched newly constructed custom time blocks in `detailVoList` with correct hardware-matching default fields (`solarPriority`, `loadPriority`, `briefDescribe`, `solarCutoff`, `useModeFlag`) look-up resolved from the active gateway's `touDispatchList` configuration templates.
+- **`DEF-TOU-GAP-DUPLICATION`** — Patched a severe gap-filling algorithm defect in `set_tou_schedule` where `priorEndTime` was compared against the current block's `endTime` instead of the previous block's `endHourTime` when `dict_count > 1`, eliminating the duplicate/overlapping time block issue that historically corrupted active gateway configurations.
+
 ## [0.4.8] - 2026-05-04
 
 ### Added
