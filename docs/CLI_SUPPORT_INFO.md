@@ -84,7 +84,7 @@ Live power flow snapshot from `getDeviceCompositeInfo` (cmdType 203).
 **aPower per-pack block:**
 
 ```
-           aPower: [10050013A0XXXXXXXXXX, 10050013A0YYYYYYYYYY]
+            aPower: [10050013A0XXXXXXXXXX, 10050013A0XXXXXXXXXX]
               SoC: 96.0%, 85.0%
               BMS: Charging, Standby
 ```

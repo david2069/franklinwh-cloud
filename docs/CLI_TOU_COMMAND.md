@@ -493,7 +493,7 @@ franklinwh-cli tou --set GRID_EXPORT --start 18:00 --end 20:00 \
 
   Schedule window ended (01:00) — restoring original schedule...
 ✓ Schedule restored (1 season(s), checksum verified)
-  Backup deleted: 10060006A02F24170091_20260430T025848Z_c4a59515.json
+  Backup deleted: 10060006A00000000000_20260430T025848Z_c4a59515.json
 ```
 
 **Backup files** are stored in the same directory as `franklinwh.ini`, named:
@@ -529,8 +529,8 @@ franklinwh-cli tou --restore
   ──── ────────────────────── ──────── ──────── ──────────────────────────────────────────
   0    2026-04-30T02:58:48    1        <1d      tou --set GRID_EXPORT --start 12:50 --end
 
-  Auto-selecting the only backup: 10060006A02F24170091_20260430T025848Z_c4a59515.json
-  Restoring from 10060006A02F24170091_20260430T025848Z_c4a59515.json...
+  Auto-selecting the only backup: 10060006A00000000000_20260430T025848Z_c4a59515.json
+  Restoring from 10060006A00000000000_20260430T025848Z_c4a59515.json...
 ✓ Schedule restored (1 season(s), checksum verified)
 ```
 
