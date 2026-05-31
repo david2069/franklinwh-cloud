@@ -216,24 +216,96 @@ await client.set_tou_schedule_multi(multi_season)
 
 ---
 
-## Schedule Entry Format (detailVoList)
+## Schedule Entry Format & Pre-Flight Validation
+
+The `franklinwh-cloud` library enforces strict pre-flight validation on schedule structures before any network call is dispatched. This client-side shield intercepts structural issues, preventing bad requests from hitting the cloud.
+
+### 🛡️ Pre-Flight Schema Verification (JSON Schema / XSD Equivalent)
+
+Custom schedule lists are validated against a formal JSON Schema. If the input is missing mandatory fields or uses invalid types/patterns, `set_tou_schedule` instantly raises a `InvalidTOUScheduleOption` with a detailed validation message.
 
 Each time block is a dict with **5 mandatory fields**:
 
 ```python
 {
     "name":          "Off-Peak",       # Human label (e.g. tariff tier name)
-    "startHourTime": "11:49",          # HH:MM (24h)
-    "endHourTime":   "14:59",          # HH:MM or "24:00"
-    "waveType":      0,                # Tariff tier (0=Off-Peak, 2=On-Peak, etc.)
-    "dispatchId":    8                  # Dispatch mode (see table above)
+    "startHourTime": "11:49",          # HH:MM format (24h)
+    "endHourTime":   "14:59",          # HH:MM format (24h) or "24:00"
+    "waveType":      0,                # Tariff period (0=Off-Peak, 2=On-Peak, etc.)
+    "dispatchId":    8                  # Dispatch mode ID (e.g. 8=GRID_CHARGE)
 }
 ```
 
 > [!IMPORTANT]
 > The full 24 hours (00:00 → 24:00 = 1440 minutes) must be covered. If your entries have gaps, `set_tou_schedule` auto-fills them using `default_mode` (default: `SELF`) and `default_tariff` (default: `OFF_PEAK`).
 
-Optional fields: `maxChargeSoc`, `minDischargeSoc`, `solarCutoff`, `gridChargeMax`, `gridDischargeMax`, `chargePower`, `dischargePower`, `gridMax`, `gridFeedMax`, `rampTime`, `heatEnable`, `offGrid`, etc.
+### ⚙️ Dynamic Payload Enrichment (Spring Boot Compatibility)
+
+Modern Spring Boot validation on the FranklinWH backend strictly rejects partial strategy lists. Rather than forcing developers to manage low-level hardware parameters manually, the library **automatically enriches** newly constructed or custom time blocks prior to saving.
+
+The enrichment layer performs:
+1. **Dynamic Priority Look-up**: Resolves correct system-matching priority settings (e.g., `"solarPriority": "1,2,3"`, `"loadPriority": "1,2,0"`) directly from the gateway's active configuration templates (`touDispatchList`).
+2. **Metadata Retention & Merge**: Intelligently read-merges and preserves database primary keys (`id`, `strategyId`) and hardware state keys (`useModeFlag`, `solarCutoff`, `briefDescribe`, etc.) for overlapping time windows, ensuring zero strategy table inconsistency rejections.
+
+---
+
+### 📋 Published JSON Schema Reference
+
+Developers integrating this library into larger platforms (e.g. Home Assistant, Node-RED) can utilize this formal JSON Schema specification for schedule validation:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": ["name", "startHourTime", "endHourTime", "waveType", "dispatchId"],
+    "properties": {
+      "name": {"type": "string"},
+      "startHourTime": {
+        "type": "string",
+        "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]|24:00$"
+      },
+      "endHourTime": {
+        "type": "string",
+        "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]|24:00$"
+      },
+      "waveType": {
+        "type": "integer",
+        "enum": [0, 1, 2, 4]
+      },
+      "dispatchId": {
+        "type": "integer",
+        "enum": [1, 2, 3, 6, 7, 8]
+      },
+      "id": {"type": ["integer", "null"]},
+      "strategyId": {"type": ["integer", "null"]},
+      "gridDischargeMax": {"type": ["integer", "null"]},
+      "gridChargeMax": {"type": ["integer", "null"]},
+      "chargeMax": {"type": ["integer", "null"]},
+      "chargePower": {"type": ["integer", "null"]},
+      "gridFeedMax": {"type": ["integer", "null"]},
+      "dischargePower": {"type": ["integer", "null"]},
+      "dischargeMax": {"type": ["integer", "null"]},
+      "solarCutoff": {"type": ["integer", "null"]},
+      "gridMax": {"type": ["integer", "null"]},
+      "maxChargeSoc": {"type": ["integer", "null"]},
+      "minDischargeSoc": {"type": ["integer", "null"]},
+      "heatEnable": {"type": ["integer", "null"]},
+      "powerOffApower": {"type": ["integer", "null"]},
+      "offGrid": {"type": ["integer", "null"]},
+      "gcaoMax": {"type": ["integer", "null"]},
+      "rampTime": {"type": ["integer", "null"]},
+      "useModeFlag": {"type": ["integer", "null"]},
+      "briefDescribe": {"type": ["string", "null"]},
+      "solarPriority": {"type": ["string", "null"]},
+      "loadPriority": {"type": ["string", "null"]},
+      "dispatch": {"type": ["string", "null"]}
+    }
+  }
+}
+```
 
 ---
 
