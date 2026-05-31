@@ -1559,12 +1559,12 @@ def mock_snapshot() -> dict:
     return {
         "snapshot_version": 3,
         "timestamp": ts,
-        "gateway": "10060006A0AAAAAA0001",
+        "gateway": "10060006A0XXXXXX0001",
         "label": "mock",
         "checksum": "sha256:mock000000000000000000000000000000000000000000000000000000000000",
         "data": {
             "identity": {
-                "serial": "10060006A0AAAAAA0001",
+                "serial": "10060006A0XXXXXX0001",
                 "model": "aGate X-02-US",
                 "sku": "AGT-R2V1-US",
                 "hardware": "FranklinWH System1.2",
@@ -1744,7 +1744,7 @@ def mock_diag_output(json_output: bool = False):
 
     gateways = [
         {
-            "serial":  "10060006A0AAAAAA0001",
+            "serial":  "10060006A0XXXXXX0001",
             "name":    "FHP1",
             "model":   "aGate X-02-US",
             "group":   "Main House",
@@ -1752,7 +1752,7 @@ def mock_diag_output(json_output: bool = False):
             "last":    False,
         },
         {
-            "serial":  "10060006A0BBBBBB0002",
+            "serial":  "10060006A0XXXXXX0002",
             "name":    "FHP2",
             "model":   "aGate X-01-AU",
             "group":   "(ungrouped)",
