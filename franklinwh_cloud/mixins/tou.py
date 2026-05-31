@@ -1010,10 +1010,7 @@ class TouMixin:
                         logger.debug(f"set_tou_schedule: Inserting missing time period entry at start: {insert_list} ")
                         amended = True
                 else:
-                    if dict_count > 1:
-                        priorEndTime = endTime
-                    else:
-                        priorEndTime = sorted_data[key - 1]["endHourTime"]
+                    priorEndTime = sorted_data[key - 1]["endHourTime"]
 
                     if startTime != priorEndTime:
                         if priorEndTime != "24:00":
@@ -1133,43 +1130,159 @@ class TouMixin:
             3: ("everyDay", 3),
         }
 
-        def _build_day_type_entry(dt_code, schedule_blocks):
+        # Extract dispatch list to find default solarPriority and loadPriority
+        dispatch_list = []
+        try:
+            if 'existing' in locals() and existing:
+                dispatch_list = existing.get("result", {}).get("detailDefaultVo", {}).get("touDispatchList", [])
+        except Exception:
+            pass
+
+        def _get_dispatch_priorities(disp_id):
+            for item in dispatch_list:
+                if item.get("id") == disp_id:
+                    return item.get("solarPriority", ""), item.get("loadPriority", "")
+            fallbacks = {
+                1: ("1,2,0", "1,2,3"),
+                2: ("1,2,0", "1,2,0"),
+                3: ("1,2,3", "1,2,0"),
+                6: ("1,3,2", "1,3,2"),
+                7: ("1,2,0", "1,2,3"),
+                8: ("1,2,3", "1,2,0"),
+            }
+            return fallbacks.get(disp_id, ("", ""))
+
+        def _enrich_block(block, existing_blocks_list=None, s_id=None):
+            # Create a shallow copy of the block to avoid modifying input
+            enriched = block.copy()
+            
+            # Find an existing block with the exact same time window to inherit properties from
+            matching_existing = None
+            if existing_blocks_list:
+                for eb in existing_blocks_list:
+                    if eb.get("startHourTime") == enriched.get("startHourTime") and eb.get("endHourTime") == enriched.get("endHourTime"):
+                        matching_existing = eb
+                        break
+            
+            # Set default keys that must exist
+            disp_id = enriched.get("dispatchId")
+            default_solar, default_load = _get_dispatch_priorities(disp_id)
+            
+            defaults = {
+                "id": None,
+                "strategyId": s_id,
+                "briefDescribe": "",
+                "solarPriority": default_solar,
+                "gridDischargeMax": None,
+                "gridChargeMax": None,
+                "chargeMax": None,
+                "chargePower": None,
+                "gridFeedMax": None,
+                "dischargePower": None,
+                "dischargeMax": None,
+                "solarCutoff": 0,
+                "gridMax": None,
+                "loadPriority": default_load,
+                "maxChargeSoc": None,
+                "minDischargeSoc": None,
+                "heatEnable": None,
+                "powerOffApower": None,
+                "offGrid": None,
+                "gcaoMax": None,
+                "rampTime": None,
+                "useModeFlag": 0,
+                "dispatch": None,
+                "buyRate": None,
+                "sellRate": None,
+            }
+            
+            # Apply defaults for any key not present in enriched block
+            for k, v in defaults.items():
+                if k not in enriched:
+                    enriched[k] = v
+                    
+            # If there's a matching existing block, merge its system-assigned/custom values
+            if matching_existing:
+                keys_to_preserve = [
+                    "id", "strategyId", "briefDescribe", "solarPriority", 
+                    "gridDischargeMax", "gridChargeMax", "chargeMax", "chargePower",
+                    "gridFeedMax", "dischargePower", "dischargeMax", "solarCutoff",
+                    "gridMax", "loadPriority", "maxChargeSoc", "minDischargeSoc",
+                    "heatEnable", "powerOffApower", "offGrid", "gcaoMax", "rampTime",
+                    "useModeFlag", "dispatch", "buyRate", "sellRate"
+                ]
+                for k in keys_to_preserve:
+                    if k in matching_existing:
+                        # Only copy if the key wasn't explicitly provided by the user in enriched
+                        if k not in block:
+                            enriched[k] = matching_existing[k]
+                            
+            return enriched
+
+        def _build_day_type_entry(dt_code, schedule_blocks, existing_dt=None, strategy_id=None):
             """Build a single dayTypeVoList entry with rates and schedule."""
             dt_name, dt_val = DAY_TYPE_NAMES.get(dt_code, ("everyDay", 3))
+            
+            # Resolve existing blocks for matching and merging
+            existing_dt_blocks = None
+            if existing_dt:
+                existing_dt_blocks = existing_dt.get("detailVoList", [])
+            elif existing_blocks:
+                existing_dt_blocks = existing_blocks
+                
+            # Enrich blocks
+            enriched_blocks = [
+                _enrich_block(b, existing_blocks_list=existing_dt_blocks, s_id=strategy_id)
+                for b in schedule_blocks
+            ]
+            
             entry = {
                 "dayName": dt_name,
                 "dayType": dt_val,
-                "detailVoList": schedule_blocks,
+                "detailVoList": enriched_blocks,
             }
+            if existing_dt:
+                # Preserve existing fields
+                if "id" in existing_dt:
+                    entry["id"] = existing_dt["id"]
+                if "ccociateType" in existing_dt:
+                    entry["ccociateType"] = existing_dt["ccociateType"]
+                if "ladderRate" in existing_dt:
+                    entry["ladderRate"] = existing_dt["ladderRate"]
             entry.update(rate_values)
             return entry
 
-        # ── Build dayTypeVoList ────────────────────────────────────
-        # Priority: explicit day_schedules > explicit day_type > existing > default
-        if day_schedules:
-            # Weekday/weekend split schedules (explicit)
-            built_day_types = []
-            if "weekday" in day_schedules:
-                built_day_types.append(
-                    _build_day_type_entry(1, day_schedules["weekday"])
-                )
-            if "weekend" in day_schedules:
-                built_day_types.append(
-                    _build_day_type_entry(2, day_schedules["weekend"])
-                )
-            if not built_day_types:
-                built_day_types = [_build_day_type_entry(3, detailVoList)]
-        elif day_type != 3 or not existing_day_types:
-            # Explicit day_type override or no existing config
-            built_day_types = [_build_day_type_entry(day_type, detailVoList)]
-        else:
-            # Preserve existing day type structure, replacing schedule blocks
-            built_day_types = []
-            for existing_dt in existing_day_types:
-                dt_code = existing_dt.get("dayType", 3)
-                built_day_types.append(
-                    _build_day_type_entry(dt_code, detailVoList)
-                )
+        # Helper to find matching existing day type
+        def _find_existing_day_type(edt_list, dt_val):
+            if edt_list:
+                for edt in edt_list:
+                    if edt.get("dayType") == dt_val:
+                        return edt
+            return None
+
+        def _build_day_types_for_season(schedule_blocks, edt_list=None, s_id=None):
+            # Priority: explicit day_schedules > explicit day_type > existing > default
+            if day_schedules:
+                built = []
+                if "weekday" in day_schedules:
+                    edt = _find_existing_day_type(edt_list, 1)
+                    built.append(_build_day_type_entry(1, day_schedules["weekday"], existing_dt=edt, strategy_id=s_id))
+                if "weekend" in day_schedules:
+                    edt = _find_existing_day_type(edt_list, 2)
+                    built.append(_build_day_type_entry(2, day_schedules["weekend"], existing_dt=edt, strategy_id=s_id))
+                if not built:
+                    edt = _find_existing_day_type(edt_list, 3)
+                    built.append(_build_day_type_entry(3, schedule_blocks, existing_dt=edt, strategy_id=s_id))
+                return built
+            elif day_type != 3 or not edt_list:
+                edt = _find_existing_day_type(edt_list, day_type)
+                return [_build_day_type_entry(day_type, schedule_blocks, existing_dt=edt, strategy_id=s_id)]
+            else:
+                built = []
+                for existing_dt in edt_list:
+                    dt_code = existing_dt.get("dayType", 3)
+                    built.append(_build_day_type_entry(dt_code, schedule_blocks, existing_dt=existing_dt, strategy_id=s_id))
+                return built
 
         # ── Build strategyList (seasons) ───────────────────────────
         # Priority:
@@ -1184,17 +1297,18 @@ class TouMixin:
             # ── Path 1: Explicit caller override ─────────────────────────────
             strategyList = []
             for s in seasons:
+                s_id = s.get("id", null)
+                t_id = s.get("templateId", null)
+                built_dts = _build_day_types_for_season(detailVoList, edt_list=None, s_id=s_id)
                 strategyList.append({
-                    "id": null,
+                    "id": s_id,
                     "seasonName": s.get("name", f"Season {len(strategyList) + 1}"),
                     "month": s.get("months", "1,2,3,4,5,6,7,8,9,10,11,12"),
-                    "templateId": null,
-                    "dayTypeVoList": built_day_types,
+                    "templateId": t_id,
+                    "dayTypeVoList": built_dts,
                 })
         elif existing_seasons:
             # ── Path 2: Transparent season resolution ─────────────────────────
-            # Find the season that owns today's month (or the requested month).
-            # Update ONLY that season's blocks — all other seasons are untouched.
             from datetime import datetime as _dt
             target_month = str(month if month is not None else _dt.now().month)
 
@@ -1206,7 +1320,6 @@ class TouMixin:
                     break
 
             if target_idx is None:
-                # Month not found in any season — fall back to first season.
                 target_idx = 0
                 logger.warning(
                     f"set_tou_schedule: month {target_month} not found in any "
@@ -1220,32 +1333,37 @@ class TouMixin:
 
             strategyList = []
             for i, existing_s in enumerate(existing_seasons):
+                s_id = existing_s.get("id", null)
+                t_id = existing_s.get("templateId", null)
                 if i == target_idx:
-                    # Replace this season's blocks with the new schedule.
+                    # Update this season's day types and schedules.
+                    edt_list = existing_s.get("dayTypeVoList", [])
+                    built_dts = _build_day_types_for_season(detailVoList, edt_list=edt_list, s_id=s_id)
                     strategyList.append({
-                        "id": null,
+                        "id": s_id,
                         "seasonName": existing_s.get("seasonName", "Season 1"),
                         "month": existing_s.get("month", "1,2,3,4,5,6,7,8,9,10,11,12"),
-                        "templateId": null,
-                        "dayTypeVoList": built_day_types,
+                        "templateId": t_id,
+                        "dayTypeVoList": built_dts,
                     })
                 else:
                     # Preserve all other seasons exactly as they are.
                     strategyList.append({
-                        "id": null,
+                        "id": s_id,
                         "seasonName": existing_s.get("seasonName", f"Season {i+1}"),
                         "month": existing_s.get("month", ""),
-                        "templateId": null,
-                        "dayTypeVoList": existing_s.get("dayTypeVoList", built_day_types),
+                        "templateId": t_id,
+                        "dayTypeVoList": existing_s.get("dayTypeVoList"),
                     })
         else:
             # ── Path 3: No existing config — fresh single all-months season ───
+            built_dts = _build_day_types_for_season(detailVoList, edt_list=None, s_id=null)
             strategyList = [{
                 "id": null,
                 "seasonName": "Season 1",
                 "month": "1,2,3,4,5,6,7,8,9,10,11,12",
                 "templateId": null,
-                "dayTypeVoList": built_day_types,
+                "dayTypeVoList": built_dts,
             }]
 
         payload = {"template": saveTOUdispatch_template, "strategyList": strategyList, "nemType": 0, "coverContentFlag": false}
@@ -1731,12 +1849,34 @@ class TouMixin:
                 "derSchdule": "Other",
             }
 
-        # Normalise strategy_list — strip persisted IDs so the API treats as new
+        # Normalise strategy_list — preserve persisted IDs, day type metadata, and enrich/preserve all time block properties
+        dispatch_list = []
+        try:
+            if res:
+                dispatch_list = res.get("result", {}).get("detailDefaultVo", {}).get("touDispatchList", [])
+        except Exception:
+            pass
+
+        def _get_dispatch_priorities(disp_id):
+            for item in dispatch_list:
+                if item.get("id") == disp_id:
+                    return item.get("solarPriority", ""), item.get("loadPriority", "")
+            fallbacks = {
+                1: ("1,2,0", "1,2,3"),
+                2: ("1,2,0", "1,2,0"),
+                3: ("1,2,3", "1,2,0"),
+                6: ("1,3,2", "1,3,2"),
+                7: ("1,2,0", "1,2,3"),
+                8: ("1,2,3", "1,2,0"),
+            }
+            return fallbacks.get(disp_id, ("", ""))
+
         normalised = []
         for s in strategy_list:
             day_types = []
+            s_id = s.get("id", null)
             for dt in s.get("dayTypeVoList", []):
-                day_types.append({
+                dt_entry = {
                     "dayName": dt.get("dayName", "weekday"),
                     "dayType": dt.get("dayType", 3),
                     "eleticRatePeak": dt.get("eleticRatePeak"),
@@ -1749,22 +1889,64 @@ class TouMixin:
                     "eleticSellShoulder": dt.get("eleticSellShoulder"),
                     "eleticSellValley": dt.get("eleticSellValley"),
                     "eleticSellSuperOffPeak": dt.get("eleticSellSuperOffPeak"),
-                    "detailVoList": [
-                        {
-                            "startHourTime": blk.get("startHourTime"),
-                            "endHourTime": blk.get("endHourTime"),
-                            "waveType": blk.get("waveType"),
-                            "name": blk.get("name", ""),
-                            "dispatchId": blk.get("dispatchId"),
-                        }
-                        for blk in dt.get("detailVoList", [])
-                    ],
-                })
+                }
+                # Preserve metadata keys from existing day types
+                if "id" in dt:
+                    dt_entry["id"] = dt["id"]
+                if "ccociateType" in dt:
+                    dt_entry["ccociateType"] = dt["ccociateType"]
+                if "ladderRate" in dt:
+                    dt_entry["ladderRate"] = dt["ladderRate"]
+                if "eleticRateGridFee" in dt:
+                    dt_entry["eleticRateGridFee"] = dt["eleticRateGridFee"]
+
+                enriched_blocks = []
+                for blk in dt.get("detailVoList", []):
+                    enriched_blk = blk.copy()
+                    
+                    disp_id = enriched_blk.get("dispatchId")
+                    default_solar, default_load = _get_dispatch_priorities(disp_id)
+                    
+                    defaults = {
+                        "id": None,
+                        "strategyId": s_id,
+                        "briefDescribe": "",
+                        "solarPriority": default_solar,
+                        "gridDischargeMax": None,
+                        "gridChargeMax": None,
+                        "chargeMax": None,
+                        "chargePower": None,
+                        "gridFeedMax": None,
+                        "dischargePower": None,
+                        "dischargeMax": None,
+                        "solarCutoff": 0,
+                        "gridMax": None,
+                        "loadPriority": default_load,
+                        "maxChargeSoc": None,
+                        "minDischargeSoc": None,
+                        "heatEnable": None,
+                        "powerOffApower": None,
+                        "offGrid": None,
+                        "gcaoMax": None,
+                        "rampTime": None,
+                        "useModeFlag": 0,
+                        "dispatch": None,
+                        "buyRate": None,
+                        "sellRate": None,
+                    }
+                    for k, v in defaults.items():
+                        if k not in enriched_blk:
+                            enriched_blk[k] = v
+                    enriched_blocks.append(enriched_blk)
+
+                dt_entry["detailVoList"] = enriched_blocks
+                day_types.append(dt_entry)
+
             normalised.append({
-                "id": null,
+                "id": s_id,
                 "seasonName": s.get("seasonName", f"Season {len(normalised) + 1}"),
                 "month": s.get("month", ""),
-                "templateId": null,
+                "templateId": s.get("templateId", null),
                 "dayTypeVoList": day_types,
             })
 

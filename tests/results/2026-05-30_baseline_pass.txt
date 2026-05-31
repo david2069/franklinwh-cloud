@@ -1,0 +1,26 @@
+═══════════════════════════════════════════════════════════
+ TEST RESULTS — baseline
+ Date:    2026-05-30 05:56:41 AEST
+ Branch:  main
+ Commit:  7782092 (pre-commit)
+ Result:  PASS ✅
+═══════════════════════════════════════════════════════════
+
+........................................................................ [ 18%]
+........................................................................ [ 37%]
+........................................................................ [ 55%]
+........................................................................ [ 74%]
+........................................................................ [ 92%]
+............................                                             [100%]
+=============================== warnings summary ===============================
+tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
+tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
+  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+388 passed, 39 deselected, 2 warnings in 4.51s
+
+═══════════════════════════════════════════════════════════
+ Summary: 388 passed, 39 deselected, 2 warnings in 4.51s
+═══════════════════════════════════════════════════════════
