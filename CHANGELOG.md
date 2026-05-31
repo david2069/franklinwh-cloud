@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-05-31
+
 ### Fixed
 - **`DEF-TOU-STRATEGY-REJECT`** — Resolved severe Spring Boot backend validation rejections (`"strategy table is wrong"`) by dynamically preserving season `id` and `templateId` values (in `set_tou_schedule` and `set_tou_schedule_multi`) instead of overwriting them with `null`.
 - **`DEF-TOU-DAY-TYPE-METADATA`** — Retained database `id`, `ccociateType`, and `ladderRate` fields when constructing or updating day type entries inside `dayTypeVoList`.
@@ -290,7 +292,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Power control basics (`set_mode`, `get_mode`)
 - Basic `asyncio`/`httpx` HTTP transport
 
-[Unreleased]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.9...HEAD
+[0.4.9]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.8...v0.4.9
+[0.4.8]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/david2069/franklinwh-cloud/compare/v0.4.4...v0.4.5
