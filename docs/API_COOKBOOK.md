@@ -805,11 +805,10 @@ await client.update_soc(requestedSOC=20, workMode=SELF_CONSUMPTION)
 ### TOU Scheduling
 
 > [!CAUTION]
-> **Every `set_tou_schedule` / `set_tou_schedule_multi` call is DESTRUCTIVE.**
-> `saveTouDispatch` validates, saves, AND switches the gateway to TOU mode in one
-> atomic call. There is no "save without activating" path.
-> Always back up the current schedule with `get_tou_dispatch_detail()` before
-> dispatching so you can restore it on completion.
+> **TOU Schedule Updates vs. Operating Mode Switch**:
+> Historically, saving/applying a new TOU schedule (`saveTouDispatch`) automatically forced the gateway to switch into TOU operating mode. In modern firmware and Cloud API updates, **this is no longer the case**. Saving a schedule now only updates the configuration templates on the gateway; it **does not automatically activate TOU mode**.
+> To make the system run your new schedule, you must perform a separate call to configure the system's operating mode to TOU (using `set_mode(1)` or `set_mode('tou')`).
+> Always back up the current schedule with `get_tou_dispatch_detail()` before dispatching so you can restore it on completion.
 
 ```python
 from franklinwh_cloud.const import (
@@ -2209,4 +2208,84 @@ for gw_id in all_gateway_ids:
 Only run the health check for a **specific gateway** when there is a concrete
 signal that it may be stuck — e.g. `run_status=0` (Standby) during a time window
 where the schedule dictates charging or discharging.
+
+---
+
+## 🛠️ System Settings, AI Dispatch, VPP & Session Mappings
+
+The following recipes demonstrate usage of the new endpoints mapped from mobile app intercepts.
+
+### 1. System Settings & PCS Control
+Read and update gateway-level hardware options (e.g. PCS discharge control, RSD, export limits).
+
+```python
+# Get current system settings
+settings = await client.get_system_settings()
+print(f"PCS Discharge Enabled:  {settings.get('isPcsDischgEn')}")
+print(f"Grid Export Enabled:    {settings.get('gridExportEnable')}")
+print(f"RSD (Rapid Shutdown):   {settings.get('rsdEnable')}")
+
+# Update PCS discharge option (0 = disabled, 1 = enabled)
+await client.update_system_settings(is_pcs_dischg_en=0)
+```
+
+### 2. AI Dispatch & VPP Eligibility
+Query Smart AI scheduling and utility Virtual Power Plant participation details.
+
+```python
+# Check if the gateway is invited to participate in AI dispatch
+ai_invite = await client.check_ai_dispatch_invitation()
+print(f"AI Dispatch Invited:    {ai_invite}")
+
+# Get AI offline disable flag
+ai_offline = await client.get_ai_offline_disable_flag()
+print(f"AI Offline Disable:     {ai_offline}")
+
+# Check user VPP eligibility
+vpp_elig = await client.check_vpp_eligibility()
+print(f"VPP Eligible:           {vpp_elig.get('isVppEligible')}")
+
+# Trigger warming/refresh of AI dispatch schedule cache
+await client.notify_ai_cache()
+```
+
+### 3. JA12 & Grid Compliance Capacity
+Query cycling capacity and active state of charge constraints under compliance programs.
+
+```python
+# Query compliance cycling capacity
+compliance = await client.query_compliance_capacity()
+print(f"JA12 Joined:            {compliance.get('isJoin')}")
+print(f"Compliance SoC:         {compliance.get('complianceSoc')}%")
+```
+
+### 4. Advanced Notification Logs & Run Logs
+Retrieve push notification lists filtered by event types, and help pages or logs.
+
+```python
+# Get push messages filtered by type (e.g., 17 = Smart Circuits)
+messages = await client.get_messages_by_type(event_types="17,43,44", page_num=1, page_size=10)
+for msg in messages:
+    print(f"[{msg.get('deviceSendTime')}] {msg.get('title')}: {msg.get('content')}")
+
+# Get help tooltips/tips by type list
+help_tips = await client.get_page_by_type_list("sdcpSwitchModeTip,modeListPageVppTip")
+for tip in help_tips:
+    print(f"{tip.get('dictType')} ({tip.get('title')}): {tip.get('content')}")
+
+# Get country-level system run log rules (3 = Australia, 1 = US)
+run_logs = await client.get_run_log_list(country_id=3)
+```
+
+### 5. Session Management & FCM Token Updates
+Gracefully log out and update cloud message target tokens.
+
+```python
+# Update the FCM token for the device
+await client.update_fcm_token(token="sample_fcm_token", identity="AND-2-sample-uuid")
+
+# Log out the current session
+await client.logout(refresh_token="sample_refresh_token")
+```
+
 

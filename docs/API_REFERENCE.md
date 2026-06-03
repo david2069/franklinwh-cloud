@@ -220,6 +220,13 @@ These endpoints support the template-based tariff setup workflow used by the Fra
 | `apply_tariff_template(template_id, name)` | POST | `template_id: int`, `name: str`, `work_mode: int`, `electricity_type: int` | `dict` | **WRITE** — Apply utility tariff template |
 | `get_bonus_info()` | GET | — | `dict` | TOU bonus/incentive information |
 | `get_vpp_tip()` | GET | — | `dict` | VPP participation tips |
+| `check_ai_dispatch_invitation()` | GET | — | `dict` | Check if gateway is invited to AI dispatch |
+| `get_ai_offline_disable_flag()` | GET | — | `dict` | Get AI offline disable flag |
+| `check_vpp_eligibility()` | GET | — | `dict` | Check user VPP eligibility |
+| `query_compliance_capacity()` | GET | — | `dict` | Query compliance cycling capacity (JA12) |
+| `notify_ai_cache()` | POST | — | `dict` | Notify AI dispatch to warm cache |
+| `get_nps_show_tip()` | POST | — | `dict` | Get Net Promoter Score dialog tips |
+| `whether_popup(popup_type)` | GET | `popup_type: int` | `dict` | Check if feedback popup should be shown |
 
 > [!WARNING]
 > `apply_tariff_template` is an **in-flight workflow API** — it requires prior steps (`get_utility_companies` → `get_tariff_list` → `get_tariff_detail`) to obtain a valid `template_id`. It is NOT suitable as a standalone CLI command.
@@ -261,6 +268,9 @@ These endpoints support the template-based tariff setup workflow used by the Fra
 | `get_span_setting()` | — | `dict` | `{spanFlag: 0\|1}` — SPAN panel detected? |
 | `get_generator_info()` | — | `dict` | Generator state info |
 | `set_generator_mode(mode)` | `mode: int` 1=Auto, 2=Manual | `dict` | Set generator operating mode |
+| `get_system_settings()` | — | `dict` | Get system setting parameters (PCS, RSD, grid limits) |
+| `update_system_settings(is_pcs_dischg_en)` | `is_pcs_dischg_en: int` | `dict` | **WRITE** — Update system setting parameters |
+| `get_page_by_type_list(type_list)` | `type_list: str` | `dict` | Get help tips/messages by page types |
 
 ### LED Strip — `led_light_settings()`
 
@@ -315,7 +325,7 @@ result = await client.led_light_settings(mode="2", dataArea={
 | `get_entrance_info()` | — | `dict` | SGIP, PCS, grid-tied flags, TOU tariff config |
 | `get_unread_count()` | — | `dict` | Count of unread notifications |
 | `get_notifications(pageNum=1, pageSize=10)` | `pageNum: int`, `pageSize: int` | `list` | Push notification messages |
-| `get_notification_settings()` | — | `dict` | Notification event classifications |
+| `get_notification_settings(lang)` | `lang: str` | `dict` | Notification event classifications |
 | `get_site_and_device_info(**kwargs)` | `userId: str`, `email: str` (both optional) | `dict` | Full site + device inventory |
 | `get_warranty_info()` | — | `dict` | Warranty dates, status |
 | `get_equipment_location()` | — | `dict` | Equipment GPS coordinates |
@@ -327,6 +337,11 @@ result = await client.led_light_settings(mode="2", dataArea={
 | `get_grid_profile_info(requestType=1)` | `requestType: int` 1=Compliance list, 2=Active details | `dict` | Grid compliance / utility profile |
 | `get_geography_list(countryId=None)` | `countryId: int` optional | `dict` | States/provinces for a country |
 | `get_backup_history(requestType, ...)` | `requestType: str` "1"=Summary "2"=Full, `pageNum: int`, `pageSize: int` | `dict` | Backup event history |
+| `query_terminal_user_info()` | — | `dict` | Get logged-in user account info |
+| `logout(refresh_token)` | `refresh_token: str` | `dict` | Log out the current session |
+| `update_fcm_token(token, identity, lang)` | `token: str`, `identity: str`, `lang: str` | `dict` | Update Firebase Cloud Messaging token |
+| `get_messages_by_type(event_types, ...)` | `event_types: str`, `page_num: int`, `page_size: int` | `dict` | Get notifications filtered by event types |
+| `get_run_log_list(country_id)` | `country_id: int` | `dict` | Get run log rules by country ID |
 
 ### Smart Assistant — `smart_assistant()`
 
@@ -349,9 +364,9 @@ answer = await client.smart_assistant(requestType="2", query="What is my battery
 | `discover.py` | 1 | Device discovery (3-tier survey) |
 | `stats.py` | 4 | Power flow, runtime data |
 | `modes.py` | 4 | Operating mode control |
-| `tou.py` | 17 | TOU schedule + tariff management |
+| `tou.py` | 24 | TOU schedule + tariff management |
 | `power.py` | 5 | Grid status, PCS settings |
-| `devices.py` | 16 | Hardware, BMS, smart circuits, LED, generator |
+| `devices.py` | 19 | Hardware, BMS, smart circuits, LED, generator |
 | `storm.py` | 5 | Weather, Storm Hedge |
-| `account.py` | 18 | Account, notifications, alarms, AI |
-| **Total** | **70** | |
+| `account.py` | 23 | Account, notifications, alarms, AI |
+| **Total** | **85** | |

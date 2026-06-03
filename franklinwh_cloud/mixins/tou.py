@@ -2457,3 +2457,92 @@ class TouMixin:
             "grid_charge_en":       grid_charge_en,
             "tariff_setting_flag":  tariff_setting_flag,
         }
+
+    async def check_ai_dispatch_invitation(self):
+        """Check if the gateway is invited to participate in AI dispatch.
+
+        Returns
+        -------
+        dict
+            Invitation status details
+        """
+        url = self.url_base + "hes-gateway/terminal/aiDispatch/checkAiDispatchInvitation"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data.get("result", data)
+
+    async def get_ai_offline_disable_flag(self):
+        """Get the AI offline disable flag for the gateway.
+
+        Returns
+        -------
+        dict
+            AI offline disable flag details
+        """
+        url = self.url_base + "hes-gateway/terminal/aiDispatch/getAiOfflineDisableFlag"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data.get("result", data)
+
+    async def check_vpp_eligibility(self):
+        """Check if the user is eligible for VPP programs.
+
+        Returns
+        -------
+        dict
+            VPP eligibility details
+        """
+        url = self.url_base + "hes-gateway/terminal/checkUserVppEligibility"
+        data = await self._get(url, suppress_params=True, suppress_gateway=True)
+        return data.get("result", data)
+
+    async def query_compliance_capacity(self):
+        """Query compliance cycling capacity (JA12 compliance details).
+
+        Returns
+        -------
+        dict
+            Compliance cycling capacity details
+        """
+        url = self.url_base + "hes-gateway/terminal/ja12/queryComplianceCapacity"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data.get("result", data)
+
+    async def notify_ai_cache(self):
+        """Notify the AI dispatch system to warm or refresh its cache.
+
+        Returns
+        -------
+        dict
+            API response details
+        """
+        url = self.url_base + "hes-gateway/terminal/tou/notify/ai/cache"
+        payload = {"gatewayId": self.gateway}
+        data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
+        return data
+
+    async def get_nps_show_tip(self):
+        """Get Net Promoter Score (NPS) dialog show status and tips.
+
+        Returns
+        -------
+        dict
+            NPS tips and dialog configuration
+        """
+        url = self.url_base + "hes-gateway/terminal/nps/getNpsShowTip"
+        data = await self._post(url, {}, suppress_params=True, suppress_gateway=True)
+        return data.get("result", data)
+
+    async def whether_popup(self, popup_type: int = 4):
+        """Check if feedback/popup rating forms should be presented.
+
+        Parameters
+        ----------
+        popup_type : int, optional
+            The feedback popup type, defaults to 4.
+        """
+        url = self.url_base + "hes-gateway/terminal/feedback/whetherPopUp"
+        params = {"gatewayId": self.gateway, "type": str(popup_type)}
+        data = await self._get(url, params=params)
+        return data.get("result", data)

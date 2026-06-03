@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **System Settings Mappings (`FEAT-HAR-API-EXTENSIONS`)** — Added `get_system_settings()` and `update_system_settings()` to `DevicesMixin` mapping to `/hes-gateway/terminal/system/getSystemSetting` and `/system/updateSystemSetting`.
+- **AI Dispatch & VPP Eligibility (`FEAT-HAR-API-EXTENSIONS`)** — Added `check_ai_dispatch_invitation()`, `get_ai_offline_disable_flag()`, `check_vpp_eligibility()`, and `notify_ai_cache()` to `TouMixin`.
+- **JA12 Compliance (`FEAT-HAR-API-EXTENSIONS`)** — Added `query_compliance_capacity()` to `TouMixin` to retrieve compliance cycling capacity constraints.
+- **Account & Session Management (`FEAT-HAR-API-EXTENSIONS`)** — Added `query_terminal_user_info()`, `logout()`, and `update_fcm_token()` to `AccountMixin`.
+- **Message Queries & Logging (`FEAT-HAR-API-EXTENSIONS`)** — Added `get_messages_by_type()` (filtered notification message log) and `get_run_log_list()` (country-level rules) to `AccountMixin`.
+- **Help tooltips helper (`FEAT-HAR-API-EXTENSIONS`)** — Added `get_page_by_type_list()` to `DevicesMixin`.
+
+### Fixed
+- **`DEF-NOTIFICATION-SETTINGS-TYPO`** — Fixed critical URL typo in `get_notification_settings()` in `AccountMixin`, correcting it from `/hes-gateway/terminal/selectTerPusselectEventClassification` to `/hes-gateway/terminal/selectEventClassification`.
+- **`DEF-USER-RESOURCES-DRIFT`** — Fixed endpoint drift in `get_user_resources()`, correcting path to `/hes-gateway/newApi/api-user/app/resource/getUserResources/v2` and adding a robust fallback to parse both legacy `"result"` and new `"data"` JSON structures.
+
 ## [0.4.9] - 2026-05-31
 
 ### Fixed

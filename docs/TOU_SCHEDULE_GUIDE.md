@@ -102,15 +102,22 @@ flowchart TD
     construct_tou_payload(windows, mode, rates)"] --> D
 
     D["4. set_tou_schedule(payload)
-    WRITE: setGatewayIotTouV2
+    WRITE: saveTouDispatch
     Returns: {id: touId}"] --> E
 
-    E["5. Verify dispatch
+    E["5. Switch Operating Mode (Optional)
+    set_mode(TIME_OF_USE) to active schedule"] --> F
+
+    F["6. Verify dispatch
     get_gateway_tou_list() — confirm new schedule active"]
 
     style A fill:#2d5016,color:#fff
     style D fill:#7a1a1a,color:#fff
 ```
+
+> [!WARNING]
+> **Saving/applying a schedule does NOT automatically change the active operating mode of the aGate.**
+> Once the schedule is saved via `saveTouDispatch`, the configuration is stored. However, if the system is currently running in a different operating mode (e.g. `SELF_CONSUMPTION` or `EMERGENCY_BACKUP`), you **must** call `set_mode(TIME_OF_USE)` separately to activate schedule-based dispatching.
 
 ### API Endpoint Reference
 
@@ -125,7 +132,7 @@ flowchart TD
 | AI dispatch | `get_recommend_dispatch_list` | POST | `terminal/tou/getRecommendEnergyDispatchList` | Read |
 | Savings estimate | `calculate_expected_earnings` | POST | `terminal/tou/calculate/expected/earnings` | Read |
 | Apply template | `apply_tariff_template` | POST | `terminal/tou/saveTouDispatchUseTemplate` | **Write** |
-| Direct dispatch | `set_tou_schedule` | POST | `terminal/tou/setGatewayIotTouV2` | **Write** |
+| Direct dispatch | `set_tou_schedule` | POST | `terminal/tou/saveTouDispatch` | **Write** |
 | Bonus info | `get_bonus_info` | GET | `terminal/tou/getBonusInfo` | Read |
 | VPP tips | `get_vpp_tip` | GET | `terminal/tou/getVppTipForUpdateTou` | Read |
 
@@ -222,9 +229,29 @@ The `franklinwh-cloud` library enforces strict pre-flight validation on schedule
 
 ### 🛡️ Pre-Flight Schema Verification (JSON Schema / XSD Equivalent)
 
-Custom schedule lists are validated against a formal JSON Schema. If the input is missing mandatory fields or uses invalid types/patterns, `set_tou_schedule` instantly raises a `InvalidTOUScheduleOption` with a detailed validation message.
+Custom schedule lists are validated against a formal JSON Schema. This client-side schema verification acts as a strict validation contract—the modern REST equivalent of a traditional XML **XSD schema** validation.
 
-Each time block is a dict with **5 mandatory fields**:
+If the input is missing required/mandatory fields (such as `dispatchId` or `waveType`) or uses invalid types/patterns, `set_tou_schedule` instantly fails client-side before any network request is initiated. In this case, the SDK raises an **`InvalidTOUScheduleOption`** exception with a detailed, specific validation message (e.g., `JSON Validation failed: 'dispatchId' is a required property`).
+
+### 📖 Discovering Valid Fields & Enums (Interactive API Docs)
+
+When integrating a client (such as Home Assistant, Node-RED, or custom scripts), you need to know exactly which enums, field names, and values are structurally valid. Rather than guessing, you can inspect the formal API specification interactively:
+
+1. **Local OpenAPI Specification**:
+   * The repository ships with a complete OpenAPI 3.0 specification file: **[franklinwh_openapi.json](file:///Users/davidhona/dev/franklinwh-cloud/docs/franklinwh_openapi.json)**. This file describes every endpoint, request body schema, and model representation in detail.
+
+2. **FastAPI Emulator Docs Endpoint**:
+   * When running the local **FastAPI Cloud API Emulator** (located in `emulator/main.py`), you can access the interactive Swagger/ReDoc documentation UI directly in your browser:
+     * **Swagger UI:** `http://localhost:8080/docs`
+     * **ReDoc UI:** `http://localhost:8080/redoc`
+   * This provides a live playground to inspect parameter types, view validation rules, and test requests.
+
+3. **FHAI (FranklinWH Home Assistant Integrator) Docs Endpoint**:
+   * When running the **FHAI** integration gateway service, it hosts a local FastAPI web server exposing a dedicated **`/docs` API endpoint** directly at:
+     * **Swagger UI:** `http://localhost:8099/docs`
+   * Developers and downstream client applications can query this endpoint to retrieve the fully-resolved interactive Swagger schema, detailing exactly what enums (like `waveType` and `dispatchId`) and attributes are valid and how the schema is structured.
+
+Each time block is a dictionary requiring **5 mandatory fields**:
 
 ```python
 {
@@ -363,6 +390,38 @@ flowchart TD
     style H fill:#2d5016,color:#fff
     style I fill:#8b1a1a,color:#fff
 ```
+
+---
+
+## 🔄 Post-Apply Operating Mode Switch Behavior
+
+> [!WARNING]
+> **Saving or applying a schedule does NOT automatically change the active operating mode of the aGate.**
+>
+> Historically, saving/applying a new TOU schedule (`saveTouDispatch`) automatically forced the gateway to switch into TOU operating mode. In modern firmware and Cloud API updates, **this is no longer the case**.
+>
+> The official mobile app mirrors this: when a user updates or applies a schedule, the app specifically prompts the user asking if they want to switch their active operating mode to Time-of-Use. If they decline (or via direct API integration if not called separately), the gateway **stays in its current operating mode** (e.g. Self-Consumption or Emergency Backup) and does not execute the newly saved schedule.
+>
+> To make the system run your new schedule, you must perform a separate call to configure the system's operating mode to TOU:
+>
+> ```python
+> from franklinwh_cloud.const import TIME_OF_USE
+> 
+> # 1. Save / Update the TOU schedule
+> result = await client.set_tou_schedule(
+>     touMode="CUSTOM",
+>     touSchedule=schedule
+> )
+> 
+> # 2. Explicitly switch the system's operating mode to Time-of-Use
+> # (Only required if the system is not already running in TOU mode)
+> current_mode_info = await client.get_mode()
+> if current_mode_info.get("workMode") != TIME_OF_USE:
+>     logger.info("Switching active operating mode to Time-of-Use...")
+>     success = await client.set_mode(TIME_OF_USE)
+>     if success:
+>         logger.info("Operating mode changed successfully to TOU!")
+> ```
 
 ---
 
