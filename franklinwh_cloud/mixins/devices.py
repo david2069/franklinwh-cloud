@@ -1199,3 +1199,46 @@ class DevicesMixin:
             "error": None,
         }
 
+    async def get_system_settings(self):
+        """Get system setting parameters for the gateway.
+
+        Returns
+        -------
+        dict
+            System settings including pcs settings, grid limits, RSD, etc.
+        """
+        url = self.url_base + "hes-gateway/terminal/system/getSystemSetting"
+        params = {"gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data.get("result", data)
+
+    async def update_system_settings(self, is_pcs_dischg_en: int | None = None, **kwargs):
+        """Update system settings for the gateway.
+
+        Parameters
+        ----------
+        is_pcs_dischg_en : int, optional
+            1 = Enable PCS Discharge, 0 = Disable
+        """
+        url = self.url_base + "hes-gateway/terminal/system/updateSystemSetting"
+        payload = {"gatewayId": self.gateway}
+        if is_pcs_dischg_en is not None:
+            payload["isPcsDischgEn"] = is_pcs_dischg_en
+        for k, v in kwargs.items():
+            payload[k] = v
+        data = await self._post(url, payload, suppress_params=True, suppress_gateway=True)
+        return data
+
+    async def get_page_by_type_list(self, type_list: str):
+        """Get help tips/messages by page type lists.
+
+        Parameters
+        ----------
+        type_list : str
+            Comma-separated type lists (e.g. "sdcpSwitchModeTip,modeListPageVppTip")
+        """
+        url = self.url_base + "hes-gateway/common/getPageByTypeList"
+        params = {"typeList": type_list, "gatewayId": self.gateway}
+        data = await self._get(url, params=params)
+        return data.get("result", data)
+

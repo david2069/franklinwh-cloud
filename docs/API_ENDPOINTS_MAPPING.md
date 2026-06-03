@@ -11,11 +11,11 @@ A complete mapping of the internal `franklinwh-cloud` Python methods to their co
 | `get_entrance_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_unread_count()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_notifications()` | `pageNum, pageSize` | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
-| `get_notification_settings()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `get_notification_settings()` | `lang` | GET | `/hes-gateway/terminal/selectEventClassification` | [View Examples](API_COOKBOOK.md) |
 | `get_site_and_device_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_warranty_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_equipment_location()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
-| `get_user_resources()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `get_user_resources()` | — | GET | `/hes-gateway/newApi/api-user/app/resource/getUserResources/v2` | [View Examples](API_COOKBOOK.md) |
 | `get_alarm_codes_list()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_programme_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_benefit_info()` | `data_type, day_time` | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
@@ -26,6 +26,11 @@ A complete mapping of the internal `franklinwh-cloud` Python methods to their co
 | `smart_assistant()` | `requestType, query` | POST | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_electric_data()` | `data_type, day_time` | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_charge_history()` | `page_num, page_size` | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `query_terminal_user_info()` | — | GET | `/hes-gateway/terminal/v2/queryTerminalUserInfo` | [View Examples](API_COOKBOOK.md) |
+| `logout()` | `refresh_token` | POST | `/hes-gateway/terminal/v2/loginOut` | [View Examples](API_COOKBOOK.md) |
+| `update_fcm_token()` | `token, identity, lang` | POST | `/hes-gateway/terminal/updateTerUserFcmToken` | [View Examples](API_COOKBOOK.md) |
+| `get_messages_by_type()` | `event_types, page_num, page_size` | GET | `/hes-gateway/terminal/listDeviceMessagesByType` | [View Examples](API_COOKBOOK.md) |
+| `get_run_log_list()` | `country_id` | GET | `/hes-gateway/common/country/selectRunLogList` | [View Examples](API_COOKBOOK.md) |
 
 ## Devices
 
@@ -45,6 +50,9 @@ A complete mapping of the internal `franklinwh-cloud` Python methods to their co
 | `get_site_detail()` | `site_id` | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_device_detail()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `get_device_overall_info()` | — | GET | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `get_system_settings()` | — | GET | `/hes-gateway/terminal/system/getSystemSetting` | [View Examples](API_COOKBOOK.md) |
+| `update_system_settings()` | `is_pcs_dischg_en` | POST | `/hes-gateway/terminal/system/updateSystemSetting` | [View Examples](API_COOKBOOK.md) |
+| `get_page_by_type_list()` | `type_list` | GET | `/hes-gateway/common/getPageByTypeList` | [View Examples](API_COOKBOOK.md) |
 
 ## Modes
 
@@ -99,3 +107,10 @@ A complete mapping of the internal `franklinwh-cloud` Python methods to their co
 | `get_recommend_dispatch_list()` | `strategy_list` | POST | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `calculate_expected_earnings()` | `template` | POST | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
 | `apply_tariff_template()` | `template_id, name, work_mode, electricity_type, strategy_detail_custom` | POST | `/{dynamic_url}` | [View Examples](API_COOKBOOK.md) |
+| `check_ai_dispatch_invitation()` | — | GET | `/hes-gateway/terminal/aiDispatch/checkAiDispatchInvitation` | [View Examples](API_COOKBOOK.md) |
+| `get_ai_offline_disable_flag()` | — | GET | `/hes-gateway/terminal/aiDispatch/getAiOfflineDisableFlag` | [View Examples](API_COOKBOOK.md) |
+| `check_vpp_eligibility()` | — | GET | `/hes-gateway/terminal/checkUserVppEligibility` | [View Examples](API_COOKBOOK.md) |
+| `query_compliance_capacity()` | — | GET | `/hes-gateway/terminal/ja12/queryComplianceCapacity` | [View Examples](API_COOKBOOK.md) |
+| `notify_ai_cache()` | — | POST | `/hes-gateway/terminal/tou/notify/ai/cache` | [View Examples](API_COOKBOOK.md) |
+| `get_nps_show_tip()` | — | POST | `/hes-gateway/terminal/nps/getNpsShowTip` | [View Examples](API_COOKBOOK.md) |
+| `whether_popup()` | `popup_type` | GET | `/hes-gateway/terminal/feedback/whetherPopUp` | [View Examples](API_COOKBOOK.md) |
