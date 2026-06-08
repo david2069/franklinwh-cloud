@@ -49,7 +49,8 @@
     "3": {"name": "aPower 2", "sku": "APR-10K15V2-US", "model": "aPower X-20", "country_id": 2, "type": "high_capacity", "has_mppt": false},
     "4": {"name": "aPower S", "sku": "APRS-10K15V1-US", "model": "aPower S-10", "country_id": 2, "type": "stackable", "has_mppt": true},
     "5": {"name": "aPower S", "sku": "APRS-11K15V2-US", "model": "aPower S-10", "country_id": 2, "type": "stackable", "has_mppt": true},
-    "6": {"name": "aPower X", "sku": "APR-05K15V1-US", "model": "aPower X-10", "country_id": 2, "type": "standard", "has_mppt": false}
+    "6": {"name": "aPower X", "sku": "APR-05K15V1-US", "model": "aPower X-10", "country_id": 2, "type": "standard", "has_mppt": false},
+    "7": {"name": "aPower X", "sku": "APR-05K13V2-AU", "model": "aPower X-02-AU", "country_id": 3, "type": "standard", "has_mppt": false}
   },
 
   "accessories": {

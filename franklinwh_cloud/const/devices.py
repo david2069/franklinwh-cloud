@@ -51,6 +51,7 @@ FRANKLINWH_MODELS = {
     4: {"name": "aPower S", "sku": "APRS-10K15V1-US", "model": "aPower S-10"},
     5: {"name": "aPower S", "sku": "APRS-11K15V2-US", "model": "aPower S-10"},
     6: {"name": "aPower X", "sku": "APR-05K15V1-US", "model": "aPower X-10"},
+    7: {"name": "aPower X", "sku": "APR-05K13V2-AU", "model": "aPower X-02-AU"},
     100: {"name": "aGate X", "sku": "AGT-R1V1-US", "model": "aGate X-10"},
     101: {"name": "aGate X", "sku": "AGT-R1V2-US", "model": "aGate X-20"},
     102: {"name": "aGate X", "sku": "AGT-R1V1-AU", "model": "aGate X-01-AU"},
