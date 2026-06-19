@@ -17,7 +17,7 @@ import httpx
 
 
 from .api import DEFAULT_URL_BASE
-from .models import Stats, Current, Totals, GridStatus, empty_stats
+from .models import Stats, Current, Totals, GridStatus, empty_stats, ResolvedCapabilities
 from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
@@ -744,6 +744,28 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             raise FranklinWHError(f"Command failed gracefully with server rejection: {res.get('code')} - {res.get('message')}")
             
         return res
+
+    async def get_resolved_capabilities(self) -> ResolvedCapabilities:
+        """Resolve and freeze system capabilities based on live Cloud API responses.
+
+        Fetches entrance info, device info, accessories info, and VPP eligibility,
+        then compiles and returns a ResolvedCapabilities object.
+        """
+        from .discovery import compile_capabilities
+
+        # Gather responses from the required endpoints
+        entrance_data = await self.get_entrance_info()
+        device_data = await self.get_device_info()
+        accessories_data = await self.get_accessories(0)
+        
+        # Check VPP eligibility
+        try:
+            vpp_data = await self.check_vpp_eligibility()
+        except Exception:
+            vpp_data = None
+
+        return compile_capabilities(entrance_data, device_data, accessories_data, vpp_data)
+
 
 
 
