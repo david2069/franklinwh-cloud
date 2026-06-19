@@ -280,3 +280,94 @@ class DeviceSnapshot:
         """Serialize to dict for JSON output."""
         from dataclasses import asdict
         return asdict(self)
+
+
+def get_catalog() -> dict:
+    """Load device catalog JSON (cached at module level)."""
+    from importlib.resources import files as pkg_files
+    import json
+    catalog_path = pkg_files("franklinwh_cloud.const").joinpath("device_catalog.json")
+    with open(str(catalog_path), "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def compile_capabilities(
+    entrance_data: dict,
+    device_data: dict,
+    accessories_data: dict,
+    vpp_data: dict | None = None
+) -> ResolvedCapabilities:
+    """Resolve and compile gateway capabilities, applying regional overrides."""
+    from .models import ResolvedCapabilities
+
+    ent_res = entrance_data.get("result", entrance_data) if isinstance(entrance_data, dict) else {}
+    dev_res = device_data.get("result", device_data) if isinstance(device_data, dict) else {}
+    acc_res = accessories_data.get("result", accessories_data) if isinstance(accessories_data, dict) else []
+    if not isinstance(acc_res, list):
+        acc_res = []
+
+    vpp_res = vpp_data.get("result", vpp_data) if isinstance(vpp_data, dict) else {}
+
+    # Identity
+    country_id = dev_res.get("countryId") or ent_res.get("countryId") or 0
+    gateway_id = dev_res.get("gatewayId") or dev_res.get("fhpSn") or ""
+    
+    # Resolve Agate Generation
+    hw_ver = str(dev_res.get("sysHdVersion", "100"))
+    try:
+        catalog = get_catalog()
+        model_info = catalog.get("agate_models", {}).get(hw_ver, {})
+        agate_generation = model_info.get("generation", 1)
+    except Exception:
+        agate_generation = 1
+
+    # Solar
+    pv1_installed = (str(dev_res.get("installPv1Port")) == "1" or str(ent_res.get("pv1Port")) == "1")
+    pv2_installed = (str(dev_res.get("installPv2Port")) == "1" or str(ent_res.get("pv2Port")) == "1")
+    solar_installed = bool(ent_res.get("solarFlag", False)) or pv1_installed or pv2_installed
+    has_mppt = bool(dev_res.get("mpptEnFlag", False))
+    has_apbox = int(dev_res.get("apbox20Num", 0)) > 0
+
+    # Accessories
+    has_smart_circuits = any(item.get("accessoryType") == 4 for item in acc_res)
+    has_generator = any(item.get("accessoryType") == 3 for item in acc_res) or bool(dev_res.get("genEn", 0))
+
+    # Grid
+    grid_connected = bool(ent_res.get("gridFlag", True)) and not bool(dev_res.get("offGirdFlag", False))
+    three_phase = str(dev_res.get("isThreePhaseInstall")) == "1"
+
+    # Pricing & VPP
+    tariff_configured = bool(ent_res.get("tariffSettingFlag", False))
+
+    # Apply Regional Quirks & Locks
+    if country_id == 3:  # Australia (AU)
+        has_v2l = False
+        circuit_count = 2
+    else:  # US/Other
+        has_v2l = bool(dev_res.get("v2lModeEnable", False))
+        circuit_count = 2 if agate_generation == 1 else 3
+
+    if not grid_connected:
+        vpp_eligible = False
+    else:
+        vpp_eligible = bool(vpp_res.get("isVppEligible", False))
+
+    return ResolvedCapabilities(
+        country_id=country_id,
+        agate_generation=agate_generation,
+        gateway_id=gateway_id,
+        solar_installed=solar_installed,
+        pv1_installed=pv1_installed,
+        pv2_installed=pv2_installed,
+        has_mppt=has_mppt,
+        has_apbox=has_apbox,
+        has_smart_circuits=has_smart_circuits,
+        circuit_count=circuit_count,
+        has_generator=has_generator,
+        has_v2l=has_v2l,
+        grid_connected=grid_connected,
+        three_phase=three_phase,
+        vpp_eligible=vpp_eligible,
+        tariff_configured=tariff_configured,
+    )
+

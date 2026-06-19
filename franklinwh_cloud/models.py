@@ -356,3 +356,39 @@ class SmartCircuitDetail:
             time_schedules=payload.get(f"Sw{cid}Time"),
             time_set=payload.get(f"Sw{cid}TimeSet"),
         )
+
+
+@dataclass(frozen=True)
+class ResolvedCapabilities:
+    """Compiled capabilities for a gateway, taking regional quirks into account."""
+    # Identity
+    country_id: int            # 1=CN, 2=US, 3=AU (site location)
+    agate_generation: int      # 1=Gen 1, 2=Gen 2 (derived from sysHdVersion)
+    gateway_id: str            # Gateway serial number
+    
+    # Solar Capabilities
+    solar_installed: bool      # Sourced from solarFlag / pv1Port / pv2Port
+    pv1_installed: bool
+    pv2_installed: bool
+    has_mppt: bool             # Sourced from mpptEnFlag (aPower S support)
+    has_apbox: bool            # Sourced from apbox20Num > 0
+    
+    # Accessories
+    has_smart_circuits: bool   # Sourced from get_accessories() type=4
+    circuit_count: int         # Sourced from country_id rules (3 for US, 2 for AU)
+    has_generator: bool        # Sourced from get_accessories() type=3 / genEn
+    has_v2l: bool              # Sourced from v2lModeEnable (forced False in AU)
+    
+    # Grid
+    grid_connected: bool       # Sourced from gridFlag / offGridFlag
+    three_phase: bool          # Sourced from isThreePhaseInstall
+    
+    # Pricing & VPP
+    vpp_eligible: bool         # Sourced from checkUserVppEligibility() (forced False offgrid)
+    tariff_configured: bool    # Sourced from tariffSettingFlag
+
+    def to_dict(self) -> dict:
+        """Convert capabilities to a plain dictionary for API/CLI serialization."""
+        from dataclasses import asdict
+        return asdict(self)
+
