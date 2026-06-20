@@ -56,3 +56,15 @@ class FranklinWHTimeoutError(Exception):
         self.url = url
         self.timeout_s = timeout_s
         super().__init__(f"API request timed out after {timeout_s}s: {url}")
+
+
+class ForceSessionError(Exception):
+    """Base exception for Force Mode errors."""
+
+
+class ForceVPPLockError(ForceSessionError):
+    """Raised when a force mode operation is blocked by an active VPP."""
+
+
+class ForceSessionActiveError(ForceSessionError):
+    """Raised when a force session is already active."""
