@@ -48,6 +48,8 @@ from franklinwh_cloud.mixins.power import PowerMixin
 from franklinwh_cloud.mixins.devices import DevicesMixin
 from franklinwh_cloud.mixins.account import AccountMixin
 from franklinwh_cloud.mixins.discover import DiscoverMixin
+from franklinwh_cloud.mixins.force import ForceMixin
+from franklinwh_cloud.force_state import ForceStateStore, ForceAuditLog
 
 logger = logging.getLogger(__name__)
 class AccessoryType(Enum):
@@ -221,7 +223,7 @@ async def retry(func, filter, refresh_func):
     return await func()
 
 
-class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin):
+class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin, ForceMixin):
 
     """Client for interacting with FranklinWH gateway API."""
 
@@ -235,6 +237,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         cache: dict | None = None,
         not_grid_tied: bool = False,
         track_python_methods: bool = False,
+        force_state_dir: str | None = None,
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -294,6 +297,13 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
         # Edge tracker — CloudFront PoP monitoring (always on, zero overhead)
         self.edge_tracker = EdgeTracker()
+
+        # Force state management
+        import os
+        from pathlib import Path
+        fs_dir = force_state_dir or Path(os.path.expanduser("~/.franklinwh/force_state"))
+        self._force_state = ForceStateStore(fs_dir)
+        self._force_audit = ForceAuditLog(fs_dir)
 
         self._dynamic_modes_cache: dict[int, str] | None = None
         self._canary_baseline_version = "APP2.11.0"

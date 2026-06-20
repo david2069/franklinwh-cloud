@@ -60,6 +60,35 @@ MOCK_STATS_RESPONSE = {
     }
 }
 
+MOCK_PROGRAM_RESPONSE = {
+    "code": 200,
+    "message": "Query success!",
+    "result": {
+        "flag": 0,
+        "programId": None,
+        "programName": None,
+        "partnerName": None,
+        "partnerId": None,
+        "postcode": None,
+        "province": None,
+        "city": None,
+        "programList": None,
+        "programIdList": None,
+        "address1": None,
+        "address2": None,
+        "userPhoneNumber": None,
+        "firstName": None,
+        "lastName": None,
+        "registerGuideDesc": None,
+        "registerStartDate": None,
+        "registerEndDate": None,
+        "showRegisterBanner": False,
+        "vppBannerDetail": None
+    },
+    "total": 1,
+    "success": True
+}
+
 
 @app.middleware("http")
 async def schema_validation_middleware(request: Request, call_next):
@@ -90,6 +119,12 @@ async def home_gateway_list(request: Request):
 async def get_app_home_index(request: Request):
     """Mock for stats payload."""
     return JSONResponse(status_code=200, content=MOCK_STATS_RESPONSE)
+
+
+@app.get("/hes-gateway/terminal/selectProgramFlag")
+async def get_programme_info(request: Request):
+    """Mock for VPP/utility programme info."""
+    return JSONResponse(status_code=200, content=MOCK_PROGRAM_RESPONSE)
 
 
 @app.get("/health")

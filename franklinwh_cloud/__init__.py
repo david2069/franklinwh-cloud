@@ -10,7 +10,7 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption,
+    InvalidTOUScheduleOption, ForceSessionError, ForceVPPLockError, ForceSessionActiveError
 )
 
 # Operating Work and Run mode constants
@@ -47,6 +47,9 @@ __all__ = [
     "InvalidOperatingMode",
     "InvalidOperatingModeOption",
     "InvalidTOUScheduleOption",
+    "ForceSessionError",
+    "ForceVPPLockError",
+    "ForceSessionActiveError",
     "PasswordAuth",
     "Stats",
     "TokenAuth",
