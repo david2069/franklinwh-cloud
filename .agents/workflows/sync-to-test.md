@@ -24,7 +24,7 @@ Run this after committing changes in `franklinwh-cloud` to keep `franklinwh-clou
 // turbo
 2. Verify the test suite still passes in the test workspace:
 ```bash
-cd /Users/davidhona/dev/franklinwh-cloud-test && venv/bin/pytest --ignore=tests/test_live.py -q
+cd /Users/davidhona/dev/franklinwh-cloud-test && venv/bin/pytest -m "not live" -q
 ```
 
 3. If any tests fail, investigate before running live tests.

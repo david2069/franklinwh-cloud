@@ -31,7 +31,19 @@
 
 ```bash
 cd /Users/davidhona/dev/franklinwh-cloud
-python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py
+python -m pytest tests/ -v --tb=short
 ```
+
+Live tests are **opt-in** — `pyproject.toml` sets `addopts = "-m 'not live'"`, so the
+command above never touches the real cloud or aGate. To run them deliberately:
+
+```bash
+python -m pytest tests/ -m live -v          # authenticates for real; see AP-13
+```
+
+> ⚠️ `tests/test_live_mode.py::test_live_set_mode` issues real `set_mode()` writes that
+> change the physical aGate's operating mode. Never run `-m live` unattended.
+> The older `--ignore=tests/test_live.py` form was **not** a sufficient guard: it missed
+> the live tests in `test_live_mode.py` and `test_integration.py`.
 
 > Credentials live in `~/dev/franklinwh-cloud-test/franklinwh.ini`
