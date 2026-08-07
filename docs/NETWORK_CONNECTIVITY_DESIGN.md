@@ -157,6 +157,33 @@ So the `opt:0` / `opt:1` read-write convention already used by `_update_smart_ci
 (`mixins/devices.py:285`) and `led_light_settings` (`:235`) applies to the network commands too —
 nobody has written the network half yet. Phase 2 is exactly that.
 
+### 2.5a U1 ANSWERED — autonomous roaming confirmed on live hardware (2026-08-08)
+
+Observed directly via `tools/network_probe.py`, with **no commands issued at any point**:
+
+| Time | Active | WiFi | 4G | Note |
+|---|---|---|---|---|
+| ~08:25 | **4G** | enabled, 76%, `link=false`, `ip=null` | linked | `linked_transports=["4g"]` |
+| ~08:59 | — | — | — | cloud returns code 136 *"Current gateway offline"* |
+| ~09:07 | **WiFi** | `link=true`, `ip=192.168.0.110` | `link=false` | `linked_transports=["wifi"]` |
+
+The aGate moved itself from cellular to WiFi, acquired a DHCP lease, and dropped the
+cellular link — unprompted. This confirms §2.3a on live hardware, and settles U1: **yes,
+failover and recovery are autonomous.** Option C in §3 ("do nothing") is therefore viable
+and should be tried before any write-based approach to use case 2.
+
+Two further findings from the same window:
+
+- **The offline blip is real and mid-transition.** A probe or verify loop that treats a
+  single `GatewayOfflineException` as failure will report false negatives. The blackout
+  tolerance in the verify loop is not defensive over-engineering — it is required.
+- **The cmdType 339 reachability booleans cannot be trusted.** While the aGate was on WiFi
+  with a valid lease and answering MQTT through the cloud, 339 still reported
+  `netStatus=0`, `awsStatus=0`, `routerStatus=0`. Since those calls demonstrably round-trip
+  through the cloud to the device, the flags contradict observable reality. **Do not gate
+  switch success on `awsStatus`/`netStatus`** — use `currentNetType` + a real address +
+  SSID correlation, as §4's verify loop already does.
+
 ### 2.6 Real-world corroboration
 
 `docs/troubleshooting/2026-03-21_wifi_dhcp_failure.md` documents this happening on live
@@ -489,6 +516,24 @@ aGate Network — 10060006A02F24170091
 ## 7. Test plan
 
 Per `.agents/policies/live_test_protocol.md` (AP-13). Results to `tests/results/`.
+
+### 7.0 Open questions and their status
+
+These are the device-behaviour unknowns that no amount of HAR analysis can settle.
+`tools/network_probe.py` exists to answer them and is retired once they are all closed.
+
+| #  | Question | Risk | Probe command | Status |
+|----|----------|------|---------------|--------|
+| U1 | Does the aGate fail over between transports on its own? | none | `observe` | ✅ **ANSWERED YES** — §2.5a, observed 4G → WiFi unprompted 2026-08-08 |
+| U2 | Does re-applying identical WiFi credentials work? Timing envelope? | low | `reapply-wifi` | open — safe to run; the app did exactly this at capture [3160] |
+| U3 | Does `341 opt=1` exist, and is the inferred shape correct? | **high** | `noop 341` | open — no-op probe first; a wrong shape could disable an interface |
+| U4 | Does `317 optType=1` force a transport switch, or is it advisory? | medium | `noop 317` then `set-primary` | open — §2.5a makes "advisory" the leading hypothesis |
+| U5 | Does an open network (`wifi_Safety 0`) accept an empty password? | medium | — | open — needs a throwaway AP; not yet implemented in the probe |
+
+**Do not run U3/U4 while `linked_transports` has only one entry.** The preflight enforces
+this, but the point stands: at the time of writing the gateway is on WiFi alone
+(`linked_transports == ["wifi"]`, `redundant: false`), so *any* network write is currently
+refused. U3/U4 need cellular or Ethernet restored to a linked state first.
 
 **Gate 1 — unit (mocked, no network).** Fixtures extracted from the HAR corpus into
 `tests/fixtures/network/`: both 340 shapes (short + extended), 318 both `result`-nesting
