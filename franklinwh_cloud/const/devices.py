@@ -3,13 +3,42 @@
 Used for device discovery and HA config flow integration.
 """
 
-# Network connectivity options
+# Network connectivity options.
+#
+# This is the encoding used by commSetPara.currentNetType (cmdType 317) and by
+# the extended cmdType 339 payload.
+#
+# WARNING: this is NOT the same encoding as Current.network_connection, which
+# comes from runtimeData.connType and uses 0=4G, 1=WiFi, 2=Ethernet. The two are
+# incompatible — never map one through the other.
 NETWORK_TYPES = {
     1: "Ethernet 1",
     2: "Ethernet 2",
     3: "WiFi",
     4: "4G Mobile"
 }
+
+# currentNetType -> the interface key used by get_network_info() / get_network_state()
+NETWORK_TYPE_KEYS = {
+    1: "eth0",
+    2: "eth1",
+    3: "wifi",
+    4: "4g",
+}
+
+# currentNetType -> the corresponding switch key in the cmdType 341 payload
+NETWORK_SWITCH_KEYS = {
+    1: "ethernet0NetSwitch",
+    2: "ethernet1NetSwitch",
+    3: "wifiNetSwitch",
+    4: "4GNetSwitch",
+}
+
+# An IPv4 value the aGate reports when an interface has no DHCP lease.
+# Observed live: WiFi associated with an SSID but holding 0.0.0.0 (see
+# docs/troubleshooting/2026-03-21_wifi_dhcp_failure.md). "Associated" is not
+# "connected" — always check the address too.
+UNASSIGNED_IPS = (None, "", "0.0.0.0")
 
 # aGate Health Status
 # Note: 1=Normal verified against live system (deviceStatus=1 with healthy operation)

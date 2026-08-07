@@ -1,0 +1,36 @@
+FEAT-NETWORK-READERS - Step 1 of docs/NETWORK_CONNECTIVITY_DESIGN.md
+Date: 2026-08-07
+Scope: SDK read-side only. No device writes, no CLI, no module split.
+
+Changes
+  models.py           + MqttCmd.SYSTEM_CONTROL (315); + MqttResponse enum
+                        (203->201 verified; NOT N+1. 310 omitted - never observed.)
+  const/devices.py    + NETWORK_TYPE_KEYS, NETWORK_SWITCH_KEYS, UNASSIGNED_IPS
+  discovery.py        D3 wifi/mobile signal are 0-100 %, not dBm (20,471 samples)
+  cli_commands/schema.py   D3 mobile_signal unit dBm -> %
+  cli_commands/support.py  D3 + mobile_signal_pct; _dbm alias kept (deprecated)
+  mixins/devices.py   D1 get_connection_status: extended-339 fields documented
+                      D2 bool(routerStatus) -> == 1; + router_status_raw
+                      D4 scan poll defaults 3x2.0s -> 6x5.0s
+                      NEW get_network_state(), scan_wifi_networks_ranked()
+
+=== Unit tests (HAR-derived fixtures) ===
+...................                                                      [100%]
+19 passed in 0.07s
+
+=== Full suite, live deselected ===
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 436 passed, 39 deselected, 6 warnings in 4.64s ================
+
+=== Live read-only verification (gateway 10060006A02F24170091) ===
+  active            : 4G Mobile (device-managed)
+  wifi              : enabled, signal 76%, link=false, ip=null (associated, no DHCP lease)
+  linked_transports : ['4g']   redundant: False
+  extended_339      : True
+  scan              : 12 networks after collapsing 10 duplicate SSIDs; strongest 100%
+  preflight WiFi write -> {'4g'} (safe)   |   4G write -> REFUSE
+
+Live state matches docs/troubleshooting/2026-03-21_wifi_dhcp_failure.md:
+WiFi associated with good signal but holding no lease; aGate self-selected 4G.
+
+NOT run: any device write. Step 1 is read-only by design.
