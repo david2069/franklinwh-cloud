@@ -224,14 +224,31 @@ If a WiFi write is applied with a bad password **and** 4G is disabled **and** no
 is up, the aGate goes dark. Recovery is then physical (AP mode / on-site), because the cloud
 path you'd use to fix it is the path you just broke.
 
-**Mandatory preflight before *any* network write** — abort unless at least one independent
-fallback transport is live:
+**Mandatory preflight before *any* network write** — abort unless a transport *other than
+the one being modified* is live:
 
+```python
+state = await client.get_network_state()
+survivors = set(state["linked_transports"]) - {target_interface}
+if not survivors:
+    abort("no fallback transport would survive this write")
 ```
-341 → 4GNetSwitch == 1        AND  317 → operator.rssi > 0      # cellular fallback available
-  OR 341 → ethernet0NetSwitch == 1 AND 317 → eth0.ip not in {None, "0.0.0.0"}
-  OR 341 → ethernet1NetSwitch == 1 AND 317 → eth1.ip not in {None, "0.0.0.0"}
-```
+
+> **Corrected 2026-08-07.** An earlier draft of this rule excluded the *active* transport
+> from the fallback set. That is wrong, and live data proved it: the gateway was on 4G
+> with WiFi enabled at 76% but holding no DHCP lease, so `linked_transports == ["4g"]`.
+> Excluding the active transport yielded "no fallback" and would have refused the primary
+> use case — even though 4G was about to carry the connection through the WiFi rewrite.
+> The fallback set is relative to the **target of the write**, not to the active transport.
+> `get_network_state()` therefore returns `linked_transports` and leaves the subtraction to
+> the caller; there is no `fallback_available` field.
+
+Applied to the two use cases against that same live state:
+
+| Write target | `linked_transports - {target}` | Verdict |
+|---|---|---|
+| WiFi (use case 1) | `{"4g"}` | proceed — cellular carries the transition |
+| 4G (use case 2) | `{}` | refuse — nothing else has a link |
 
 Plus a minimum signal floor on the target: **refuse `wifi_RSSI < 30`** (captures show working
 links at 68–100; 8–28 are noise-floor neighbours). Overridable only with an explicit flag.
@@ -524,7 +541,9 @@ Items 1–5 are read-side and land in Phase 1. 6–7 are prerequisites for Phase
 
 | Phase | Scope | Sign-off |
 |-------|-------|----------|
-| **1** | `mixins/network.py` split + `get_network_state()` + `scan_wifi_networks_ranked()` + `fwh network status\|scan` + defects 1–5. **Read-only — no API-affecting change.** | Not required |
+| **1a** ✅ | `get_network_state()` + `scan_wifi_networks_ranked()` + defects 1–5. **Read-only.** Shipped `feat/network-readers` (b6308fe); 18 new tests; verified live. | Done |
+| **1b** ✅ | Remediation: live tests made opt-in (0475f40), `FranklinWHError` defined (737e058), fictional scan fixtures corrected (bcf9421). | Done |
+| **1c** | `mixins/network.py` module split + `fwh network status\|scan` CLI. Deferred — not needed by the probe. | Not required |
 | **2** | `set_wifi_credentials()` + `switch_to_wifi()` + preflight + verify loop + `fwh network set-wifi` + defects 6–7. | **Required** — API-affecting write (`CLAUDE.md` rule 6) |
 | **3** | `set_primary_network()` / `set_network_interface()` / `reboot_agate()`, behind `FWH_EXPERIMENTAL`. | **Required** + L4 live validation first |
 | **4** | Freeze §5 contracts; add write rows to `MQTT_CMD_CATALOG.md` (currently read-only, §2.5); add the setters to `docs/cli-raw.md` *Devices & Network*; update `docs/franklinwh_openapi.json` and `API_REFERENCE.md`. | Not required |
