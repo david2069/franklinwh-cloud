@@ -413,8 +413,13 @@ async def collect_snapshot(client) -> dict:
                 "battery_export_to_grid_kw": cur.battery_export_to_grid,
             },
             # ─ Signal quality
+            # runtimeData.signal is a 0-100 percentage, not dBm (verified over
+            # 20,471 HAR samples: range 0-99, never negative). The misnamed
+            # "mobile_signal_dbm" key is retained for backward compatibility and
+            # will be dropped in a future major release — prefer _pct.
             "wifi_signal_pct":    cur.wifi_signal,
-            "mobile_signal_dbm":  cur.mobile_signal,
+            "mobile_signal_pct":  cur.mobile_signal,
+            "mobile_signal_dbm":  cur.mobile_signal,  # DEPRECATED alias — value is %, not dBm
             # ─ Per-pack aPower state
             "apower_serials":     cur.apower_serial_numbers,
             "apower_soc":         cur.apower_soc,
@@ -1597,7 +1602,8 @@ def mock_snapshot() -> dict:
                 "apower_bms_mode": [6, 6, 6],
                 "ambient_temp_c": 22.5,
                 "wifi_signal_pct": 78,
-                "mobile_signal_dbm": -85,
+                "mobile_signal_pct": 45,
+                "mobile_signal_dbm": 45,  # DEPRECATED alias — value is %, not dBm
                 "grid_charging_battery_kw": 2.5,
                 "solar_export_to_grid_kw": 0.0,
                 "solar_charging_battery_kw": 5.1,

@@ -763,7 +763,7 @@ class DevicesMixin:
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 335)
 
-    async def scan_wifi_networks_poll(self, max_attempts=3, delay_s=2.0):
+    async def scan_wifi_networks_poll(self, max_attempts=6, delay_s=5.0):
         """Poll for WiFi scan results until complete or max attempts reached.
 
         Calls scan_wifi_networks() repeatedly, waiting between attempts.
@@ -774,9 +774,16 @@ class DevicesMixin:
         Parameters
         ----------
         max_attempts : int
-            Maximum number of scan attempts (default: 3).
+            Maximum number of scan attempts (default: 6).
         delay_s : float
-            Seconds to wait between attempts (default: 2.0).
+            Seconds to wait between attempts (default: 5.0).
+
+        Note
+        ----
+        The previous defaults (3 attempts x 2.0 s = 6 s ceiling) were shorter
+        than the hardware needs and reported failure on healthy gateways. In the
+        HAR corpus the mobile app waits ~11-12 s between a pending scan and a
+        populated result, so the ceiling is now 30 s.
 
         Returns
         -------
@@ -805,10 +812,29 @@ class DevicesMixin:
         Returns
         -------
         dict
-            Connection status:
-            - routerStatus: 0 = disconnected, 1 = connected
+            The raw parsed cmdType 340 payload. Always present:
+
+            - routerStatus: local link state. **NOT a boolean** — values 0, 1
+              and 4 have all been observed. Semantics unresolved; do not coerce
+              to bool. Treat as an opaque code.
             - netStatus: 0 = no internet, 1 = internet available
             - awsStatus: 0 = offline, 1 = connected to AWS cloud
+
+            Newer gateway firmware additionally returns (absent on older units,
+            so always use ``.get()``):
+
+            - EthConnectRouterStatus: Ethernet link to router (0/1)
+            - wifiConnectRouterStatus: WiFi link to router (0/1)
+            - 4GConnectBSStatus: cellular base-station registration (0/1)
+            - WifiSignalStrength: 0-100 percentage
+            - 4GSignalStrength: vendor scale, observed 0-52 (NOT a percentage)
+            - currentNetType: active transport, see ``NETWORK_TYPES``
+
+        Note
+        ----
+        These extended fields are firmware-dependent, not app-version dependent
+        — they appear in captures as early as 2025-05 and are absent from some
+        later ones. ``get_network_state()`` handles the fallback for you.
         """
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(MqttCmd.CLOUD_CONNECTIVITY, dataArea)  # cmdType 339
@@ -833,6 +859,256 @@ class DevicesMixin:
         wire_payload = self._build_payload(MqttCmd.NETWORK_SWITCHES, dataArea)  # cmdType 341
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 341)
+
+    async def scan_wifi_networks_ranked(
+        self,
+        *,
+        scan_time: int = 10,
+        min_rssi: int = 0,
+        dedupe: bool = True,
+        max_attempts: int = 6,
+        delay_s: float = 5.0,
+        usable_rssi: int = 30,
+    ):
+        """Scan for WiFi networks and return them ranked by signal strength.
+
+        Wraps the asynchronous cmdType 335 scan and normalises the result into a
+        sorted, deduplicated list suitable for presenting to a user.
+
+        Parameters
+        ----------
+        scan_time : int
+            Value for ``wifi_ScanTime``. Both 0 and 10 are observed in the
+            mobile app; 10 yields more networks (default: 10).
+        min_rssi : int
+            Drop networks below this signal percentage (default: 0, keep all).
+        dedupe : bool
+            Collapse repeated SSIDs, keeping the strongest (default: True).
+        max_attempts, delay_s
+            Passed to the underlying poll.
+        usable_rssi : int
+            Threshold at or above which a network is marked ``usable``
+            (default: 30).
+
+        Returns
+        -------
+        dict
+            ``{"scan_seconds", "networks": [...], "warnings": [...]}`` where each
+            network is ``{ssid, signal_pct, signal_bars, secured, seen_count,
+            usable}``, sorted by ``signal_pct`` descending.
+
+        Note
+        ----
+        ``wifi_RSSI`` is a 0-100 quality percentage, not dBm — verified across
+        169 samples in the HAR corpus (range 8-100, always even, never
+        negative).
+
+        The scan returns no BSSID, band or channel, so individual access points
+        in a mesh cannot be distinguished or targeted. Repeated SSIDs are
+        therefore collapsed rather than listed separately.
+        """
+        dataArea = {"wifi_ScanTime": scan_time}
+        result = None
+        for attempt in range(max_attempts):
+            wire_payload = self._build_payload(MqttCmd.WIFI_SCAN, dataArea)  # cmdType 335
+            raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+            result = _parse_mqtt_json(raw, 335)
+            if result.get("result") == 0:
+                logger.debug(f"WiFi scan complete on attempt {attempt + 1}")
+                break
+            if attempt < max_attempts - 1:
+                logger.debug(
+                    f"WiFi scan pending (attempt {attempt + 1}/{max_attempts}), "
+                    f"retrying in {delay_s}s..."
+                )
+                await asyncio.sleep(delay_s)
+        else:
+            logger.warning(f"WiFi scan did not complete after {max_attempts} attempts")
+
+        warnings_out = []
+        raw_list = (result or {}).get("wifi_Info") or []
+        if not isinstance(raw_list, list):
+            raw_list = []
+        if (result or {}).get("result") != 0:
+            warnings_out.append(
+                f"Scan did not complete after {max_attempts} attempts "
+                f"(last reason={(result or {}).get('reason')})"
+            )
+
+        best = {}
+        seen_counts = {}
+        for entry in raw_list:
+            if not isinstance(entry, dict):
+                continue
+            ssid = entry.get("wifi_SSID")
+            if ssid is None:
+                continue
+            rssi = entry.get("wifi_RSSI") or 0
+            seen_counts[ssid] = seen_counts.get(ssid, 0) + 1
+            if not dedupe:
+                best.setdefault(len(best), (ssid, rssi, entry.get("wifi_Safety")))
+            elif ssid not in best or rssi > best[ssid][1]:
+                best[ssid] = (ssid, rssi, entry.get("wifi_Safety"))
+
+        collapsed = sum(c - 1 for c in seen_counts.values() if c > 1)
+        if dedupe and collapsed:
+            warnings_out.append(
+                f"{collapsed} duplicate SSID entries collapsed (mesh or dual-band)"
+            )
+
+        networks = []
+        for ssid, rssi, safety in best.values():
+            if rssi < min_rssi:
+                continue
+            networks.append({
+                "ssid": ssid,
+                "signal_pct": rssi,
+                "signal_bars": min(4, max(0, (rssi + 24) // 25)),
+                "secured": bool(safety),
+                "seen_count": seen_counts.get(ssid, 1),
+                "usable": rssi >= usable_rssi,
+            })
+        networks.sort(key=lambda n: (-n["signal_pct"], n["ssid"]))
+
+        return {
+            "scan_seconds": scan_time,
+            "networks": networks,
+            "warnings": warnings_out,
+        }
+
+    async def get_network_state(self):
+        """Unified view of which transport the aGate is using right now.
+
+        Composes three MQTT reads — cmdType 317 (interface detail), 339
+        (reachability) and 341 (interface enable switches) — into the single
+        answer to "what is this aGate connected on?".
+
+        Returns
+        -------
+        dict
+            See ``docs/NETWORK_CONNECTIVITY_DESIGN.md`` section 5.1 for the full
+            contract. Key fields:
+
+            - ``active``: the transport currently in use (id, key, label, ip,
+              gateway, dns, dhcp, mac, signal_pct)
+            - ``interfaces``: all four, each with enabled/link/ip/is_active
+            - ``cloud``: aws_connected, internet, router_status_raw
+            - ``linked_transports``: keys of every transport that is enabled and
+              currently has a link. A write-safety preflight should check
+              ``set(linked_transports) - {target}`` is non-empty for the
+              interface it is about to modify — note the *active* transport
+              counts as a fallback when you are modifying a different one.
+            - ``redundant``: True when more than one transport is linked
+            - ``source``: which cmdTypes answered, and whether the firmware
+              returned the extended 339 payload
+
+        Warning
+        -------
+        ``active`` is the transport the aGate has **selected for itself**, not a
+        user-configured primary. The gateway re-selects autonomously: across the
+        HAR corpus, 17 of 19 observed transport changes followed no command at
+        all. Present this to users as "active connection", never as "configured
+        primary", and never treat a change in it as proof that a write worked.
+        """
+        from franklinwh_cloud.const.devices import (
+            NETWORK_SWITCH_KEYS,
+            NETWORK_TYPE_KEYS,
+            NETWORK_TYPES,
+            UNASSIGNED_IPS,
+        )
+
+        net_info, conn_status, switches = await asyncio.gather(
+            self.get_network_info(),
+            self.get_connection_status(),
+            self.get_network_switches(),
+        )
+
+        # Prefer 317's currentNetType; the extended 339 payload carries the same
+        # field on newer firmware and is used only as a fallback.
+        active_id = net_info.get("currentNetType")
+        extended = "currentNetType" in conn_status
+        if active_id is None:
+            active_id = conn_status.get("currentNetType")
+
+        # Per-transport link state. The extended 339 fields are authoritative
+        # when present; otherwise fall back to "has a usable address".
+        link_by_id = {
+            1: conn_status.get("EthConnectRouterStatus"),
+            2: conn_status.get("EthConnectRouterStatus"),
+            3: conn_status.get("wifiConnectRouterStatus"),
+            4: conn_status.get("4GConnectBSStatus"),
+        }
+
+        interfaces = []
+        for iface_id, key in NETWORK_TYPE_KEYS.items():
+            cfg = net_info.get(key if key != "4g" else "operator", {}) or {}
+            ip = cfg.get("ip")
+            has_addr = ip not in UNASSIGNED_IPS
+            link = link_by_id.get(iface_id)
+            if link is None:
+                # No extended payload — infer. Cellular has no IP in the 317
+                # response at all, so fall back to signal presence for 4G.
+                link = bool(cfg.get("rssi")) if iface_id == 4 else has_addr
+            entry = {
+                "id": iface_id,
+                "key": key,
+                "label": NETWORK_TYPES.get(iface_id, f"Unknown ({iface_id})"),
+                "enabled": switches.get(NETWORK_SWITCH_KEYS[iface_id]) == 1,
+                "link": bool(link),
+                "ip": ip if has_addr else None,
+                "dhcp": cfg.get("dhcp"),
+                "mac": cfg.get("mac"),
+                "is_active": iface_id == active_id,
+            }
+            if iface_id == 3:
+                entry["signal_pct"] = conn_status.get("WifiSignalStrength")
+            if iface_id == 4:
+                # Vendor scale (observed 0-52), NOT a percentage — see
+                # discovery.py. Reported under a distinct key so a UI cannot
+                # accidentally render it as one.
+                entry["signal_raw"] = cfg.get("rssi")
+                entry.pop("dhcp", None)
+            interfaces.append(entry)
+
+        by_id = {i["id"]: i for i in interfaces}
+        active = by_id.get(active_id)
+
+        # Every transport that is switched on AND currently has a link. This is
+        # the set a write-safety preflight must reason about.
+        #
+        # Deliberately NOT "some interface other than the active one": when the
+        # aGate is on 4G and you are about to rewrite the WiFi config, 4G is the
+        # fallback, even though it is also the active transport. A caller must
+        # compute `set(linked_transports) - {target}` for the interface it is
+        # about to modify — see NETWORK_CONNECTIVITY_DESIGN.md section 3.
+        linked = [i["key"] for i in interfaces if i["enabled"] and i["link"]]
+
+        return {
+            "gateway_id": self.gateway,
+            "active": {
+                "id": active_id,
+                "key": active["key"] if active else None,
+                "label": NETWORK_TYPES.get(active_id, f"Unknown ({active_id})"),
+                "ip": active["ip"] if active else None,
+                "gateway": (net_info.get(active["key"], {}) or {}).get("gateway")
+                           if active and active["key"] != "4g" else None,
+                "dns": (net_info.get(active["key"], {}) or {}).get("dns")
+                       if active and active["key"] != "4g" else None,
+                "selection": "device-managed",
+            },
+            "interfaces": interfaces,
+            "cloud": {
+                # routerStatus is NOT a boolean (0, 1 and 4 all observed) — passed
+                # through unmapped until its semantics are established.
+                "aws_connected": conn_status.get("awsStatus") == 1,
+                "internet": conn_status.get("netStatus") == 1,
+                "router_status_raw": conn_status.get("routerStatus"),
+            },
+            "linked_transports": linked,
+            # True only when losing any single transport still leaves one up.
+            "redundant": len(linked) > 1,
+            "source": {"cmds": [317, 339, 341], "extended_339": extended},
+        }
 
     async def get_site_detail(self, site_id: str = None):
         """Get site details (name, address, location).
@@ -976,9 +1252,13 @@ class DevicesMixin:
             backups.append({"id": 4, "name": NETWORK_TYPES.get(4), "rssi": rssi})
             
         overview = {
-            "cloud_connected": bool(conn_status.get("awsStatus")),
-            "router_connected": bool(conn_status.get("routerStatus")),
-            "internet_connected": bool(conn_status.get("netStatus")),
+            "cloud_connected": conn_status.get("awsStatus") == 1,
+            # routerStatus is NOT a boolean — 0, 1 and 4 have all been observed
+            # on live hardware, so bool() reported 4 as "connected". Compare
+            # explicitly against 1 and expose the raw code alongside.
+            "router_connected": conn_status.get("routerStatus") == 1,
+            "router_status_raw": conn_status.get("routerStatus"),
+            "internet_connected": conn_status.get("netStatus") == 1,
             "primary": {
                 "id": primary_id,
                 "name": primary_name,

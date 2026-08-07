@@ -57,8 +57,13 @@ class AgateInfo:
     conn_type_name: str = ""
     sim_status: int = 0
     sim_status_name: str = ""
-    wifi_signal: int = 0         # dBm
-    mobile_signal: int = 0       # dBm
+    # Both are 0-100 quality percentages, NOT dBm. Verified over 20,471 samples
+    # in the HAR corpus: runtimeData.wifiSignal spans 0-100 (always even),
+    # runtimeData.signal spans 0-99. Neither is ever negative.
+    # NOTE: commSetPara.operatorRSSI (317) and 4GSignalStrength (339) are a
+    # DIFFERENT, narrower vendor scale (observed 0-52) — do not mix them in.
+    wifi_signal: int = 0         # 0-100 %
+    mobile_signal: int = 0       # 0-100 %
     # Firmware versions (Tier 3)
     ibg_version: str = ""
     sl_version: str = ""

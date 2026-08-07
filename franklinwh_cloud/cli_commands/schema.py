@@ -64,7 +64,7 @@ CURRENT_SCHEMA = {
     "generator_relay":          ("main_sw[1]",         "203/runtimeData",  "relay", "Relays"),
     "solar_relay1":             ("main_sw[2]",         "203/runtimeData",  "relay", "Relays"),
     # Connectivity
-    "mobile_signal":            ("signal",             "203/runtimeData",  "dBm",   "Connectivity"),
+    "mobile_signal":            ("signal",             "203/runtimeData",  "%",     "Connectivity"),
     "wifi_signal":              ("wifiSignal",         "203/runtimeData",  "%",     "Connectivity"),
     "network_connection":       ("connType",           "203/runtimeData",  "int",   "Connectivity"),
     # V2L
