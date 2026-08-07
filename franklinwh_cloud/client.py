@@ -22,7 +22,7 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption, FranklinWHTimeoutError,
+    InvalidTOUScheduleOption, FranklinWHTimeoutError, FranklinWHError,
 )
 # Operating Workand Run mode constants
 from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
@@ -745,14 +745,18 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         url = self.url_base + "hes-gateway/terminal/sendMqtt"
 
         res = await self._post(url, payload)
-        if res["code"] == 102:
-            raise DeviceTimeoutException(res["message"])
-        if res["code"] == 136:
-            raise GatewayOfflineException(res["message"])
-        if res.get("code") != 200:
-            from franklinwh_cloud.exceptions import FranklinWHError
-            raise FranklinWHError(f"Command failed gracefully with server rejection: {res.get('code')} - {res.get('message')}")
-            
+        code = res.get("code")
+        if code == 102:
+            raise DeviceTimeoutException(res.get("message"))
+        if code == 136:
+            raise GatewayOfflineException(res.get("message"))
+        if code != 200:
+            raise FranklinWHError(
+                f"Command failed gracefully with server rejection: "
+                f"{code} - {res.get('message')}",
+                code=code,
+            )
+
         return res
 
     async def get_resolved_capabilities(self) -> ResolvedCapabilities:
