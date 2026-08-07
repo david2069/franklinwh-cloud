@@ -26,9 +26,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # Live tests are deselected by addopts in pyproject.toml; -m is repeated
+      # here deliberately so CI stays safe even if that default is ever changed.
+      # The previous --ignore=tests/test_live.py did NOT cover the live tests in
+      # test_live_mode.py (real set_mode writes) or test_integration.py; those
+      # only skipped because CI has no credentials.
       - name: Run tests (excluding live)
         run: |
-          python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py \
+          python -m pytest tests/ -v --tb=short -m "not live" \
             | tee tests/results/ci_run_${{ matrix.python-version }}.txt
 
       - name: Upload test results

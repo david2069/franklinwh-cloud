@@ -59,14 +59,14 @@ fi
 if [ "$MODE" != "--quick" ]; then
     echo ""
     echo "═══ Step 3: Run test suite ═══"
-    python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py
+    python -m pytest tests/ -v --tb=short -m "not live"
     RESULT=$?
 
     # Save results
     TIMESTAMP=$(date +%Y-%m-%d_%H%M)
     RESULTS_FILE="tests/results/test_run_${TIMESTAMP}.txt"
     mkdir -p tests/results
-    python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py > "$RESULTS_FILE" 2>&1 || true
+    python -m pytest tests/ -v --tb=short -m "not live" > "$RESULTS_FILE" 2>&1 || true
     info "Results saved to $RESULTS_FILE"
 
     if [ $RESULT -ne 0 ]; then

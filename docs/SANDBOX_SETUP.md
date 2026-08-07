@@ -147,10 +147,14 @@ cd ~/dev/franklinwh-cloud
 
 Expected: **74+ tests passed**, 0 failures.
 
-> **Note:** `test_live.py` requires credentials and hits the real API. Skip it for routine testing:
+> **Note:** live tests require credentials and hit the real API and aGate. They are
+> deselected by default (`addopts = "-m 'not live'"` in `pyproject.toml`), so routine
+> testing is safe:
 > ```bash
-> ./venv/bin/python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py
+> ./venv/bin/python -m pytest tests/ -v --tb=short
 > ```
+> Do **not** use `--ignore=tests/test_live.py` as the guard — live tests also live in
+> `test_live_mode.py` (real `set_mode()` writes) and `test_integration.py`.
 
 ### Test Coverage by File
 
