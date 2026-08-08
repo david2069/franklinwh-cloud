@@ -50,6 +50,34 @@ class FranklinWHError(Exception):
         super().__init__(message)
 
 
+class InvalidResponseError(FranklinWHError):
+    """Raised when the API returns a body that is not JSON.
+
+    The FranklinWH cloud sits behind CloudFront, which serves HTML error pages
+    for 502/503/504 and for WAF blocks. Those are not API responses at all, so
+    there is no ``code`` field to inspect — the failure is at the transport
+    layer, not the application layer.
+
+    Subclasses :class:`FranklinWHError` deliberately: callers already guarding a
+    long-running poll with ``except FranklinWHError`` should survive a CDN blip
+    without needing to know about HTTP internals.
+
+    Attributes
+    ----------
+    status_code : int | None
+        The HTTP status, e.g. 504.
+    body : str | None
+        The first 500 characters of the response body, for diagnosis. Truncated
+        deliberately — CloudFront error pages run to several KB and the full
+        text is noise in a log.
+    """
+
+    def __init__(self, message=None, status_code=None, body=None):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(message, code=status_code)
+
+
 class InvalidOperatingMode(BaseException):
     """Raised when the operating mode requested is invalid."""
 
