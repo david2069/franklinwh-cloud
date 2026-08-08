@@ -1,0 +1,50 @@
+U1-OBSERVE-60MIN — autonomous transport roaming observation
+Date: 2026-08-08   Duration: 59 min (10:03-11:02 AEST)
+Command: tools/network_probe.py observe --minutes 60 --interval 60
+Mode: READ-ONLY. Zero commands issued to the gateway at any point.
+
+RESULT: 0 autonomous transport changes observed.
+  polls                : 51 (49 successful, 2 recovered failures)
+  active transport     : WiFi for all 49 successful polls
+  linked_transports    : ['wifi'] throughout — never more than one
+  recovered errors     : 2x JSONDecodeError (CloudFront 504 HTML pages)
+
+INTERPRETATION
+  Does NOT contradict U1. The 4G->WiFi transition recorded in section 2.5a
+  was directly observed earlier the same day. This hour shows that when
+  conditions are stable the aGate does not flap: roaming is event-driven
+  (triggered by link loss), not periodic churn. U1 remains ANSWERED YES on
+  the strength of that transition plus 17 of 19 unprompted transitions in
+  the HAR corpus.
+
+PRIMARY FINDING — invalidates the shipped preflight rule
+  Throughout the hour:
+    4GNetSwitch        = 1     (cellular enabled)
+    operatorRSSI       = 21-22 (modem registered, has signal)
+    4GConnectBSStatus  = 0     (not carrying traffic)
+    WifiSignalStrength = 78-80 (WiFi healthy)
+
+  So cellular is AVAILABLE but IDLE — the aGate parks the transports it is
+  not using. get_network_state() derives 'link' from 4GConnectBSStatus, so
+  it classifies an available modem as unlinked, and linked_transports will
+  essentially always hold exactly one entry.
+
+  Consequence: the preflight rule set(linked_transports) - {target} refuses
+  EVERY write to the transport currently carrying traffic. Right now that
+  blocks the primary use case, even though 4G is demonstrably ready to take
+  over — it did exactly that in the 2026-03-21 incident and again this
+  morning. The rule must key on ENABLED + CAPABLE, not CURRENTLY LINKED.
+
+SECONDARY FINDING — routerStatus confirmed meaningless
+  routerStatus = 0 for all 49 polls while the aGate held a valid DHCP lease,
+  was reachable on the LAN at Modbus 502, and was round-tripping MQTT
+  through the cloud. Reinforces gotcha G4: never surface it as a boolean.
+
+LATENCY (ms, min/median/max across 51 polls)
+  cmdType 317:  2510 /  9410 / 26138
+  cmdType 339:  7333 /  8155 / 31157
+  cmdType 341:  1595 /  8950 / 31156
+  A 3-call get_network_state() costs ~25s median. Relevant to the Phase 2
+  verify loop: a 5s poll interval is shorter than a single poll takes.
+
+  Raw evidence log is gitignored (contains device fingerprints).

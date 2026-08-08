@@ -111,7 +111,7 @@ def _client_with_reads(raw_317, raw_339, raw_341):
     from franklinwh_cloud.mixins.devices import DevicesMixin
 
     client = MagicMock(spec=DevicesMixin)
-    client.gateway = "10060006A02F24170091"
+    client.gateway = "AGATE_TEST_SERIAL_0001"
     client._build_payload = MagicMock(return_value={"dummy": True})
 
     async def _send(payload):

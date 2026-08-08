@@ -53,6 +53,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -75,6 +76,16 @@ RESPONSE_ONLY_KEYS = ("opt", "result", "reason")
 
 SECRET_KEYS = ("wifi_Pw", "ap_Pw", "password", "token", "email")
 SSID_KEYS = ("wifi_SSID", "ap_SSID")
+
+# AP-3 bans real hardware serials from every tracked directory, and
+# tests/results/ IS tracked. Gateway/aPower serials and MAC addresses are
+# globally unique device fingerprints, so they are scrubbed unconditionally —
+# there is no --keep flag for these.
+SERIAL_KEYS = ("gateway_id", "equipNo", "sn", "fhpSn", "apower_serial_numbers",
+               "serialNo", "deviceNo")
+_MAC_RE = re.compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b")
+# FranklinWH serials: 20 alphanumerics, e.g. 99999999A0TESTONLY01
+_SERIAL_RE = re.compile(r"\b\d{8}[A-Z0-9]{12}\b")
 
 TRANSPORT_TIMEOUT_ERRORS = (DeviceTimeoutException, GatewayOfflineException)
 
@@ -119,12 +130,19 @@ class Evidence:
         self._n = 0
 
     def redact(self, obj):
-        """Strip secrets. Passwords always; SSIDs unless explicitly kept."""
+        """Strip secrets and device fingerprints.
+
+        Passwords, serials and MACs are always removed — `tests/results/` is a
+        tracked directory and AP-3 forbids real hardware identifiers there
+        outright. SSIDs are removed unless --keep-ssids is passed.
+        """
         if isinstance(obj, dict):
             out = {}
             for k, v in obj.items():
                 if k in SECRET_KEYS:
                     out[k] = f"<redacted len={len(v)}>" if isinstance(v, str) else "<redacted>"
+                elif k in SERIAL_KEYS:
+                    out[k] = "<serial>"
                 elif k in SSID_KEYS and not self.keep_ssids:
                     out[k] = f"<ssid len={len(v)}>" if isinstance(v, str) else "<ssid>"
                 else:
@@ -132,6 +150,10 @@ class Evidence:
             return out
         if isinstance(obj, list):
             return [self.redact(v) for v in obj]
+        if isinstance(obj, str):
+            # Catch serials and MACs embedded in free text (error messages,
+            # URLs, nested JSON blobs) that key-based redaction cannot see.
+            return _SERIAL_RE.sub("<serial>", _MAC_RE.sub("<mac>", obj))
         return obj
 
     def write(self, kind, **fields):
