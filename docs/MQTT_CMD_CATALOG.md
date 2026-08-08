@@ -22,6 +22,7 @@ Click any link in the **Python Method** column to view its formal definition in 
 | <a id="cmd-211-3"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 3}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 2) |
 | <a id="cmd-310"></a>**`310`** | `SMART_CIRCUIT_TOGGLE` | *(Varies)* | [`set_smart_circuit_state()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.set_smart_circuit_state) | Toggle Smart Circuits (`SwXMode`) or limits |
 | <a id="cmd-311"></a>**`311`** | `SMART_CIRCUIT_INFO` | `{"opt": 0}` | [`get_smart_circuits_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_smart_circuits_info) | Smart Circuit naming and statuses |
+| <a id="cmd-315"></a>**`315`** | `SYSTEM_CONTROL` | `{"opt": 1, "paraType": 1, "reboot": 1}` | *(none — not implemented)* | aGate reboot. ⛔ The same payload exposes `reset`, `cleanUnlockAlarm`, `cleanLockAlarm`, `cleanAlarmFlag` — **never populate `reset`**, it is almost certainly a factory reset. |
 | <a id="cmd-317"></a>**`317`** | `NETWORK_INTERFACES` | `{"opt": 0}` | [`get_network_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_network_info) | Verbose eth/wifi interface IP and DHCP |
 | <a id="cmd-327"></a>**`327`** | `AESTHETICS` | *(Varies)* | [`led_light_settings()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.led_light_settings) | aPower RGB LED aesthetic limits |
 | <a id="cmd-335"></a>**`335`** | `WIFI_SCAN` | `{"wifi_ScanTime": 0}` | [`scan_wifi_networks()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.scan_wifi_networks) | Trigger active 2.4/5GHz AP discovery |
@@ -29,6 +30,48 @@ Click any link in the **Python Method** column to view its formal definition in 
 | <a id="cmd-339"></a>**`339`** | `CLOUD_CONNECTIVITY`| `{"opt": 0}` | [`get_connection_status()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_connection_status) | AWS Cloud / Internet reachability checks |
 | <a id="cmd-341"></a>**`341`** | `NETWORK_SWITCHES` | `{"opt": 0}` | [`get_network_switches()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_network_switches) | Boolean flags for eth0/eth1/4G/wifi |
 | <a id="cmd-353"></a>**`353`** | `ACCESSORY_LOADS` | `{"opt": 0}` | [`get_accessories_power_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_accessories_power_info) | SC / V2L / Generator current draw payloads |
+
+## Response `cmdType` Mapping
+
+The gateway answers request `cmdType` N with response N+1 — **except `STATUS`, where 203
+answers with 201.** Do not assume N+1; use `MqttResponse` in `franklinwh_cloud.models`.
+
+| Request | Response | Confirmed occurrences |
+| :---: | :---: | :--- |
+| `203` | **`201`** ⚠️ | 780 — the one exception to the N+1 rule |
+| `211` | `212` | 137 |
+| `311` | `312` | 283 |
+| `315` | `316` | 2 |
+| `317` | `318` | 484 |
+| `327` | `328` | 418 |
+| `335` | `336` | 39 |
+| `337` | `338` | 388 |
+| `339` | `340` | 67 |
+| `341` | `342` | 38 |
+| `353` | `354` | 1267 |
+
+`310` (`SMART_CIRCUIT_TOGGLE`) is absent deliberately: it has never been observed as a
+request in any capture, so its response code is unknown.
+
+## Read vs Write
+
+Most commands use an `opt` flag (or `optType` for 317) to select direction: `0` reads, `1`
+writes. The library currently implements the **read** half of the network commands only.
+
+The write payloads below are confirmed on the wire but **not implemented** — see
+[Network Connectivity & WiFi Switching](NETWORK_CONNECTIVITY_DESIGN.md) for the full
+analysis, safety preflight and phasing.
+
+| `cmdType` | Write `dataArea` | Status |
+| :---: | :--- | :--- |
+| `337` | `{"opt":1,"wifi_SSID","wifi_Pw","ap_SSID","ap_Pw"}` | ✅ Confirmed. Sets WiFi credentials — and observed to move the gateway from 4G to WiFi on its own. `ap_SSID`/`ap_Pw` must be echoed from a preceding `opt:0` read. |
+| `317` | `{"optType":1,"paraType":6,"commSetPara":{…},"num":N}` | ⚠️ Accepted (`result:0`) but only ever observed writing an unchanged `currentNetType`. `num` is the **key count** of `commSetPara` — compute it, never hardcode. |
+| `341` | `{"opt":1, …four switches…}` | ❌ Never observed. Shape inferred by analogy; must be validated no-op-first. |
+| `315` | `{"opt":1,"paraType":1,"reboot":1}` | ✅ Confirmed. Reboot only — never populate `reset`. |
+
+> ⚠️ A write ack (`result:0`) means the aGate **accepted the config**, not that it applied
+> or associated successfully. A wrong WiFi password still returns `result:0`. Success can
+> only be established by polling `317` afterwards.
 
 ## Deprecation & Traceability
 

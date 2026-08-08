@@ -74,11 +74,37 @@ franklinwh-cli raw get_stats --headers
 | `get_smart_circuits_info` | — | Smart circuit configuration |
 | `get_bms_info` | `serial_no` | BMS info for a specific aPower |
 | `get_connectivity_overview` | — | Unified view of primary/backup connections |
+| `get_network_state` | — | **Which transport the aGate is on right now** — composes cmdType 317+339+341 |
+| `scan_wifi_networks_ranked` | `scan_time`, `min_rssi`, `dedupe`, `usable_rssi` | Scan sorted by signal, SSIDs deduped |
 | `get_network_info` | — | aGate network config (via `sendMqtt`) |
 | `get_wifi_config` | — | WiFi SSID, AP config (via `sendMqtt`) |
-| `scan_wifi_networks` | — | Scan WiFi networks (via `sendMqtt`) |
+| `scan_wifi_networks` | — | Raw scan trigger (via `sendMqtt`) — prefer `scan_wifi_networks_ranked` |
 | `get_connection_status` | — | Router/AWS connectivity (via `sendMqtt`) |
 | `get_network_switches` | — | Interface on/off: WiFi/Eth/4G (via `sendMqtt`) |
+
+**Reading connectivity.** `get_network_state()` is the one to call — it returns the active
+transport, every interface with its link state and address, cloud reachability, and
+`linked_transports` for write-safety checks:
+
+```python
+state = await client.get_network_state()
+state["active"]["label"]        # 'WiFi'
+state["active"]["ip"]           # '192.168.0.110'
+state["linked_transports"]      # ['wifi']  — transports enabled AND currently linked
+```
+
+> ⚠️ `active` is the transport the **aGate selected for itself**, not a user-configured
+> primary. The gateway re-selects autonomously — observed live moving 4G → WiFi with no
+> command issued. Never present it as "configured primary", and never treat a change in it
+> as proof a write succeeded. See
+> [Network Connectivity & WiFi Switching](NETWORK_CONNECTIVITY_DESIGN.md).
+
+**Setters.** There are no network *write* methods yet. This is a gap in this SDK, not in the
+FranklinWH API — the setters exist on the wire as the same cmdTypes with the opt flag
+flipped (`337 opt=1` sets SSID/password, `317 optType=1` writes interface config). See
+[§2.5 of the design doc](NETWORK_CONNECTIVITY_DESIGN.md) for the confirmed payloads and
+[the MQTT catalog](MQTT_CMD_CATALOG.md) for the command table. Implementation is Phase 2 and
+is gated on live validation because a bad write can strand the gateway.
 
 ### Account & Site
 
