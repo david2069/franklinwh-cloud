@@ -246,9 +246,15 @@ class Probe:
     # ── preflight ────────────────────────────────────────────────────
 
     async def preflight(self, target, allow_no_fallback=False):
-        """Refuse a write unless a transport other than `target` has a link."""
+        """Refuse a write unless a transport other than `target` could take over.
+
+        Keys on `available_transports`, not `linked_transports`. The aGate parks
+        the transports it is not using, so at most one is ever linked — judging
+        on `linked` would refuse every write to the transport currently carrying
+        traffic, including the primary 4G-to-WiFi use case.
+        """
         state = await self.c.get_network_state()
-        survivors = sorted(set(state["linked_transports"]) - {target})
+        survivors = sorted(set(state["available_transports"]) - {target})
         ok = bool(survivors) or allow_no_fallback
         lan = self.lan_reachable()
         self.ev.write(
@@ -256,13 +262,15 @@ class Probe:
             target=target,
             active=state["active"]["key"],
             linked=state["linked_transports"],
+            available=state["available_transports"],
             survivors=survivors,
             lan_reachable=lan,
             passed=ok,
             overridden=bool(not survivors and allow_no_fallback),
         )
         print(f"  active            : {state['active']['label']} ({state['active']['selection']})")
-        print(f"  linked transports : {state['linked_transports']}")
+        print(f"  carrying traffic  : {state['linked_transports']}")
+        print(f"  available         : {state['available_transports']}")
         print(f"  survives write    : {survivors or 'NOTHING'}")
         if lan is not None:
             print(f"  LAN {self.lan_host}:502  : {'reachable' if lan else 'unreachable'}")

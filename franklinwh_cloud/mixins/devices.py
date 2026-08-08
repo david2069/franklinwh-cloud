@@ -993,12 +993,16 @@ class DevicesMixin:
               gateway, dns, dhcp, mac, signal_pct)
             - ``interfaces``: all four, each with enabled/link/ip/is_active
             - ``cloud``: aws_connected, internet, router_status_raw
-            - ``linked_transports``: keys of every transport that is enabled and
-              currently has a link. A write-safety preflight should check
-              ``set(linked_transports) - {target}`` is non-empty for the
-              interface it is about to modify — note the *active* transport
+            - ``linked_transports``: keys of every transport **currently
+              carrying traffic**. The aGate parks the ones it is not using, so
+              in practice this holds at most one entry.
+            - ``available_transports``: keys of every transport that is enabled
+              and **capable** of carrying traffic — a registered modem, a link,
+              or an address. This is the set a write-safety preflight must use:
+              check ``set(available_transports) - {target}`` is non-empty for
+              the interface you are about to modify. Note the *active* transport
               counts as a fallback when you are modifying a different one.
-            - ``redundant``: True when more than one transport is linked
+            - ``redundant``: True when more than one transport is available
             - ``source``: which cmdTypes answered, and whether the firmware
               returned the extended 339 payload
 
@@ -1068,20 +1072,45 @@ class DevicesMixin:
                 # accidentally render it as one.
                 entry["signal_raw"] = cfg.get("rssi")
                 entry.pop("dhcp", None)
+
+            # "available" = enabled and CAPABLE of carrying traffic, as distinct
+            # from "link" = currently carrying it. The aGate parks the transports
+            # it is not using, so at most one is ever linked; judging fallback
+            # safety on `link` alone would refuse every write to the active
+            # transport. Observed 2026-08-08: on WiFi for a full hour with
+            # 4GNetSwitch=1 and operatorRSSI=21-22 but 4GConnectBSStatus=0 —
+            # cellular idle yet demonstrably ready, having carried the
+            # connection that same morning.
+            if iface_id == 4:
+                capable = bool(cfg.get("rssi"))          # modem registered
+            elif iface_id == 3:
+                # Firmware without the extended 339 payload reports no signal,
+                # so fall back to link — conservative, never over-permissive.
+                capable = bool(entry["link"]) or bool(entry.get("signal_pct"))
+            else:
+                capable = bool(entry["link"]) or has_addr
+            entry["available"] = entry["enabled"] and capable
+
             interfaces.append(entry)
 
         by_id = {i["id"]: i for i in interfaces}
         active = by_id.get(active_id)
 
-        # Every transport that is switched on AND currently has a link. This is
-        # the set a write-safety preflight must reason about.
+        # Two different questions, deliberately kept apart:
         #
-        # Deliberately NOT "some interface other than the active one": when the
-        # aGate is on 4G and you are about to rewrite the WiFi config, 4G is the
-        # fallback, even though it is also the active transport. A caller must
-        # compute `set(linked_transports) - {target}` for the interface it is
-        # about to modify — see NETWORK_CONNECTIVITY_DESIGN.md section 3.
+        #   linked_transports    — what is carrying traffic right now (factual)
+        #   available_transports — what COULD carry traffic (write-safety)
+        #
+        # Preflight must use `available`. The aGate parks unused transports, so
+        # `linked` holds at most one entry and subtracting the write target from
+        # it would refuse every write to the active transport.
+        #
+        # Either way the set is relative to the TARGET of the write, not to the
+        # active transport: when the aGate is on 4G and you are rewriting the
+        # WiFi config, 4G is the fallback even though it is also active.
+        # See NETWORK_CONNECTIVITY_DESIGN.md section 3.
         linked = [i["key"] for i in interfaces if i["enabled"] and i["link"]]
+        available = [i["key"] for i in interfaces if i["available"]]
 
         return {
             "gateway_id": self.gateway,
@@ -1105,8 +1134,10 @@ class DevicesMixin:
                 "router_status_raw": conn_status.get("routerStatus"),
             },
             "linked_transports": linked,
-            # True only when losing any single transport still leaves one up.
-            "redundant": len(linked) > 1,
+            "available_transports": available,
+            # True when losing the transport currently in use would still leave
+            # another one able to take over.
+            "redundant": len(available) > 1,
             "source": {"cmds": [317, 339, 341], "extended_339": extended},
         }
 
