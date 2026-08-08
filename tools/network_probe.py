@@ -389,28 +389,58 @@ async def cmd_observe(p, args):
     print("No writes are issued. Watching for autonomous transport changes.\n")
     deadline = time.monotonic() + args.minutes * 60
     prev = None
-    changes = 0
+    changes = polls = errors = 0
+    consecutive = 0
+    MAX_CONSECUTIVE = 15  # ~15 min at the default interval before giving up
+
     while time.monotonic() < deadline:
+        polls += 1
+        stamp = datetime.now().strftime("%H:%M:%S")
         try:
             state = await p.c.get_network_state()
             cur = (state["active"]["key"], tuple(state["linked_transports"]))
-            stamp = datetime.now().strftime("%H:%M:%S")
+            consecutive = 0
             if prev is None:
-                print(f"  {stamp}  baseline: active={cur[0]} linked={list(cur[1])}")
-            elif cur != prev:
-                changes += 1
-                print(f"  {stamp}  CHANGE #{changes}: {prev[0]} -> {cur[0]}  "
-                      f"linked={list(cur[1])}   (no command was issued)")
-                p.ev.write("autonomous_change", frm=prev[0], to=cur[0],
-                           linked=list(cur[1]), state=state)
+                print(f"  {stamp}  baseline: active={cur[0]} linked={list(cur[1])}",
+                      flush=True)
+                p.ev.write("observe_poll", active=cur[0], linked=list(cur[1]),
+                           baseline=True, state=state)
+            else:
+                p.ev.write("observe_poll", active=cur[0], linked=list(cur[1]))
+                if cur != prev:
+                    changes += 1
+                    print(f"  {stamp}  CHANGE #{changes}: {prev[0]} -> {cur[0]}  "
+                          f"linked={list(cur[1])}   (no command was issued)", flush=True)
+                    p.ev.write("autonomous_change", frm=prev[0], to=cur[0],
+                               linked=list(cur[1]), state=state)
+                else:
+                    print(f"  {stamp}  active={cur[0]} linked={list(cur[1])}", flush=True)
             prev = cur
-        except (FranklinWHError, *TRANSPORT_TIMEOUT_ERRORS) as e:
-            print(f"  {datetime.now().strftime('%H:%M:%S')}  unreachable: "
-                  f"{type(e).__name__}")
-            p.ev.write("observe_error", error=str(e))
+        except Exception as e:
+            # A long observation MUST survive transient upstream failures. The
+            # FranklinWH cloud sits behind CloudFront, which returns HTML error
+            # pages (504/502/503) that surface as JSONDecodeError rather than any
+            # library exception — one of those previously killed a 60-minute run
+            # on its second poll. Catch broadly on purpose; the whole point of
+            # this command is to keep watching.
+            errors += 1
+            consecutive += 1
+            print(f"  {stamp}  poll failed ({type(e).__name__}: "
+                  f"{str(e)[:90]}) [{consecutive}/{MAX_CONSECUTIVE}]", flush=True)
+            p.ev.write("observe_error", error_type=type(e).__name__,
+                       error=str(e)[:400], consecutive=consecutive)
+            if consecutive >= MAX_CONSECUTIVE:
+                print(f"\n  Aborting: {MAX_CONSECUTIVE} consecutive failures — "
+                      f"the endpoint or gateway looks genuinely down.", flush=True)
+                p.ev.write("observe_summary", minutes=args.minutes, polls=polls,
+                           changes=changes, errors=errors, outcome="aborted")
+                return 4
         await asyncio.sleep(args.interval)
+
     print(f"\nObserved {changes} autonomous transport change(s) with zero commands issued.")
-    p.ev.write("observe_summary", minutes=args.minutes, changes=changes)
+    print(f"  polls: {polls}   failed polls: {errors}")
+    p.ev.write("observe_summary", minutes=args.minutes, polls=polls,
+               changes=changes, errors=errors, outcome="completed")
     return 0
 
 
