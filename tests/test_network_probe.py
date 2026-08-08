@@ -63,6 +63,31 @@ class TestRedaction:
 
         assert "secret1" not in blob and "secret2" not in blob and "netA" not in blob
 
+    def test_hardware_serials_and_macs_are_always_scrubbed(self, tmp_path):
+        """AP-3 bans real hardware identifiers from tracked dirs, and
+        tests/results/ IS tracked. There is no opt-out for these.
+
+        Regression: the first 60-minute observation log contained the real
+        gateway serial and 200 MAC addresses, and was very nearly committed.
+        """
+        ev = probe.Evidence(str(tmp_path / "e.jsonl"), keep_ssids=True)
+        out = ev.redact({
+            "gateway_id": "99999999A0TESTONLY01",
+            "wifi": {"mac": "4C:24:CE:67:3A:7C"},
+            "note": "gateway 99999999A0TESTONLY01 at 88:C9:B3:20:00:80 failed",
+        })
+        blob = json.dumps(out)
+
+        assert "99999999A0TESTONLY01" not in blob
+        assert "4C:24:CE:67:3A:7C" not in blob
+        assert "88:C9:B3:20:00:80" not in blob      # embedded in free text too
+
+    def test_scrubbing_survives_keep_ssids(self, tmp_path):
+        """--keep-ssids relaxes SSIDs only; serials are never opt-out-able."""
+        ev = probe.Evidence(str(tmp_path / "e.jsonl"), keep_ssids=True)
+        out = ev.redact({"equipNo": "99999999A0TESTONLY01"})
+        assert out["equipNo"] == "<serial>"
+
     def test_written_records_are_redacted_on_disk(self, tmp_path):
         path = tmp_path / "e.jsonl"
         ev = probe.Evidence(str(path))

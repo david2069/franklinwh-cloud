@@ -395,7 +395,7 @@ idle → scanning → applying → transitioning → verifying → connected
 
 ```json
 {
-  "gateway_id": "10060006A02F24170091",
+  "gateway_id": "<agate_serial>",
   "timestamp": "2026-08-06T09:31:01Z",
   "primary": {
     "type_id": 3, "type": "wifi", "label": "WiFi",
@@ -499,7 +499,7 @@ Behaviour notes:
 Terminal output sketch for `status`:
 
 ```
-aGate Network — 10060006A02F24170091
+aGate Network — <agate_serial>
 
   PRIMARY   WiFi                    192.168.0.110/24  gw 192.168.0.1   ▂▄▆█  82%
   Cloud     ✓ AWS connected    ✓ Internet

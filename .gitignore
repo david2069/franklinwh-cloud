@@ -34,6 +34,13 @@ htmlcov/
 test_output.log
 tests/results/test_history.log
 
+# Raw network-probe evidence logs. These contain live device fingerprints
+# (gateway serials, interface MACs, LAN addresses) captured from hardware.
+# tests/results/ IS tracked, and AP-3 forbids real hardware identifiers in
+# tracked directories — so commit the sanitised summary, never the raw log.
+# The probe scrubs serials/MACs/passwords itself; this is defence in depth.
+tests/results/*.jsonl
+
 # AGENT.md is tracked (agent onboarding doc)
 
 # Root-level scratch scripts

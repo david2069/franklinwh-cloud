@@ -22,7 +22,7 @@ Changes
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================ 436 passed, 39 deselected, 6 warnings in 4.64s ================
 
-=== Live read-only verification (gateway 10060006A02F24170091) ===
+=== Live read-only verification (gateway <agate_serial>) ===
   active            : 4G Mobile (device-managed)
   wifi              : enabled, signal 76%, link=false, ip=null (associated, no DHCP lease)
   linked_transports : ['4g']   redundant: False
