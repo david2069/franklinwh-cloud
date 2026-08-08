@@ -96,9 +96,22 @@ state["redundant"]                # True
 ```
 
 The two differ because the aGate **parks the transports it is not using**: cellular can sit
-with a registered modem and good signal while reporting no link. Any write-safety check must
-use `available_transports`, and must subtract the interface being modified — not the active
-one:
+with an active SIM and good reception while reporting no link.
+
+`available` answers "would this carry traffic if the one in use stopped?", and the two
+families are judged differently:
+
+| Transport | Available when |
+|---|---|
+| **4G** | enabled + SIM Active + reception. It is the by-design fallback and holds no IP while idle. |
+| **WiFi / Ethernet** | enabled + linked + holding an address (static or DHCP). Signal or a plugged cable is *not* enough. |
+
+WiFi associated with good signal but no DHCP lease is a **candidate to switch to** (see
+`scan_wifi_networks_ranked`), never a fallback to rely on — that exact state has twice left
+the aGate with no working path.
+
+Any write-safety check must use `available_transports`, and must subtract the interface
+being modified — not the active one:
 
 ```python
 survivors = set(state["available_transports"]) - {"wifi"}   # rewriting WiFi

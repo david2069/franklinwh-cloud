@@ -106,12 +106,24 @@ MOCK_335_PENDING = json.dumps({"result": 1, "reason": 3})
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-def _client_with_reads(raw_317, raw_339, raw_341):
-    """Build a mock client whose three network reads return the given payloads."""
+GATEWAY = "AGATE_TEST_SERIAL_0001"
+
+# simCardStatus lives on the gateway-list object, not in any cmdType. 2 = Active.
+SIM_ACTIVE = 2
+SIM_INACTIVE = 1
+
+
+def _client_with_reads(raw_317, raw_339, raw_341, sim_status=SIM_ACTIVE,
+                       gateway_list_fails=False):
+    """Build a mock client whose network reads return the given payloads.
+
+    get_home_gateway_list lives on AccountMixin rather than DevicesMixin, so it
+    is stubbed rather than bound — get_network_state() consults it for SIM state.
+    """
     from franklinwh_cloud.mixins.devices import DevicesMixin
 
     client = MagicMock(spec=DevicesMixin)
-    client.gateway = "AGATE_TEST_SERIAL_0001"
+    client.gateway = GATEWAY
     client._build_payload = MagicMock(return_value={"dummy": True})
 
     async def _send(payload):
@@ -119,6 +131,14 @@ def _client_with_reads(raw_317, raw_339, raw_341):
         return {"result": {"dataArea": {317: raw_317, 339: raw_339, 341: raw_341}[int(cmd)]}}
 
     client._mqtt_send = AsyncMock(side_effect=_send)
+
+    if gateway_list_fails:
+        client.get_home_gateway_list = AsyncMock(side_effect=RuntimeError("REST down"))
+    else:
+        client.get_home_gateway_list = AsyncMock(return_value={
+            "result": [{"id": GATEWAY, "simCardStatus": sim_status}]
+        })
+
     for name in ("get_network_info", "get_connection_status",
                  "get_network_switches", "get_network_state"):
         setattr(client, name, getattr(DevicesMixin, name).__get__(client))
@@ -267,6 +287,79 @@ class TestGetNetworkState:
         assert state["available_transports"] == ["wifi"]
         assert state["redundant"] is False
         assert set(state["available_transports"]) - {"wifi"} == set()
+
+    @pytest.mark.asyncio
+    async def test_wifi_with_signal_but_no_lease_is_not_a_fallback(self):
+        """The 2026-03-21 and 2026-08-08 failure mode, and the reason `available`
+        is not simply `has signal`.
+
+        WiFi associated at 76% while holding 0.0.0.0 is a candidate to switch TO
+        (it appears in scan_wifi_networks_ranked), never a fallback to rely ON —
+        there is no working path through it.
+        """
+        associated_no_lease = json.dumps({
+            "opt": 0, "result": 0, "reason": 0,
+            "routerStatus": 0, "netStatus": 0, "awsStatus": 0,
+            "EthConnectRouterStatus": 0, "wifiConnectRouterStatus": 0,
+            "4GConnectBSStatus": 1,
+            "WifiSignalStrength": 76, "4GSignalStrength": 45,
+            "currentNetType": 4,
+        })
+        client = _client_with_reads(MOCK_317_ON_4G, associated_no_lease, MOCK_341_ALL_ON)
+        state = await client.get_network_state()
+
+        wifi = next(i for i in state["interfaces"] if i["key"] == "wifi")
+        assert wifi["signal_pct"] == 76      # in range
+        assert wifi["ip"] is None            # but no address
+        assert wifi["available"] is False
+        assert "wifi" not in state["available_transports"]
+        assert state["available_transports"] == ["4g"]
+
+    @pytest.mark.asyncio
+    async def test_cellular_with_inactive_sim_is_not_a_fallback(self):
+        """Reception without an active SIM is not a usable lifeline."""
+        client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT,
+                                    MOCK_341_ALL_ON, sim_status=SIM_INACTIVE)
+        state = await client.get_network_state()
+
+        cell = next(i for i in state["interfaces"] if i["key"] == "4g")
+        assert cell["signal_raw"] == 22               # has reception
+        assert cell["sim_status_name"] == "Installed (Inactive)"
+        assert cell["available"] is False
+        assert "4g" not in state["available_transports"]
+
+    @pytest.mark.asyncio
+    async def test_active_sim_with_reception_is_a_fallback(self):
+        client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT,
+                                    MOCK_341_ALL_ON, sim_status=SIM_ACTIVE)
+        state = await client.get_network_state()
+
+        cell = next(i for i in state["interfaces"] if i["key"] == "4g")
+        assert cell["sim_status_name"] == "Active"
+        assert cell["available"] is True
+
+    @pytest.mark.asyncio
+    async def test_sim_lookup_failure_does_not_falsely_kill_the_lifeline(self):
+        """If the REST call fails, fall back to signal alone rather than
+        declaring 4G dead — that would refuse writes that are in fact safe."""
+        client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT,
+                                    MOCK_341_ALL_ON, gateway_list_fails=True)
+        state = await client.get_network_state()
+
+        cell = next(i for i in state["interfaces"] if i["key"] == "4g")
+        assert cell["sim_status"] is None
+        assert cell["available"] is True           # signal alone carries it
+        assert "4g" in state["available_transports"]
+
+    @pytest.mark.asyncio
+    async def test_mqtt_failure_still_propagates(self):
+        """Only the SIM lookup is best-effort — the three MQTT reads are not."""
+        from franklinwh_cloud.exceptions import GatewayOfflineException
+        client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT, MOCK_341_ALL_ON)
+        client._mqtt_send = AsyncMock(side_effect=GatewayOfflineException("offline"))
+
+        with pytest.raises(GatewayOfflineException):
+            await client.get_network_state()
 
     @pytest.mark.asyncio
     async def test_disabled_transport_is_never_available(self):
