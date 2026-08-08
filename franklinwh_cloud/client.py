@@ -23,6 +23,7 @@ from .exceptions import (
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
     InvalidTOUScheduleOption, FranklinWHTimeoutError, FranklinWHError,
+    InvalidResponseError,
 )
 # Operating Workand Run mode constants
 from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
@@ -392,6 +393,42 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
 
 
+    @staticmethod
+    def _decode_json(resp, method, url):
+        """Decode an API response body, tolerating the two non-JSON cases.
+
+        1. An empty body. Some endpoints (e.g. smart circuit toggles) answer 200
+           with nothing at all; that is success.
+        2. A body that is not JSON. The cloud sits behind CloudFront, which
+           serves HTML error pages for 502/503/504 and WAF blocks. Previously
+           this re-raised a bare ``json.JSONDecodeError`` and printed the whole
+           body to stdout, so callers could neither catch it meaningfully nor
+           see the HTTP status. A single 504 was enough to kill a long poll.
+
+        Raises
+        ------
+        InvalidResponseError
+            If the body is present but is not JSON. Subclasses FranklinWHError,
+            so existing ``except FranklinWHError`` guards now cover CDN failures.
+        """
+        if not resp.text.strip():
+            return {"code": 200, "message": "success (empty body)",
+                    "result": {"dataArea": "{}"}}
+        try:
+            return resp.json()
+        except Exception as e:
+            body = resp.text[:500]
+            logger.error(
+                f"{method} {url} returned non-JSON (HTTP {resp.status_code}): "
+                f"{body!r}"
+            )
+            raise InvalidResponseError(
+                f"{method} returned a non-JSON body (HTTP {resp.status_code}) "
+                f"from {url}: {e}",
+                status_code=resp.status_code,
+                body=body,
+            ) from e
+
     async def _post(self, url, payload, params: dict = None, **kwargs):
 
         logger.debug(f"_post: url={url} params={params} payload={payload} kwargs={kwargs}")
@@ -479,15 +516,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
 
-            if not resp.text.strip():
-                # Some API endpoints (e.g. smart circuit toggles) return 200 with an empty body
-                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
-            else:
-                try:
-                    json_resp = resp.json()
-                except Exception as e:
-                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
-                    raise
+            json_resp = self._decode_json(resp, "POST", url)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -535,14 +564,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
                 
-            if not resp.text.strip():
-                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
-            else:
-                try:
-                    json_resp = resp.json()
-                except Exception as e:
-                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
-                    raise
+            json_resp = self._decode_json(resp, "GET", url)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 

@@ -135,6 +135,7 @@ Consequences for the design:
 | G7 | The 338 ack (`result:0`) means **"aGate accepted the config"**, not "aGate associated with the AP". | A wrong password still returns `result:0`. Success can only be established by 317/339 polling. |
 | G8 | `_mqtt_send` raises `DeviceTimeoutException` (code 102) and `GatewayOfflineException` (code 136). | Both are *expected, non-fatal* during cut-over and must be swallowed by the verify loop. |
 | G9 | The aGate changes transport **autonomously** — 17 of 19 observed transitions followed no command at all (§2.3a). | `currentNetType` is a status field, not a setting. Neither a UI nor a verifier may present it as "the configured primary", and no verification may rest on it alone. |
+| G10 | The cloud sits behind **CloudFront**, which serves HTML error pages for 502/503/504. These are not API responses and carry no `code` field. Observed killing a 60-minute poll on its second iteration. | Any long-running loop must survive them. `client._decode_json` raises `InvalidResponseError`, which subclasses `FranklinWHError` — so a single `except FranklinWHError` covers both application-level rejections and CDN failures. |
 
 ---
 
@@ -350,7 +351,7 @@ while now < deadline:
     sleep(poll_interval_s)                      # 5 s — matches the app
     try:
         net = 317 optType=0 paraType=6          # cache bypassed
-    except (DeviceTimeoutException, GatewayOfflineException, ParseError):
+    except (DeviceTimeoutException, GatewayOfflineException, FranklinWHError):
         unreachable += 1; stable = 0            # EXPECTED during cut-over — not a failure
         continue
 
