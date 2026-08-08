@@ -533,6 +533,11 @@ aGate Network — <agate_serial>
 
 Per `.agents/policies/live_test_protocol.md` (AP-13). Results to `tests/results/`.
 
+> **Running these:** see [Network Probe Test Plan](NETWORK_PROBE_TEST_PLAN.md) for the
+> remote-safe runbook — ordering, pre-run checklist, abort criteria and the recovery ladder.
+> The short version: the 4G lifeline is the safety invariant, and **cmdType 341 is the only
+> command that can sever it, so it is never run off site.**
+
 ### 7.0 Open questions and their status
 
 These are the device-behaviour unknowns that no amount of HAR analysis can settle.

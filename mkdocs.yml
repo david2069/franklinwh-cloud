@@ -75,6 +75,7 @@ nav:
     - API Endpoint Mapping: API_ENDPOINTS_MAPPING.md
     - MQTT Command Catalog: MQTT_CMD_CATALOG.md
     - Network Connectivity & WiFi Switching: NETWORK_CONNECTIVITY_DESIGN.md
+    - Network Probe Test Plan (Remote-Safe): NETWORK_PROBE_TEST_PLAN.md
     - Operating Modes Guide: OPERATING_MODES_GUIDE.md
     - TOU Schedule Guide: TOU_SCHEDULE_GUIDE.md
     - TOU Tariff Reference: TOU_TARIFF_REFERENCE.md
