@@ -30,12 +30,20 @@ This is not a hope — it is the observed behaviour of the hardware:
 So the aGate both **falls back** when a transport fails and **returns** to the better one
 when it recovers. That is the whole basis for probing remotely.
 
+A valid 4G lifeline is precisely: **an active SIM with reception.** That is the
+out-of-the-box default fallback — it comes up on reboot, on crash, and whenever the primary
+transport fails. It is also what the official app relies on: it happily runs over cellular
+while letting you pick an available WiFi SSID or a connected Ethernet port.
+
 ### 1.1 The one thing that breaks the invariant
 
 The lifeline fails only if **4G itself is disabled or deregistered**. Concretely:
 
 - `4GNetSwitch` set to `0` — the aGate stops considering cellular at all.
-- SIM deregistered / no coverage — `operatorRSSI` drops to 0.
+- SIM inactive or removed — `simCardStatus` leaves `2 (Active)`.
+- No coverage — `operatorRSSI` drops to 0.
+
+The pre-run checklist in §3 gates on all three.
 
 `4GNetSwitch` is written by **cmdType 341**, whose write shape has *never been observed on
 the wire* and is inferred by analogy. **That is the single command capable of severing the
@@ -89,27 +97,48 @@ python tools/network_probe.py \
 Do not proceed unless **all** of these hold:
 
 - [ ] `available_transports` contains `4g`
-- [ ] the `4g` interface shows `enabled: true` and a non-zero `signal_raw`
+- [ ] the `4g` interface shows `enabled: true`, `sim_status_name: "Active"`, and a non-zero
+      `signal_raw` — **an active SIM plus reception is what makes 4G a valid lifeline**
 - [ ] `redundant: true`
 - [ ] `active` is **not** `4g` — if the aGate is already on cellular, a WiFi write has
       nothing to prove and you are spending the lifeline as the live transport
 - [ ] you can reach the aGate on the LAN, or you accept losing that check
 
-Baseline observed 2026-08-08 (a passing example):
+Baseline observed 2026-08-09 (a passing example):
 
 ```
 active              : WiFi
 linked_transports   : ['wifi']
 available_transports: ['wifi', '4g']
 redundant           : True
-   wifi  enabled=True  link=True  available=True  sig=78
-   4g    enabled=True  link=False available=True  sig=21
-   eth0  enabled=True  link=False available=False
-   eth1  enabled=True  link=False available=False
+   eth0  enabled=True  link=False ip=None            available=False
+   eth1  enabled=True  link=False ip=None            available=False
+   wifi  enabled=True  link=True  ip=192.168.0.110   available=True  sig=84
+   4g    enabled=True  link=False ip=None            available=True  sig=23 sim=Active
 ```
 
-Ethernet showing `available=False` is correct here — both ports are enabled but have no
+### 3.1 What "available" means, per transport
+
+The two families fail differently, so they are judged differently:
+
+| Transport | Available when | Why |
+|---|---|---|
+| **4G** | `4GNetSwitch=1` **and** SIM Active **and** `operatorRSSI > 0` | It is the out-of-the-box fallback and holds **no IP while idle** — cmdType 317 exposes no address for `operator` at all. An active SIM with reception is the whole test. |
+| **WiFi / Ethernet** | switch on **and** linked **and** holding an address (static or DHCP) | These must be genuinely *connected and active*. Signal or a plugged cable is not enough. |
+
+That WiFi rule is not pedantry — it is the exact failure mode seen twice. On 2026-03-21 and
+again on 2026-08-08 the aGate sat associated at ~76% holding `0.0.0.0`, with no working path
+through it. **WiFi with signal but no lease is a candidate to switch *to*; it is never a
+fallback to rely *on*.** Candidates come from `scan_wifi_networks_ranked()`; fallbacks come
+from `available_transports`.
+
+Ethernet showing `available=False` above is correct — both ports are enabled but have no
 link and no address, so neither is a credible fallback.
+
+> If the SIM lookup itself fails (it is a REST call to `getHomeGatewayList`, not a cmdType),
+> `sim_status` comes back `null` and 4G availability falls back to reception alone. That is
+> deliberate: a transient REST failure must not falsely declare the lifeline dead and block
+> a write that is in fact safe.
 
 ---
 

@@ -996,11 +996,14 @@ class DevicesMixin:
             - ``linked_transports``: keys of every transport **currently
               carrying traffic**. The aGate parks the ones it is not using, so
               in practice this holds at most one entry.
-            - ``available_transports``: keys of every transport that is enabled
-              and **capable** of carrying traffic — a registered modem, a link,
-              or an address. This is the set a write-safety preflight must use:
-              check ``set(available_transports) - {target}`` is non-empty for
-              the interface you are about to modify. Note the *active* transport
+            - ``available_transports``: keys of every transport that would
+              actually carry traffic if the one in use stopped. For 4G that
+              means an **active SIM with reception**; for WiFi and Ethernet it
+              means **connected and holding an address** (static or DHCP) —
+              signal or a plugged cable alone does not qualify. This is the set
+              a write-safety preflight must use: check
+              ``set(available_transports) - {target}`` is non-empty for the
+              interface you are about to modify. Note the *active* transport
               counts as a fallback when you are modifying a different one.
             - ``redundant``: True when more than one transport is available
             - ``source``: which cmdTypes answered, and whether the firmware
@@ -1021,11 +1024,34 @@ class DevicesMixin:
             UNASSIGNED_IPS,
         )
 
-        net_info, conn_status, switches = await asyncio.gather(
+        from franklinwh_cloud.const import SIM_STATUS
+
+        # The three MQTT reads, plus a best-effort REST lookup for SIM state.
+        # simCardStatus lives on the gateway-list object, not in any cmdType, so
+        # it costs a REST call rather than sendMqtt budget. Failures are
+        # tolerated: without it, 4G availability falls back to signal alone.
+        net_info, conn_status, switches, gw_list = await asyncio.gather(
             self.get_network_info(),
             self.get_connection_status(),
             self.get_network_switches(),
+            self.get_home_gateway_list(),
+            return_exceptions=True,
         )
+        for essential in (net_info, conn_status, switches):
+            if isinstance(essential, BaseException):
+                raise essential
+
+        sim_status = None
+        if not isinstance(gw_list, BaseException):
+            match = next(
+                (g for g in (gw_list.get("result") or [])
+                 if isinstance(g, dict) and g.get("id") == self.gateway),
+                None,
+            )
+            if match is not None:
+                sim_status = match.get("simCardStatus")
+        else:
+            logger.debug(f"get_network_state: SIM status unavailable: {gw_list}")
 
         # Prefer 317's currentNetType; the extended 339 payload carries the same
         # field on newer firmware and is used only as a fallback.
@@ -1071,24 +1097,39 @@ class DevicesMixin:
                 # discovery.py. Reported under a distinct key so a UI cannot
                 # accidentally render it as one.
                 entry["signal_raw"] = cfg.get("rssi")
+                entry["sim_status"] = sim_status
+                entry["sim_status_name"] = SIM_STATUS.get(sim_status)
                 entry.pop("dhcp", None)
 
-            # "available" = enabled and CAPABLE of carrying traffic, as distinct
-            # from "link" = currently carrying it. The aGate parks the transports
-            # it is not using, so at most one is ever linked; judging fallback
-            # safety on `link` alone would refuse every write to the active
-            # transport. Observed 2026-08-08: on WiFi for a full hour with
-            # 4GNetSwitch=1 and operatorRSSI=21-22 but 4GConnectBSStatus=0 —
-            # cellular idle yet demonstrably ready, having carried the
-            # connection that same morning.
+            # "available" = would this transport actually carry traffic if the
+            # one in use stopped? Distinct from "link" = carrying it right now.
+            # The aGate parks transports it is not using, so at most one is ever
+            # linked; judging fallback safety on `link` alone would refuse every
+            # write to the active transport.
+            #
+            # The two families are judged differently, because they fail
+            # differently:
+            #
+            #   4G  — the out-of-the-box fallback. It holds no IP while idle
+            #         (cmdType 317 exposes no address for `operator` at all), so
+            #         the test is an ACTIVE SIM plus RECEPTION. Observed
+            #         2026-08-08: a full hour on WiFi with 4GNetSwitch=1 and
+            #         operatorRSSI=21-22 but 4GConnectBSStatus=0 — idle, yet it
+            #         had carried the connection that same morning.
+            #
+            #   WiFi / Ethernet — must be genuinely CONNECTED AND ACTIVE, i.e.
+            #         hold an address, static or DHCP. Signal or a plugged cable
+            #         is not enough: on 2026-03-21 and again on 2026-08-08 the
+            #         aGate sat associated at 76% with 0.0.0.0 and no working
+            #         path. That state is a candidate to switch TO (see
+            #         scan_wifi_networks_ranked), never a fallback to rely ON.
             if iface_id == 4:
-                capable = bool(cfg.get("rssi"))          # modem registered
-            elif iface_id == 3:
-                # Firmware without the extended 339 payload reports no signal,
-                # so fall back to link — conservative, never over-permissive.
-                capable = bool(entry["link"]) or bool(entry.get("signal_pct"))
+                # sim_status None => REST lookup failed; fall back to signal
+                # alone rather than falsely declaring the lifeline dead.
+                sim_ok = sim_status is None or sim_status == 2
+                capable = bool(cfg.get("rssi")) and sim_ok
             else:
-                capable = bool(entry["link"]) or has_addr
+                capable = bool(entry["link"]) and has_addr
             entry["available"] = entry["enabled"] and capable
 
             interfaces.append(entry)

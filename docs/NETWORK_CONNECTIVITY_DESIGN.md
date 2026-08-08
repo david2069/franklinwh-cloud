@@ -280,8 +280,15 @@ if not survivors:
 > `get_network_state()` therefore returns both, and the preflight uses `available`:
 >
 > - `linked_transports` — carrying traffic right now (factual, at most one entry)
-> - `available_transports` — enabled **and capable**: a registered modem, a link, or an
->   address. This is the write-safety set.
+> - `available_transports` — would actually carry traffic if the one in use stopped.
+>   This is the write-safety set, and the two transport families are judged differently:
+>   **4G needs an active SIM plus reception** (it is the by-design fallback and holds no IP
+>   while idle — 317 exposes no address for `operator`), while **WiFi and Ethernet must be
+>   connected and holding an address**, static or DHCP.
+>
+> The WiFi rule earns its strictness: on 2026-03-21 and again on 2026-08-08 the aGate sat
+> associated at ~76% holding `0.0.0.0`. Signal alone is a candidate to switch *to* — that
+> is what `scan_wifi_networks_ranked()` is for — never a fallback to rely *on*.
 
 Applied to the two use cases against live state on 2026-08-08 (active WiFi, cellular idle):
 
