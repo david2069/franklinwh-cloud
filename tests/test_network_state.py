@@ -218,37 +218,67 @@ class TestGetNetworkState:
         assert "signal_pct" not in cell
 
     @pytest.mark.asyncio
-    async def test_linked_transports_lists_enabled_and_linked(self):
-        client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT, MOCK_341_ALL_ON)
-        state = await client.get_network_state()
-
-        assert "wifi" in state["linked_transports"]
-        assert state["redundant"] is (len(state["linked_transports"]) > 1)
-
-    @pytest.mark.asyncio
     async def test_active_transport_counts_as_fallback_for_a_different_target(self):
         """Live case: on 4G, WiFi has no lease. Rewriting WiFi is safe — 4G holds.
 
         Reproduces the real gateway state observed 2026-08-07: active=4g,
-        wifi enabled at 76% but link down with no address. A preflight that
-        excluded the active transport would wrongly refuse this switch.
+        wifi enabled but link down with no address. A preflight that excluded
+        the active transport would wrongly refuse this switch.
         """
         client = _client_with_reads(MOCK_317_ON_4G, MOCK_339_EXTENDED_4G, MOCK_341_ALL_ON)
         state = await client.get_network_state()
 
         assert state["linked_transports"] == ["4g"]
-        assert set(state["linked_transports"]) - {"wifi"} == {"4g"}   # WiFi write is safe
-        assert set(state["linked_transports"]) - {"4g"} == set()      # 4G write is NOT
+        assert set(state["available_transports"]) - {"wifi"} >= {"4g"}  # WiFi write safe
 
     @pytest.mark.asyncio
-    async def test_no_fallback_when_wifi_is_the_only_linked_transport(self):
+    async def test_idle_cellular_is_available_even_though_not_linked(self):
+        """The finding from the 2026-08-08 60-minute observation.
+
+        On WiFi for a full hour with 4GNetSwitch=1 and operatorRSSI=21-22 but
+        4GConnectBSStatus=0. Cellular was idle, not dead — it had carried the
+        connection that same morning. Keying the preflight on `link` would have
+        refused every WiFi write despite a ready fallback.
+        """
+        on_wifi_4g_idle = json.dumps({
+            "opt": 0, "result": 0, "reason": 0,
+            "routerStatus": 0, "netStatus": 0, "awsStatus": 0,
+            "EthConnectRouterStatus": 0, "wifiConnectRouterStatus": 1,
+            "4GConnectBSStatus": 0,              # idle
+            "WifiSignalStrength": 78, "4GSignalStrength": 0,
+            "currentNetType": 3,
+        })
+        client = _client_with_reads(MOCK_317_ON_WIFI, on_wifi_4g_idle, MOCK_341_ALL_ON)
+        state = await client.get_network_state()
+
+        assert state["linked_transports"] == ["wifi"]        # only WiFi carries traffic
+        assert "4g" in state["available_transports"]         # but cellular can take over
+        assert state["redundant"] is True
+
+        # The preflight this exists to serve: a WiFi write is safe here.
+        assert set(state["available_transports"]) - {"wifi"} >= {"4g"}
+
+    @pytest.mark.asyncio
+    async def test_no_fallback_when_wifi_is_the_only_enabled_transport(self):
         """This is the state in which a WiFi write could strand the gateway."""
         client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT, MOCK_341_ONLY_WIFI)
         state = await client.get_network_state()
 
-        assert state["linked_transports"] == ["wifi"]
+        assert state["available_transports"] == ["wifi"]
         assert state["redundant"] is False
-        assert set(state["linked_transports"]) - {"wifi"} == set()
+        assert set(state["available_transports"]) - {"wifi"} == set()
+
+    @pytest.mark.asyncio
+    async def test_disabled_transport_is_never_available(self):
+        """A registered modem behind a switched-off interface is not a fallback."""
+        client = _client_with_reads(MOCK_317_ON_WIFI, MOCK_339_SHORT, MOCK_341_ONLY_WIFI)
+        state = await client.get_network_state()
+
+        cell = next(i for i in state["interfaces"] if i["key"] == "4g")
+        assert cell["signal_raw"] == 22        # modem has signal
+        assert cell["enabled"] is False        # but the switch is off
+        assert cell["available"] is False
+        assert "4g" not in state["available_transports"]
 
 
 # ── scan_wifi_networks_ranked ────────────────────────────────────────

@@ -257,26 +257,41 @@ the one being modified* is live:
 
 ```python
 state = await client.get_network_state()
-survivors = set(state["linked_transports"]) - {target_interface}
+survivors = set(state["available_transports"]) - {target_interface}
 if not survivors:
     abort("no fallback transport would survive this write")
 ```
 
-> **Corrected 2026-08-07.** An earlier draft of this rule excluded the *active* transport
-> from the fallback set. That is wrong, and live data proved it: the gateway was on 4G
-> with WiFi enabled at 76% but holding no DHCP lease, so `linked_transports == ["4g"]`.
-> Excluding the active transport yielded "no fallback" and would have refused the primary
-> use case — even though 4G was about to carry the connection through the WiFi rewrite.
-> The fallback set is relative to the **target of the write**, not to the active transport.
-> `get_network_state()` therefore returns `linked_transports` and leaves the subtraction to
-> the caller; there is no `fallback_available` field.
+> **Corrected twice, both times by live data.**
+>
+> *2026-08-07* — the first draft excluded the *active* transport from the fallback set.
+> Wrong: the gateway was on 4G with WiFi enabled but holding no lease, so excluding the
+> active transport yielded "no fallback" and would have refused the primary use case, even
+> though 4G was about to carry the connection through the WiFi rewrite. **The fallback set
+> is relative to the target of the write, not to the active transport.**
+>
+> *2026-08-08* — the second draft keyed on `linked_transports`. Also wrong. The 60-minute
+> observation (§2.5a) showed the aGate **parks the transports it is not using**: for a full
+> hour it sat on WiFi with `4GNetSwitch=1` and `operatorRSSI=21-22` but `4GConnectBSStatus=0`.
+> Cellular was idle, not dead — it had carried the connection that same morning. Since at
+> most one transport is ever linked, subtracting the target from `linked_transports` refuses
+> **every** write to whichever transport is currently carrying traffic.
+>
+> `get_network_state()` therefore returns both, and the preflight uses `available`:
+>
+> - `linked_transports` — carrying traffic right now (factual, at most one entry)
+> - `available_transports` — enabled **and capable**: a registered modem, a link, or an
+>   address. This is the write-safety set.
 
-Applied to the two use cases against that same live state:
+Applied to the two use cases against live state on 2026-08-08 (active WiFi, cellular idle):
 
-| Write target | `linked_transports - {target}` | Verdict |
+| Write target | `available_transports - {target}` | Verdict |
 |---|---|---|
-| WiFi (use case 1) | `{"4g"}` | proceed — cellular carries the transition |
-| 4G (use case 2) | `{}` | refuse — nothing else has a link |
+| WiFi (use case 1) | `{"4g"}` | proceed — idle cellular is ready to take over |
+| 4G (use case 2) | `{"wifi"}` | proceed — WiFi is carrying traffic |
+
+Ethernet correctly stays out of the set: both ports are enabled but have no link and no
+address, so neither is a credible fallback.
 
 Plus a minimum signal floor on the target: **refuse `wifi_RSSI < 30`** (captures show working
 links at 68–100; 8–28 are noise-floor neighbours). Overridable only with an explicit flag.
@@ -531,10 +546,14 @@ These are the device-behaviour unknowns that no amount of HAR analysis can settl
 | U4 | Does `317 optType=1` force a transport switch, or is it advisory? | medium | `noop 317` then `set-primary` | open — §2.5a makes "advisory" the leading hypothesis |
 | U5 | Does an open network (`wifi_Safety 0`) accept an empty password? | medium | — | open — needs a throwaway AP; not yet implemented in the probe |
 
-**Do not run U3/U4 while `linked_transports` has only one entry.** The preflight enforces
-this, but the point stands: at the time of writing the gateway is on WiFi alone
-(`linked_transports == ["wifi"]`, `redundant: false`), so *any* network write is currently
-refused. U3/U4 need cellular or Ethernet restored to a linked state first.
+**Do not run U3/U4 while `available_transports` has only one entry.** The preflight enforces
+this. As of 2026-08-08 the gateway reports `available_transports == ["wifi", "4g"]`
+(`redundant: true`), so U2 and U3/U4 are unblocked — WiFi carries traffic and idle cellular
+is ready to take over.
+
+U3 remains the one to run with physical access to the aGate: if the inferred `341 opt=1`
+shape is wrong it could disable an interface, and the no-op probe validates the shape but
+cannot prove the firmware interprets a *changed* value as intended.
 
 **Gate 1 — unit (mocked, no network).** Fixtures extracted from the HAR corpus into
 `tests/fixtures/network/`: both 340 shapes (short + extended), 318 both `result`-nesting

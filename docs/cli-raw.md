@@ -84,13 +84,26 @@ franklinwh-cli raw get_stats --headers
 
 **Reading connectivity.** `get_network_state()` is the one to call — it returns the active
 transport, every interface with its link state and address, cloud reachability, and
-`linked_transports` for write-safety checks:
+both transport sets used for write-safety checks:
 
 ```python
 state = await client.get_network_state()
-state["active"]["label"]        # 'WiFi'
-state["active"]["ip"]           # '192.168.0.110'
-state["linked_transports"]      # ['wifi']  — transports enabled AND currently linked
+state["active"]["label"]          # 'WiFi'
+state["active"]["ip"]             # '192.168.0.110'
+state["linked_transports"]        # ['wifi']        — carrying traffic right now
+state["available_transports"]     # ['wifi', '4g']  — enabled AND able to take over
+state["redundant"]                # True
+```
+
+The two differ because the aGate **parks the transports it is not using**: cellular can sit
+with a registered modem and good signal while reporting no link. Any write-safety check must
+use `available_transports`, and must subtract the interface being modified — not the active
+one:
+
+```python
+survivors = set(state["available_transports"]) - {"wifi"}   # rewriting WiFi
+if not survivors:
+    raise RuntimeError("no fallback would survive this write")
 ```
 
 > ⚠️ `active` is the transport the **aGate selected for itself**, not a user-configured
