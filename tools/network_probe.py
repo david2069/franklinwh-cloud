@@ -538,7 +538,12 @@ async def cmd_noop(p, args):
 
     try:
         ack = await p.raw(wire, write_area)
-        print(f"  write ACCEPTED: result={ack.get('result')} reason={ack.get('reason')}")
+        # 341 answers flat; 317 nests the per-write result/reason inside
+        # commSetPara and carries only `result` at the top. Read the inner
+        # object when present so `reason` does not display as None.
+        inner = ack.get("commSetPara") if isinstance(ack.get("commSetPara"), dict) else ack
+        print(f"  write ACCEPTED: result={inner.get('result', ack.get('result'))} "
+              f"reason={inner.get('reason')}")
         p.ev.write("noop_write", cmd=cmd, outcome="accepted", ack=ack)
     except FranklinWHError as e:
         print(f"  write REJECTED: code={e.code} — {e.message}")
