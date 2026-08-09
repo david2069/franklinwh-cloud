@@ -37,6 +37,8 @@ franklinwh-cli schema --filter mode             # only global Operating Mode con
 franklinwh-cli schema --filter tou              # only TOU schedule blocks
 franklinwh-cli schema --filter relay            # only relay fields
 franklinwh-cli schema --filter grid             # only Grid Power Control Limits section
+franklinwh-cli schema --filter network          # connectivity inventory (WiFi/Ethernet/4G)
+franklinwh-cli schema --live --filter network   # + current state and a health check
 franklinwh-cli schema --json                    # machine-readable JSON
 franklinwh-cli schema --live --json             # JSON + live values
 franklinwh-cli schema --live --filter power     # filtered with live values
@@ -53,6 +55,58 @@ franklinwh-cli schema --live --filter power     # filtered with live values
 | Operating Mode Config | `⚙️` | `getGatewayTouListV2` | No (static) |
 | TOU Schedule Blocks | `📅` | `setTouSchedule` / `getTouList` | No (static) |
 | Grid Power Control Limits | `⚡` | `get_power_control_settings` (REST) | Yes (live only) |
+| Network Capabilities & Settings | `🌐` | cmdType 317 / 339 / 341 + `getHomeGatewayList` | No (static) |
+| Network — Current State | `📶` | `get_network_state()` | Yes (`--live`) |
+| Network — Health Check | `🩺` | derived from current state | Yes (`--live`) |
+
+---
+
+## Network inventory
+
+`--filter network` documents every connectivity field: which cmdType supplies it, its units,
+and whether it is raw or derived. With `--live` it also renders the current state of all four
+interfaces and runs a health check.
+
+```
+  iface  enabled  link   active  available  address          signal     note
+  eth0   True     False  False   False      —
+  eth1   True     False  False   False      —
+  wifi   True     True   True    True       192.168.0.110    84%
+  4g     True     False  False   True       —                22/52      SIM Active
+
+  carrying traffic : ['wifi']
+  available        : ['wifi', '4g']   redundant=True
+```
+
+Three columns are easy to confuse, and the distinction matters:
+
+| Column | Means |
+|---|---|
+| `link` | carrying traffic **right now**. The aGate parks what it is not using, so usually only one interface is `True`. |
+| `active` | the transport the aGate **selected for itself** — not a configured primary. It re-selects autonomously. |
+| `available` | **would this carry traffic if the one in use stopped?** 4G needs an active SIM plus reception (it holds no IP while idle); WiFi and Ethernet must be linked *and* holding an address. |
+
+`available` is the column that governs write safety — see
+[Network Connectivity & WiFi Switching](NETWORK_CONNECTIVITY_DESIGN.md).
+
+### Health check
+
+Findings are derived from current state, `WARN` before `INFO`:
+
+| Code | Level | Meaning |
+|---|---|---|
+| `wifi_no_lease` | WARN | associated with signal but holding no address — the 2026-03-21 failure mode |
+| `sim_not_active` | WARN | reception without an active SIM is not a usable fallback |
+| `no_cellular_reception` | WARN | 4G enabled but signal 0 |
+| `cellular_disabled` | WARN | `4GNetSwitch` off — no fallback, so a failed change needs on-site recovery |
+| `no_redundancy` | WARN | only one transport could carry traffic |
+| `eth0_no_link` / `eth1_no_link` | INFO | enabled but no link and no address — cable likely unplugged |
+| `cloud_flags_unreliable` | INFO | cmdType 339 reports `awsStatus=0` while the data arrived through the cloud |
+
+> **No connection-attempt history is available.** `selectDeviceRunLogList` is a static
+> alarm-code dictionary despite its name, not an event log, and no other endpoint exposes
+> connectivity events. Health is therefore derived from current state. For a continuous
+> record, poll with `tools/network_probe.py observe`, which logs every sample to JSONL.
 
 ---
 

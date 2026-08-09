@@ -278,7 +278,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub_schema.add_argument("--live", action="store_true",
                             help="Fetch live values from get_stats() and show alongside the schema")
     sub_schema.add_argument("--filter", dest="filter_group", metavar="GROUP",
-                            help="Filter to fields in a group (e.g. 'power', 'electrical', 'relay', '211')")
+                            help="Filter to fields in a group (e.g. 'power', 'electrical', "
+                                 "'relay', '211', 'network'). 'network' shows the connectivity "
+                                 "inventory; add --live for current state and a health check")
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
