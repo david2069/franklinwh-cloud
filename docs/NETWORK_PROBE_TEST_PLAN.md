@@ -144,15 +144,50 @@ link and no address, so neither is a credible fallback.
 
 ## 4. Probe schedule
 
+### 4.0 The classification standard: has the official app done this remotely?
+
+The vendor's own app performs network reconfiguration over cellular. It runs on 4G and
+offers you the available WiFi SSID or a connected Ethernet port — that is a designed,
+supported workflow, not a hack. Our code issues the *same* `sendMqtt` endpoint with the
+*same* cmdTypes and payload shapes.
+
+So the useful safety question is not "how scary does this feel?" but:
+
+> **Has the official app been observed issuing this exact write, while connected over 4G?**
+
+Measured across all 44 captures:
+
+| Write | Observed while on 4G | Total writes seen | Verdict |
+|---|---|---|---|
+| `337 opt=1` — set WiFi SSID/password | **yes, 2×** | 5 | remote-safe |
+| `317 optType=1` — interface config | **yes, 4×** | 6 | remote-safe |
+| `341 opt=1` — interface enable switches | **no** | **0** | on-site only |
+| `315 opt=1` — reboot | not while on 4G | 2 | recovery use only |
+
+That table is the whole argument. For 337 and 317 we are doing something the vendor ships
+and does routinely over cellular — and our U2 does strictly *less* than the app, since it
+rewrites the credentials already stored rather than joining a new network.
+
+**341 is the exception, and not by timidity.** It has never been observed as a write at all,
+on any transport, in any capture. The "same API as the app" reasoning does not reach it,
+because the app has never been seen using it. Its payload shape is *inferred by analogy*,
+not captured — so it is the one command where we would be sending bytes no vendor code has
+ever sent, and it is also the only command that can clear `4GNetSwitch` and sever the
+lifeline. Those two facts together, not risk-aversion, are why it waits for an on-site
+window.
+
 ### Remote-safe
 
 #### U2 — re-apply stored WiFi credentials · **LOW RISK · run first**
 
 Writes cmdType 337 with the SSID and password the aGate already holds.
 
-*Why it is safe:* this is byte-for-byte what the mobile app did at capture entry 3160, and
-it succeeded. Worst case is a WiFi reassociation glitch, which drops WiFi — and the aGate
-then falls back to 4G, exactly per §1.
+*Why it is safe:* the official app issues this exact write over cellular — captured on
+2026-02-09 and 2026-03-20, both times with the aGate on 4G, and on 2026-03-20 it moved the
+gateway 4G → WiFi successfully. Our version does strictly less: it re-applies the stored
+credentials rather than joining a new network, so it cannot even get the password wrong.
+Worst case is a reassociation glitch that drops WiFi — and the aGate then falls back to 4G,
+exactly per §1.
 
 ```bash
 python tools/network_probe.py --config <ini> --lan-host <ip> \
@@ -171,9 +206,9 @@ Expect: `result:0` ack, then WiFi back with a lease within ~15–40s. A brief
 
 Writes back the identical 20-key `commSetPara`, `currentNetType` unchanged.
 
-*Why it is safe:* the app itself issued exactly this write twice (capture entries 3145 and
-3151), both times with the transport unchanged, and nothing happened. It cannot select a
-different transport because it writes back the value it read.
+*Why it is safe:* the app itself issued this write four times **while on 4G**, every time
+with the transport value unchanged, and nothing happened. Ours cannot select a different
+transport at all, because it writes back the value it just read.
 
 ```bash
 python tools/network_probe.py --config <ini> --lan-host <ip> \
@@ -191,9 +226,17 @@ Answers: is the `num`-computed payload accepted, and does the state genuinely no
 
 #### U3 — cmdType 341 write shape · **HIGH RISK · ONSITE ONLY**
 
-The only command that can write `4GNetSwitch`. Shape never observed. See §1.1.
+Two facts, and it is their combination that matters:
 
-Run it standing next to the aGate, with the AP-mode recovery path confirmed working first.
+1. **Never observed as a write** — 0 occurrences across 44 captures, on any transport. So
+   the payload is inferred by analogy with 311/327/337, not captured. The "same API as the
+   official app" argument (§4.0) genuinely does not reach this command.
+2. **It is the only command that can clear `4GNetSwitch`** — i.e. the only one that can
+   sever the lifeline every other probe depends on.
+
+Either alone would be tolerable. Together they mean: an unverified payload aimed at the one
+register that guarantees remote recovery. Run it standing next to the aGate, with the
+AP-mode recovery path confirmed working first.
 
 #### U5 — open network with an empty password · **ONSITE ONLY**
 
@@ -278,10 +321,15 @@ Each run writes JSONL to `tests/results/`, capturing every raw request/response 
 
 ## 8. Recommended hardening (not yet implemented)
 
-This plan's central rule — *never target 4G, never run 341 remotely* — currently depends on
-whoever is at the keyboard remembering it. That is the weakest part of the setup.
+Given §4.0, the guard worth having is narrower than first proposed. There is no case for
+gating the 337/317 writes behind extra ceremony — the vendor's own app performs them over
+cellular as a supported workflow.
 
-Suggested: a `--require-4g-lifeline` flag that makes the probe refuse to run any write
-unless `4g` is in `available_transports` and is not the write target, plus an outright block
-on `noop 341` unless a separate `--onsite` flag is passed. Encoding the rule is strictly
-safer than documenting it.
+The one rule worth encoding in code rather than prose is the 341 exception: `noop 341`
+should refuse to run unless an explicit `--onsite` flag is passed, because that is the
+command the app has never been seen issuing and the only one that can clear `4GNetSwitch`.
+A `--require-4g-lifeline` check (refuse any write unless `4g` is available and is not the
+target) is cheap belt-and-braces on top.
+
+Prose that says "don't run this remotely" only works if the person at the keyboard
+remembers it; an interlock works regardless.
