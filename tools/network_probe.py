@@ -21,8 +21,11 @@ Safety model
   back exactly what was read, confirm nothing changed. This proves the payload
   shape is accepted without touching connectivity. It is what the mobile app
   itself does with cmdType 317.
-* Preflight refuses any write unless a transport OTHER THAN THE TARGET has a
-  live link, so a failed write cannot strand the gateway.
+* Preflight has two gates: something other than the target must be able to take
+  over, AND the 4G lifeline must be intact (cellular available, and not itself
+  the target) — cellular is what restores remote control after a failed change.
+* `noop 341` is hard-gated behind --onsite. It is the only command that can
+  clear 4GNetSwitch, and the only write here with no captured precedent.
 * Out-of-band LAN check runs independently of the cloud path being modified.
 * If the gateway does not return within the deadline, a recovery runbook is
   printed, including the aGate's own AP credentials.
@@ -32,7 +35,7 @@ Usage
     python tools/network_probe.py status
     python tools/network_probe.py scan
     python tools/network_probe.py observe --minutes 60          # U1
-    python tools/network_probe.py noop 341 --i-understand-writes   # U3 shape
+    python tools/network_probe.py noop 341 --i-understand-writes --onsite  # U3
     python tools/network_probe.py noop 317 --i-understand-writes   # U4 shape
     python tools/network_probe.py reapply-wifi --i-understand-writes  # U2
     python tools/network_probe.py recover
@@ -245,39 +248,63 @@ class Probe:
 
     # ── preflight ────────────────────────────────────────────────────
 
-    async def preflight(self, target, allow_no_fallback=False):
-        """Refuse a write unless a transport other than `target` could take over.
+    async def preflight(self, target, allow_no_fallback=False, onsite=False):
+        """Refuse a write unless something other than `target` could take over.
 
-        Keys on `available_transports`, not `linked_transports`. The aGate parks
-        the transports it is not using, so at most one is ever linked — judging
-        on `linked` would refuse every write to the transport currently carrying
-        traffic, including the primary 4G-to-WiFi use case.
+        Two gates:
+
+        1. **Survivor check** — keys on `available_transports`, not
+           `linked_transports`. The aGate parks the transports it is not using,
+           so at most one is ever linked; judging on `linked` would refuse every
+           write to the transport currently carrying traffic, including the
+           primary 4G-to-WiFi case.
+
+        2. **4G lifeline check** — remote recovery specifically depends on
+           cellular: it is the out-of-the-box fallback that survives a reboot or
+           a crash, and it is what restores cloud control when the preferred
+           link fails. Ethernet passing gate 1 is not the same guarantee. Waived
+           by --onsite (you can reach the hardware) or --allow-no-fallback.
         """
         state = await self.c.get_network_state()
-        survivors = sorted(set(state["available_transports"]) - {target})
-        ok = bool(survivors) or allow_no_fallback
+        available = state["available_transports"]
+        survivors = sorted(set(available) - {target})
+        lifeline = ("4g" in available) and target != "4g"
+
+        survivor_ok = bool(survivors) or allow_no_fallback
+        lifeline_ok = lifeline or onsite or allow_no_fallback
+        ok = survivor_ok and lifeline_ok
+
         lan = self.lan_reachable()
         self.ev.write(
             "preflight",
             target=target,
             active=state["active"]["key"],
             linked=state["linked_transports"],
-            available=state["available_transports"],
+            available=available,
             survivors=survivors,
+            lifeline_4g=lifeline,
             lan_reachable=lan,
             passed=ok,
-            overridden=bool(not survivors and allow_no_fallback),
+            onsite=onsite,
+            overridden=bool(not (survivors and lifeline) and (allow_no_fallback or onsite)),
         )
         print(f"  active            : {state['active']['label']} ({state['active']['selection']})")
         print(f"  carrying traffic  : {state['linked_transports']}")
-        print(f"  available         : {state['available_transports']}")
+        print(f"  available         : {available}")
         print(f"  survives write    : {survivors or 'NOTHING'}")
+        print(f"  4G lifeline       : {'intact' if lifeline else 'NOT INTACT'}"
+              f"{' (waived — onsite)' if not lifeline and onsite else ''}")
         if lan is not None:
             print(f"  LAN {self.lan_host}:502  : {'reachable' if lan else 'unreachable'}")
-        if not ok:
-            print("\n  PREFLIGHT FAILED — writing to the only linked transport could")
-            print("  strand the gateway. Override with --allow-no-fallback only with")
-            print("  physical access to the aGate.")
+
+        if not survivor_ok:
+            print("\n  PREFLIGHT FAILED — nothing would survive this write. Writing to the")
+            print("  only usable transport could strand the gateway.")
+        elif not lifeline_ok:
+            print("\n  PREFLIGHT FAILED — the 4G lifeline is not intact for this write.")
+            print("  Cellular is what restores remote control after a failed change;")
+            print("  it must be available and must not be the write target.")
+            print("  Pass --onsite if you can physically reach the aGate.")
         return ok, state
 
     # ── verification ─────────────────────────────────────────────────
@@ -493,7 +520,7 @@ async def cmd_noop(p, args):
     print(f"NO-OP SHAPE PROBE — cmdType {cmd}")
     print("Writes back exactly what was read. Nothing should change.\n")
 
-    ok, _ = await p.preflight(target, args.allow_no_fallback)
+    ok, _ = await p.preflight(target, args.allow_no_fallback, args.onsite)
     if not ok:
         return 2
     if not confirm(args, f"issue a NO-OP cmdType {cmd} write"):
@@ -543,7 +570,7 @@ async def cmd_reapply_wifi(p, args):
     hars/HTTPToolkit_2026-03-20_05-38.har, which succeeded.
     """
     print("RE-APPLY WIFI — writes back the credentials already stored.\n")
-    ok, state = await p.preflight("wifi", args.allow_no_fallback)
+    ok, state = await p.preflight("wifi", args.allow_no_fallback, args.onsite)
     if not ok:
         return 2
 
@@ -639,8 +666,11 @@ def main():
     ap.add_argument("--yes", action="store_true", help="skip confirmation prompts")
     ap.add_argument("--i-understand-writes", dest="writes_ok", action="store_true",
                     help="required for every subcommand that writes to the aGate")
+    ap.add_argument("--onsite", action="store_true",
+                    help="assert you can physically reach the aGate. Required for "
+                         "`noop 341`, and waives the 4G lifeline check.")
     ap.add_argument("--allow-no-fallback", action="store_true",
-                    help="override the preflight. Physical access only.")
+                    help="override the preflight entirely. Physical access only.")
     ap.add_argument("--timeout", type=int, default=180, help="verify timeout (s)")
 
     sub = ap.add_subparsers(dest="command", required=True)
@@ -660,6 +690,25 @@ def main():
     WRITE_COMMANDS = {"noop", "reapply-wifi"}
     if args.command in WRITE_COMMANDS and not args.writes_ok:
         print(f"'{args.command}' writes to the aGate. Re-run with --i-understand-writes.")
+        return 2
+
+    # ONSITE INTERLOCK — cmdType 341 is the one command that can clear
+    # 4GNetSwitch, and its write shape has never been observed on the wire in
+    # any of the 44 captures. Every other write in this tool mirrors something
+    # the official app does over cellular; this one does not. A no-op proves the
+    # firmware ACCEPTS the shape, not that it PARSES it as assumed — and a
+    # misparse that zeroes the cellular switch is unrecoverable without physical
+    # access. See docs/NETWORK_PROBE_TEST_PLAN.md section 4.0.
+    if args.command == "noop" and args.cmd == 341 and not args.onsite:
+        print("REFUSED: `noop 341` requires --onsite.\n")
+        print("  cmdType 341 is the only command that can clear 4GNetSwitch — the")
+        print("  cellular fallback every remote recovery depends on. Its write shape")
+        print("  has never been captured from the official app, so the payload is")
+        print("  inferred, not verified.")
+        print("\n  A no-op validates that the firmware accepts the shape. It cannot")
+        print("  prove the firmware interprets it as intended. If it misparses and")
+        print("  disables cellular, recovery is physical.")
+        print("\n  Re-run with --onsite only when you can reach the aGate.")
         return 2
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

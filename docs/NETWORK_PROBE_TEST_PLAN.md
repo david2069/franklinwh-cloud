@@ -319,17 +319,32 @@ Each run writes JSONL to `tests/results/`, capturing every raw request/response 
 
 ---
 
-## 8. Recommended hardening (not yet implemented)
-
-Given §4.0, the guard worth having is narrower than first proposed. There is no case for
-gating the 337/317 writes behind extra ceremony — the vendor's own app performs them over
-cellular as a supported workflow.
-
-The one rule worth encoding in code rather than prose is the 341 exception: `noop 341`
-should refuse to run unless an explicit `--onsite` flag is passed, because that is the
-command the app has never been seen issuing and the only one that can clear `4GNetSwitch`.
-A `--require-4g-lifeline` check (refuse any write unless `4g` is available and is not the
-target) is cheap belt-and-braces on top.
+## 8. Interlocks (implemented)
 
 Prose that says "don't run this remotely" only works if the person at the keyboard
-remembers it; an interlock works regardless.
+remembers it. Both rules are enforced in code.
+
+**`noop 341` requires `--onsite`**, and refuses before making any network call:
+
+```
+$ python tools/network_probe.py --i-understand-writes noop 341
+REFUSED: `noop 341` requires --onsite.
+  cmdType 341 is the only command that can clear 4GNetSwitch — the
+  cellular fallback every remote recovery depends on. ...
+```
+
+Per §4.0 there is no case for gating the 337/317 writes behind extra ceremony — the
+vendor's own app performs them over cellular as a supported workflow — so they are not
+gated.
+
+**The preflight has two gates**, both evaluated before any write:
+
+| Gate | Rule | Waived by |
+|---|---|---|
+| Survivor | `set(available_transports) - {target}` must be non-empty | `--allow-no-fallback` |
+| 4G lifeline | `4g` must be available **and** must not be the write target | `--onsite`, `--allow-no-fallback` |
+
+The lifeline gate is deliberately stricter than the survivor gate. Ethernet can satisfy the
+survivor check while offering no remote-recovery guarantee — cellular is the transport that
+returns after a reboot or a crash and restores cloud control. So a WiFi write backed only by
+Ethernet is refused remotely, and permitted with `--onsite`.
