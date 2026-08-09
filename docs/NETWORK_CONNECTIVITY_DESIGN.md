@@ -555,7 +555,8 @@ These are the device-behaviour unknowns that no amount of HAR analysis can settl
 | U1 | Does the aGate fail over between transports on its own? | none | `observe` | ✅ **ANSWERED YES** — §2.5a, observed 4G → WiFi unprompted 2026-08-08 |
 | U2 ✅ | Does re-applying identical WiFi credentials work? Timing envelope? | low | `reapply-wifi` | ✅ **ANSWERED YES** — see §7.0a, run 2026-08-09 |
 | U3 | Does `341 opt=1` exist, and is the inferred shape correct? | **high** | `noop 341` | open — no-op probe first; a wrong shape could disable an interface |
-| U4 | Does `317 optType=1` force a transport switch, or is it advisory? | medium | `noop 317` then `set-primary` | open — §2.5a makes "advisory" the leading hypothesis |
+| U4a ✅ | Is the `317 optType=1` payload shape accepted (num, key stripping)? | low | `noop 317` | ✅ **ANSWERED YES** — see §7.0b, run 2026-08-09 |
+| U4b | Does `317 optType=1` force a transport *switch*, or is it advisory? | medium | not implemented | open — needs a **changed** `currentNetType`. §2.3a makes "advisory" the leading hypothesis |
 | U5 | Does an open network (`wifi_Safety 0`) accept an empty password? | medium | — | open — needs a throwaway AP; not yet implemented in the probe |
 
 ### 7.0a U2 ANSWERED — cmdType 337 write verified live (2026-08-09)
@@ -598,7 +599,33 @@ Also confirmed in passing: the `InvalidResponseError` fix earned itself. Three C
 they raised a bare `JSONDecodeError`, which would have aborted the run and reported failure
 on a successful operation.
 
-**Do not run U3/U4 while `available_transports` has only one entry.** The preflight enforces
+### 7.0b U4a ANSWERED — cmdType 317 write shape validated (2026-08-09)
+
+`tools/network_probe.py noop 317` — read the current `commSetPara`, wrote back exactly what
+was read, re-read and diffed. Preflight passed with `survivors=['4g']`, lifeline intact.
+
+```
+request : optType=1  paraType=6  num=20  keys=20   currentNetType=3
+response: result=0   commSetPara.result=0  reason=0  opt=1  currentNetType=3
+re-read : changed={}          # nothing moved
+```
+
+Total 20 s; the write itself took 2.6 s.
+
+- **The payload construction is correct.** 20 keys and `num=20` reproduces the app's own
+  captured write byte-for-byte in structure, confirming both the computed `num` (G1) and the
+  stripping of the response-only `opt`/`result`/`reason` keys.
+- **A no-op really is a no-op.** The post-write diff was empty and connectivity was
+  untouched, which is what makes this safe to run remotely.
+
+**What this does NOT answer.** U4a validates that the firmware *accepts* the shape. It says
+nothing about whether a **changed** `currentNetType` would actually move the gateway — we
+wrote back the value already in force. That is U4b, it needs a write with a different value,
+and it is deliberately unimplemented. §2.3a still makes "advisory hint, overridden by the
+aGate's own selection" the leading hypothesis, and the U1/U2 evidence strengthens it: the
+gateway re-selects transport on its own and did so unprompted during this session.
+
+**Do not run U3/U4b while `available_transports` has only one entry.** The preflight enforces
 this. As of 2026-08-08 the gateway reports `available_transports == ["wifi", "4g"]`
 (`redundant: true`), so U2 and U3/U4 are unblocked — WiFi carries traffic and idle cellular
 is ready to take over.

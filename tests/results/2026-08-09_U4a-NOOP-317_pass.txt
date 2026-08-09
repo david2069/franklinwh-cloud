@@ -1,0 +1,38 @@
+U4a-NOOP-317 — cmdType 317 write shape validation
+Date: 2026-08-09 AEST
+Command: tools/network_probe.py noop 317 --i-understand-writes --yes
+Mode: WRITE (no-op). Wrote back exactly the commSetPara that was read.
+
+RESULT: PASS — shape accepted, state unchanged.
+
+PREFLIGHT
+  active           : WiFi (device-managed)
+  available        : ['wifi', '4g']    survives write: ['4g']
+  4G lifeline      : intact
+  LAN <agate_ip>:502 : reachable
+
+EXCHANGE
+  request : optType=1  paraType=6  num=20  keys=20   currentNetType=3
+  response: result=0   commSetPara.result=0  reason=0  opt=1  currentNetType=3
+  re-read : changed={}   — nothing moved
+  timing  : 20s total, write itself 2.6s
+
+FINDINGS
+  1. Payload construction is correct. 20 keys with num=20 reproduces the
+     app's own captured write in structure, confirming both the computed
+     num (gotcha G1) and the stripping of the response-only opt/result/
+     reason keys.
+
+  2. A no-op really is a no-op. Post-write diff empty, connectivity
+     untouched. This is what makes the shape probe safe to run remotely.
+
+WHAT THIS DOES NOT ANSWER
+  U4a validates that the firmware ACCEPTS the shape. It says nothing about
+  whether a CHANGED currentNetType would move the gateway — we wrote back
+  the value already in force. That is U4b: it needs a write with a
+  different value and is deliberately unimplemented. Section 2.3a still
+  makes 'advisory hint, overridden by the aGate's own selection' the
+  leading hypothesis, and U1/U2 strengthen it — the gateway re-selects
+  transport unprompted.
+
+Raw evidence log is gitignored (contains device fingerprints).
