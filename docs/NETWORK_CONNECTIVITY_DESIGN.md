@@ -553,10 +553,50 @@ These are the device-behaviour unknowns that no amount of HAR analysis can settl
 | #  | Question | Risk | Probe command | Status |
 |----|----------|------|---------------|--------|
 | U1 | Does the aGate fail over between transports on its own? | none | `observe` | ✅ **ANSWERED YES** — §2.5a, observed 4G → WiFi unprompted 2026-08-08 |
-| U2 | Does re-applying identical WiFi credentials work? Timing envelope? | low | `reapply-wifi` | open — safe to run; the app did exactly this at capture [3160] |
+| U2 ✅ | Does re-applying identical WiFi credentials work? Timing envelope? | low | `reapply-wifi` | ✅ **ANSWERED YES** — see §7.0a, run 2026-08-09 |
 | U3 | Does `341 opt=1` exist, and is the inferred shape correct? | **high** | `noop 341` | open — no-op probe first; a wrong shape could disable an interface |
 | U4 | Does `317 optType=1` force a transport switch, or is it advisory? | medium | `noop 317` then `set-primary` | open — §2.5a makes "advisory" the leading hypothesis |
 | U5 | Does an open network (`wifi_Safety 0`) accept an empty password? | medium | — | open — needs a throwaway AP; not yet implemented in the probe |
+
+### 7.0a U2 ANSWERED — cmdType 337 write verified live (2026-08-09)
+
+`tools/network_probe.py reapply-wifi`, writing back the credentials already stored.
+Preflight passed with `survivors=['4g']` and the lifeline intact.
+
+| t+ | Event |
+|---|---|
+| 5 s | `337 opt=1` accepted — `result:0 reason:0`, **1.2 s** round trip |
+| 15 s | still on WiFi with its lease — no disruption yet |
+| 40 s | `wifiStaticIP` = `0.0.0.0` — lease dropped, reassociating |
+| 49 s | lease restored, `192.168.0.110` |
+| 85 s | 3 × CloudFront 504 (unrelated infrastructure blip) |
+| 115 s | confirmed on two consecutive polls |
+
+**The write works.** Ack in ~1.2 s, reassociation complete inside ~45 s.
+
+Four findings that change Phase 2:
+
+1. **`currentNetType` never left 3.** Re-applying credentials for the SSID already in use
+   re-associates *without* changing transport — no 4G fallback occurred. That differs from
+   capture [3160], where the same command moved the gateway 4G → WiFi, because there the
+   target was a network it was not already on.
+2. **The debounce prevented a false positive.** Poll 1 at t+15 s matched — WiFi active with
+   a valid address — *before the reassociation had even begun*. A verifier latching on the
+   first match would have declared success 25 s before the lease actually dropped.
+   Requiring two consecutive matches is not belt-and-braces; it is load-bearing.
+3. **The blackout is a lost DHCP lease, not a lost gateway.** `currentNetType` stayed 3 and
+   the aGate stayed reachable throughout; only `wifiStaticIP` went to `0.0.0.0`. So the
+   verify predicate must test the address, not just the transport — checking
+   `currentNetType == 3` alone would never have noticed anything happened.
+4. **A 5 s poll interval is not achievable via `get_network_state()`.** Each call makes
+   three MQTT reads plus a REST lookup and took 15–25 s in this run, so the effective
+   cadence was ~30 s. Phase 2's verify loop should poll **cmdType 317 alone** (~3–10 s) and
+   only compose the full state once, at the end.
+
+Also confirmed in passing: the `InvalidResponseError` fix earned itself. Three CloudFront
+504s landed mid-verify at t+85 s and were absorbed as one unreachable poll. Before that fix
+they raised a bare `JSONDecodeError`, which would have aborted the run and reported failure
+on a successful operation.
 
 **Do not run U3/U4 while `available_transports` has only one entry.** The preflight enforces
 this. As of 2026-08-08 the gateway reports `available_transports == ["wifi", "4g"]`

@@ -1,0 +1,56 @@
+U2-REAPPLY-WIFI — cmdType 337 write verification
+Date: 2026-08-09 22:1x AEST
+Command: tools/network_probe.py reapply-wifi --i-understand-writes --yes
+Mode: WRITE. Re-applied the SSID/password already stored on the aGate.
+
+RESULT: PASS — write accepted and reassociation confirmed.
+
+PREFLIGHT
+  active           : WiFi (device-managed)
+  carrying traffic : ['wifi']
+  available        : ['wifi', '4g']
+  survives write   : ['4g']
+  4G lifeline      : intact
+  LAN <agate_ip>:502 : reachable
+
+TIMELINE (t+ seconds from probe start; write at t+5)
+    5s  337 opt=1 ACCEPTED  result=0 reason=0   1.2s round trip
+   15s  still on WiFi with lease — no disruption yet
+   40s  wifiStaticIP = 0.0.0.0  — lease dropped, reassociating
+   49s  lease restored 192.168.0.x
+   85s  3x CloudFront 504 (unrelated infrastructure blip)
+  115s  CONFIRMED on two consecutive polls
+  verify: 6 polls, 1 unreachable, 110s
+
+FINDINGS
+  1. currentNetType never left 3. Re-applying credentials for the SSID
+     already in use re-associates WITHOUT changing transport — no 4G
+     fallback occurred. Differs from HAR capture [3160], where the same
+     command moved 4G -> WiFi, because there the target was a network the
+     gateway was not already on.
+
+  2. The debounce prevented a false positive. Poll 1 at t+15s matched
+     (WiFi active, valid address) BEFORE the reassociation began. A
+     verifier latching on the first match would have declared success 25s
+     before the lease actually dropped. Two consecutive matches is
+     load-bearing, not belt-and-braces.
+
+  3. The blackout is a lost DHCP lease, not a lost gateway. currentNetType
+     stayed 3 and the aGate stayed reachable; only wifiStaticIP went to
+     0.0.0.0. The verify predicate must test the ADDRESS, not just the
+     transport — checking currentNetType alone would have seen nothing.
+
+  4. A 5s poll interval is not achievable via get_network_state(): three
+     MQTT reads plus a REST lookup took 15-25s per call, so the effective
+     cadence was ~30s. Phase 2 should poll cmdType 317 alone (~3-10s) and
+     compose full state only once, at the end.
+
+  5. The InvalidResponseError fix earned itself. Three CloudFront 504s
+     landed mid-verify and were absorbed as one unreachable poll. Before
+     that fix they raised a bare JSONDecodeError, which would have aborted
+     the run and reported failure on a successful operation.
+
+SAFETY: no fallback was needed at any point. 4G stayed available and idle
+throughout; the gateway never left WiFi.
+
+Raw evidence log is gitignored (contains device fingerprints).
