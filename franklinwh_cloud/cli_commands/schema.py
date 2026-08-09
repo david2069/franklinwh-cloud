@@ -30,6 +30,64 @@ from franklinwh_cloud.models import Current, Totals, GridConnectionState
 #           "311" = cmdType 311 (smart circuits), "derived" = computed by library
 #   group:  display section label
 
+# ── Network inventory ──────────────────────────────────────────────────────────
+# Capabilities and settings exposed by get_network_state(), which composes
+# cmdType 317 (interface config), 339 (reachability) and 341 (enable switches)
+# plus a REST lookup for SIM state.
+#
+# Deliberately separate from CURRENT_SCHEMA: these are not Current dataclass
+# fields, and the per-interface records are a repeating shape rather than flat
+# attributes.
+
+NETWORK_SCHEMA = {
+    # Active transport — what the aGate has selected for ITSELF (see below)
+    "active.id":              ("currentNetType",          "317/commSetPara", "int",  "Network Active"),
+    "active.label":           ("NETWORK_TYPES[id]",       "derived",         "str",  "Network Active"),
+    "active.ip":              ("<iface>StaticIP",         "317/commSetPara", "ipv4", "Network Active"),
+    "active.gateway":         ("<iface>GateWay",          "317/commSetPara", "ipv4", "Network Active"),
+    "active.dns":             ("<iface>DNS",              "317/commSetPara", "ipv4", "Network Active"),
+    "active.selection":       ("always 'device-managed'", "derived",         "str",  "Network Active"),
+
+    # Per-interface record — repeated for eth0, eth1, wifi, 4g
+    "interfaces[].enabled":   ("<x>NetSwitch",            "341",             "bool", "Network Interfaces"),
+    "interfaces[].link":      ("<x>ConnectRouterStatus",  "339 (extended)",  "bool", "Network Interfaces"),
+    "interfaces[].ip":        ("<x>StaticIP",             "317/commSetPara", "ipv4", "Network Interfaces"),
+    "interfaces[].dhcp":      ("<x>DHCP",                 "317/commSetPara", "bool", "Network Interfaces"),
+    "interfaces[].mac":       ("<x>MAC",                  "317/commSetPara", "str",  "Network Interfaces"),
+    "interfaces[].is_active": ("id == currentNetType",    "derived",         "bool", "Network Interfaces"),
+    "interfaces[].available": ("see availability rule",   "derived",         "bool", "Network Interfaces"),
+
+    # Signal — note the two scales are NOT the same unit
+    "interfaces[wifi].signal_pct":     ("WifiSignalStrength", "339 (extended)",  "%",   "Network Signal"),
+    "interfaces[4g].signal_raw":       ("operatorRSSI",       "317/commSetPara", "0-52", "Network Signal"),
+    "interfaces[4g].sim_status":       ("simCardStatus",      "getHomeGatewayList", "int", "Network Signal"),
+    "interfaces[4g].sim_status_name":  ("SIM_STATUS[status]", "derived",         "str",  "Network Signal"),
+
+    # Cloud reachability
+    "cloud.aws_connected":    ("awsStatus == 1",          "339",             "bool", "Network Cloud"),
+    "cloud.internet":         ("netStatus == 1",          "339",             "bool", "Network Cloud"),
+    "cloud.router_status_raw":("routerStatus",            "339",             "code", "Network Cloud"),
+
+    # Derived roll-ups used for write safety
+    "linked_transports":      ("derived",                 "derived",         "list", "Network Summary"),
+    "available_transports":   ("derived",                 "derived",         "list", "Network Summary"),
+    "redundant":              ("len(available) > 1",      "derived",         "bool", "Network Summary"),
+    "source.extended_339":    ("derived",                 "derived",         "bool", "Network Summary"),
+}
+
+# Availability rule, printed alongside the inventory so the semantics travel
+# with the data. See docs/NETWORK_CONNECTIVITY_DESIGN.md section 3.
+NETWORK_NOTES = [
+    "active is the transport the aGate selected for ITSELF, not a configured",
+    "  primary — it re-selects autonomously and returns to the preferred link.",
+    "available = would this carry traffic if the one in use stopped?",
+    "  4G       : enabled + SIM Active + reception (holds no IP while idle)",
+    "  WiFi/Eth : enabled + linked + holding an address (static or DHCP)",
+    "signal_pct (WiFi) is 0-100%; signal_raw (4G) is a 0-52 vendor scale.",
+    "routerStatus is NOT a boolean — 0, 1 and 4 all observed. Shown raw.",
+]
+
+
 CURRENT_SCHEMA = {
     # Power flow
     "solar_production":         ("p_sun",              "203/runtimeData",  "kW",    "Power Flow"),
@@ -214,6 +272,77 @@ def _fmt_value(val) -> str:
     return str(val)
 
 
+def network_health(state):
+    """Derive connectivity findings from a get_network_state() snapshot.
+
+    The API exposes no connection-attempt history — selectDeviceRunLogList is a
+    static alarm-code dictionary, not an event log — so health has to be derived
+    from current state. Continuous history requires client-side polling; see
+    ``tools/network_probe.py observe``.
+
+    Returns a list of ``{level, code, detail}`` dicts, most severe first.
+    """
+    findings = []
+    ifaces = {i["key"]: i for i in state.get("interfaces", [])}
+    available = state.get("available_transports", [])
+
+    wifi = ifaces.get("wifi", {})
+    if wifi.get("enabled") and wifi.get("signal_pct") and not wifi.get("ip"):
+        findings.append({
+            "level": "WARN", "code": "wifi_no_lease",
+            "detail": f"WiFi associated at {wifi['signal_pct']}% but holding no address "
+                      f"— no DHCP lease. This is the 2026-03-21 failure mode.",
+        })
+
+    cell = ifaces.get("4g", {})
+    if cell.get("enabled") and cell.get("sim_status") not in (None, 2):
+        findings.append({
+            "level": "WARN", "code": "sim_not_active",
+            "detail": f"SIM reports {cell.get('sim_status_name')!r} — cellular is not a "
+                      f"usable fallback even with reception.",
+        })
+    if cell.get("enabled") and not cell.get("signal_raw"):
+        findings.append({
+            "level": "WARN", "code": "no_cellular_reception",
+            "detail": "4G enabled but reception is 0 — the out-of-the-box fallback is unavailable.",
+        })
+    if not cell.get("enabled"):
+        findings.append({
+            "level": "WARN", "code": "cellular_disabled",
+            "detail": "4GNetSwitch is off. The aGate cannot fall back to cellular, so a "
+                      "failed network change would need on-site recovery.",
+        })
+
+    if not state.get("redundant"):
+        findings.append({
+            "level": "WARN", "code": "no_redundancy",
+            "detail": f"Only {available or 'nothing'} can carry traffic. Any network write "
+                      f"targeting it risks stranding the gateway.",
+        })
+
+    for key in ("eth0", "eth1"):
+        e = ifaces.get(key, {})
+        if e.get("enabled") and not e.get("link") and not e.get("ip"):
+            findings.append({
+                "level": "INFO", "code": f"{key}_no_link",
+                "detail": f"{key} is enabled but has no link and no address — cable "
+                          f"likely unplugged. Not counted as a fallback.",
+            })
+
+    cloud = state.get("cloud", {})
+    if not cloud.get("aws_connected"):
+        findings.append({
+            "level": "INFO", "code": "cloud_flags_unreliable",
+            "detail": "cmdType 339 reports awsStatus=0, yet this data arrived through the "
+                      "cloud. These flags have been observed contradicting reality — do "
+                      "not gate anything on them.",
+        })
+
+    order = {"WARN": 0, "INFO": 1}
+    findings.sort(key=lambda f: order.get(f["level"], 9))
+    return findings
+
+
 async def run(client, json_output: bool = False, show_live: bool = False,
               filter_group: str | None = None):
     """Display the Current/Totals field schema, optionally with live values."""
@@ -264,14 +393,27 @@ async def run(client, json_output: bool = False, show_live: bool = False,
             if not json_output:
                 print(f"⚠ Could not fetch grid limits: {e}")
 
+    # Network inventory — composed from cmdType 317/339/341 plus a REST SIM lookup,
+    # so it is fetched separately from the 203-based Current snapshot.
+    live_network = None
+    if show_live:
+        try:
+            live_network = await client.get_network_state()
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ Could not fetch network state: {e}")
+
     if json_output:
-        _json_output(live_current, live_totals, live_grid_limits, filter_group)
+        _json_output(live_current, live_totals, live_grid_limits, filter_group,
+                     live_network)
         return
 
-    _terminal_output(live_current, live_totals, live_grid_limits, filter_group)
+    _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
+                     live_network)
 
 
-def _json_output(live_current, live_totals, live_grid_limits, filter_group):
+def _json_output(live_current, live_totals, live_grid_limits, filter_group,
+                 live_network=None):
     """Emit JSON schema output."""
     result = {"current": {}, "totals": {}, "grid_limits": {}}
 
@@ -321,10 +463,25 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group):
         entry = {"api_key": api_key, "source": source, "units": units, "group": group}
         result["mode"][field] = entry
 
+    result["network"] = {}
+    for field, (api_key, source, units, group) in NETWORK_SCHEMA.items():
+        if filter_group and filter_group.lower() not in group.lower() \
+                and filter_group.lower() != "network":
+            continue
+        result["network"][field] = {
+            "api_key": api_key, "source": source, "units": units, "group": group,
+        }
+    if result["network"]:
+        result["network_notes"] = NETWORK_NOTES
+    if live_network is not None:
+        result["network_state"] = live_network
+        result["network_health"] = network_health(live_network)
+
     print_json_output(result)
 
 
-def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
+def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
+                     live_network=None):
     """Emit human-readable schema table."""
     print_header("API Field Schema — Current & Totals")
 
@@ -509,6 +666,68 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
                 else:
                     row += f"  {_fmt_value(raw)}"
             print(row)
+
+    # ── Network inventory ──────────────────────────────────────────────────
+    show_network = (not filter_group) or filter_group.lower() == "network" \
+        or any(filter_group.lower() in g.lower() for _, _, _, g in NETWORK_SCHEMA.values())
+
+    if show_network:
+        print_section("🌐", "Network Capabilities & Settings")
+        net_group = None
+        for field, (api_key, source, units, group) in NETWORK_SCHEMA.items():
+            if filter_group and filter_group.lower() not in group.lower() \
+                    and filter_group.lower() != "network":
+                continue
+            if group != net_group:
+                print(f"\n  ── {group}")
+                net_group = group
+            print(f"  {field:<32}  {api_key:<26}  {source:<20}  {units}")
+
+        print("\n  Semantics:")
+        for line in NETWORK_NOTES:
+            print(f"    {line}")
+
+        if live_network is not None:
+            print_section("📶", "Network — Current State")
+            act = live_network.get("active", {})
+            print(f"  ACTIVE   {act.get('label')}   {act.get('ip') or '—'}"
+                  f"   gw {act.get('gateway') or '—'}   ({act.get('selection')})")
+            print()
+            print(f"  {'iface':<6} {'enabled':<8} {'link':<6} {'active':<7} "
+                  f"{'available':<10} {'address':<16} {'signal':<10} note")
+            for i in live_network.get("interfaces", []):
+                sig = ""
+                note = ""
+                if i["key"] == "wifi" and i.get("signal_pct") is not None:
+                    sig = f"{i['signal_pct']}%"
+                elif i["key"] == "4g":
+                    sig = f"{i.get('signal_raw')}/52" if i.get("signal_raw") else "—"
+                    note = f"SIM {i.get('sim_status_name') or 'unknown'}"
+                print(f"  {i['key']:<6} {str(i['enabled']):<8} {str(i['link']):<6} "
+                      f"{str(i['is_active']):<7} {str(i['available']):<10} "
+                      f"{str(i.get('ip') or '—'):<16} {sig:<10} {note}")
+
+            cloud = live_network.get("cloud", {})
+            print(f"\n  carrying traffic : {live_network.get('linked_transports')}")
+            print(f"  available        : {live_network.get('available_transports')}"
+                  f"   redundant={live_network.get('redundant')}")
+            print(f"  cloud            : aws={cloud.get('aws_connected')} "
+                  f"internet={cloud.get('internet')} "
+                  f"routerStatus={cloud.get('router_status_raw')} (raw code)")
+            print(f"  extended 339     : {live_network.get('source', {}).get('extended_339')}")
+
+            findings = network_health(live_network)
+            print_section("🩺", "Network — Health Check")
+            if not findings:
+                print("  ✓ no findings")
+            for f in findings:
+                mark = "⚠" if f["level"] == "WARN" else "·"
+                print(f"  {mark} [{f['level']}] {f['code']}")
+                print(f"      {f['detail']}")
+            print("\n  Note: the API exposes no connection-attempt history — "
+                  "selectDeviceRunLogList\n        is a static alarm-code dictionary, not an "
+                  "event log. For continuous\n        history, poll with "
+                  "`tools/network_probe.py observe`.")
 
     if live_current is None:
         print("\n  Tip: run with --live to show current values alongside the schema")
