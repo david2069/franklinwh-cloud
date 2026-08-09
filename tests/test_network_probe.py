@@ -192,3 +192,49 @@ class TestWriteGating:
     @pytest.mark.parametrize("cmd", ["status", "scan", "observe", "recover"])
     def test_read_only_commands_are_not_gated(self, cmd):
         assert cmd not in {"noop", "reapply-wifi"}
+
+    def test_noop_341_is_gated_behind_onsite(self):
+        """cmdType 341 is the only command that can clear 4GNetSwitch, and its
+        shape has never been captured. The interlock must be in code, not prose."""
+        src = open(_PROBE_PATH).read()
+        assert 'args.command == "noop" and args.cmd == 341 and not args.onsite' in src
+        assert 'REFUSED: `noop 341` requires --onsite.' in src
+
+    def test_noop_317_is_not_gated_behind_onsite(self):
+        """317 is observed from the official app over 4G — no extra ceremony."""
+        src = open(_PROBE_PATH).read()
+        assert "args.cmd == 317 and not args.onsite" not in src
+
+
+class TestPreflightLifeline:
+    """The 4G lifeline gate, separate from the survivor gate."""
+
+    @staticmethod
+    def _decide(available, target, onsite=False, allow_no_fallback=False):
+        """Mirror of the two preflight gates, kept in step with Probe.preflight."""
+        survivors = sorted(set(available) - {target})
+        lifeline = ("4g" in available) and target != "4g"
+        return (bool(survivors) or allow_no_fallback) and \
+               (lifeline or onsite or allow_no_fallback)
+
+    def test_wifi_write_passes_with_cellular_available(self):
+        assert self._decide(["wifi", "4g"], "wifi") is True
+
+    def test_4g_write_is_refused_remotely(self):
+        """Targeting the lifeline itself is exactly what must not happen remotely."""
+        assert self._decide(["wifi", "4g"], "4g") is False
+
+    def test_4g_write_allowed_when_onsite(self):
+        assert self._decide(["wifi", "4g"], "4g", onsite=True) is True
+
+    def test_ethernet_alone_is_not_a_substitute_for_the_lifeline(self):
+        """Ethernet survives the survivor gate but is not the remote-recovery
+        guarantee — cellular is what comes back after a reboot or crash."""
+        assert self._decide(["wifi", "eth0"], "wifi") is False
+        assert self._decide(["wifi", "eth0"], "wifi", onsite=True) is True
+
+    def test_nothing_survives_is_refused_even_with_lifeline_logic(self):
+        assert self._decide(["wifi"], "wifi") is False
+
+    def test_allow_no_fallback_overrides_both_gates(self):
+        assert self._decide(["wifi"], "wifi", allow_no_fallback=True) is True
