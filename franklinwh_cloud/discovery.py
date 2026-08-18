@@ -6,6 +6,11 @@ The CLI discover command renders this; FEM and user scripts can also consume it.
 Feature: FEAT-CLI-DISCOVER-VERBOSE
 """
 
+# Lazy annotations (PEP 563): `get_resolved_capabilities` is annotated `-> ResolvedCapabilities`
+# but imports that name inside its body — on Python < 3.14 (e.g. the bridge's 3.12 container)
+# eager annotation evaluation raised NameError at import. Strings-only annotations fix it.
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
