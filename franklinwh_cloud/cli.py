@@ -229,6 +229,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub_sc.add_argument("--amps", type=int, metavar="A",
                         help="The maximum amperage limit for --load-limit (0 to reset)")
 
+    # network
+    from franklinwh_cloud.cli_commands import network as _network_cmd
+    _network_cmd.register(subs)
+
     # diag
     subs.add_parser("diag", aliases=["diagnostic"],
                     help="Diagnostic report — system, auth, device, power, API health")
@@ -508,6 +512,12 @@ async def async_main():
                              soc=getattr(args, 'soc', None),
                              load_limit=getattr(args, 'load_limit', None),
                              amps=getattr(args, 'amps', None))
+
+            case "network" | "net":
+                from franklinwh_cloud.cli_commands import network
+                code = await network.run(client, args)
+                if code:
+                    sys.exit(code)
 
             case "diag" | "diagnostic":
                 from franklinwh_cloud.cli_commands import diag
