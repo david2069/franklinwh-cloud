@@ -17,7 +17,13 @@ from that currently requires the vendor mobile app's WiFi wizard
 SDK equivalent of that wizard.
 """
 
+import asyncio
+import json
 import logging
+import time
+
+from franklinwh_cloud.exceptions import FranklinWHError
+from franklinwh_cloud.models import MqttCmd
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -32,38 +38,6 @@ NETWORK_CACHED_READERS = (
     "get_wifi_config",           # cmdType 337 — SSID correlation in the verify loop
     "get_connectivity_overview", # derived from network_info; never used as a verifier
 )
-
-
-class NetworkMixin:
-    """Network configuration write methods (cmdType 337)."""
-
-    def _invalidate_network_cache(self) -> None:
-        """Drop cached network reads so the next one hits the gateway.
-
-        Called both *after* a write (the cached config is now stale) and
-        *before* every verify poll (a poll that reads a cached answer is not a
-        verification at all).
-
-        Note
-        ----
-        A ``use_cache=False`` keyword on the readers would not work as a bypass:
-        ``Client._apply_method_cache`` hashes kwargs into the cache key, so the
-        flag would simply populate a second cache slot rather than skip the
-        cache. Invalidate-then-read is the minimal correct approach against the
-        existing caching design.
-
-        Safe to call on a client built with caching disabled — ``invalidate_cache``
-        is a no-op when ``method_cache`` is unset.
-        """
-        invalidate = getattr(self, "invalidate_cache", None)
-        if invalidate is None:
-            # Not a full Client (e.g. the mixin under unit test in isolation).
-            logger.debug("_invalidate_network_cache: no cache on this client")
-            return
-        for method_name in NETWORK_CACHED_READERS:
-            invalidate(method_name)
-
-
 # ── P2-2 preflight ───────────────────────────────────────────────────
 
 #: Minimum target signal percentage accepted by default. Working links are
@@ -197,3 +171,130 @@ def _redact(ssid):
     if not ssid:
         return "<empty>"
     return f"{ssid[:2]}***" if len(ssid) > 2 else "***"
+
+
+# ── P2-3 the write path ──────────────────────────────────────────────
+
+class NetworkMixin:
+    """Network configuration write methods (cmdType 337)."""
+
+    def _invalidate_network_cache(self) -> None:
+        """Drop cached network reads so the next one hits the gateway.
+
+        Called both *after* a write (the cached config is now stale) and
+        *before* every verify poll (a poll that reads a cached answer is not a
+        verification at all).
+
+        Note
+        ----
+        A ``use_cache=False`` keyword on the readers would not work as a bypass:
+        ``Client._apply_method_cache`` hashes kwargs into the cache key, so the
+        flag would simply populate a second cache slot rather than skip the
+        cache. Invalidate-then-read is the minimal correct approach against the
+        existing caching design.
+
+        Safe to call on a client built with caching disabled — ``invalidate_cache``
+        is a no-op when ``method_cache`` is unset.
+        """
+        invalidate = getattr(self, "invalidate_cache", None)
+        if invalidate is None:
+            # Not a full Client (e.g. the mixin under unit test in isolation).
+            logger.debug("_invalidate_network_cache: no cache on this client")
+            return
+        for method_name in NETWORK_CACHED_READERS:
+            invalidate(method_name)
+
+    async def set_wifi_credentials(self, ssid, password, *, confirm=False):
+        """Write WiFi credentials to the aGate (cmdType 337 ``opt:1``).
+
+        Read-modify-write: reads ``337 opt:0`` for the aGate's own access-point
+        identity, then writes ``opt:1`` with that identity echoed back unchanged
+        alongside the new SSID and password.
+
+        This is the *entire* switch mechanism. In the captured app session a
+        single 337 write flipped ``currentNetType`` 4 (4G) to 3 (WiFi) about
+        13 s later, with ``wifiStaticIP`` going 0.0.0.0 to a real lease. There
+        is no separate "make this primary" command — see
+        :func:`network_write_preflight` and design section 2.3a.
+
+        Parameters
+        ----------
+        ssid : str
+            SSID to join.
+        password : str
+            Passphrase. Never logged, never echoed back in the return value.
+        confirm : bool
+            Must be True. This is an API-affecting write against physical
+            hardware (CLAUDE.md rule 6).
+
+        Returns
+        -------
+        dict
+            ``{"cmd": 338, "result": int, "reason": int, "accepted": bool}``.
+
+        Warning
+        -------
+        A ``result`` of 0 means **the aGate accepted the configuration**, not
+        that it associated with the access point. A wrong password returns 0
+        too (gotcha G7). Only :meth:`switch_to_wifi`'s verify loop can
+        establish that the link actually came up.
+
+        Raises
+        ------
+        ValueError
+            If ``confirm`` is not True, or ``ssid`` is empty.
+        FranklinWHError
+            If the aGate has no stored access-point identity to echo.
+        """
+        if not confirm:
+            raise ValueError(
+                "set_wifi_credentials() changes the network configuration of "
+                "physical hardware and can strand the gateway. Pass confirm=True."
+            )
+        if not ssid:
+            raise ValueError("ssid must be a non-empty string")
+
+        # Read fresh: ap_SSID/ap_Pw are required in the write and a 300 s-stale
+        # copy is not something to echo back into a config write.
+        self._invalidate_network_cache()
+        cfg = await self.get_wifi_config()
+
+        ap_ssid = cfg.get("ap_ssid")
+        ap_pw = cfg.get("ap_password")
+        if not ap_ssid:
+            raise FranklinWHError(
+                "aGate returned no ap_SSID; refusing to write a 337 payload "
+                "without echoing back its own access-point identity"
+            )
+
+        # Shape validated on live hardware 2026-08-09 (U2,
+        # tests/results/2026-08-09_U2-REAPPLY-WIFI_pass.txt) and matching the
+        # mobile app verbatim. ap_SSID/ap_Pw are the aGate's OWN access point,
+        # not the target network — they must be echoed back unchanged
+        # (design section 2.3b-1).
+        dataArea = {
+            "opt": 1,
+            "wifi_SSID": ssid,
+            "wifi_Pw": password or "",
+            "ap_SSID": ap_ssid,
+            "ap_Pw": ap_pw,
+        }
+        logger.info(
+            "set_wifi_credentials: writing 337 opt=1 for SSID %s (password withheld)",
+            _redact(ssid),
+        )
+        wire_payload = self._build_payload(MqttCmd.WIFI_CONFIG, dataArea)  # cmdType 337
+        raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+        ack = json.loads(raw) if isinstance(raw, str) else (raw or {})
+
+        # The config we just changed is now stale in cache, and the verify loop
+        # is about to read it (gotcha G6).
+        self._invalidate_network_cache()
+
+        return {
+            "cmd": 338,
+            "result": ack.get("result"),
+            "reason": ack.get("reason"),
+            # "accepted", deliberately not "connected" — see the warning above.
+            "accepted": ack.get("result") == 0,
+        }

@@ -254,3 +254,137 @@ def test_preflight_is_pure():
     before = dict(state)
     network_write_preflight(state, "wifi")
     assert state == before
+
+
+# ── P2-3 set_wifi_credentials (cmdType 337 opt:1) ────────────────────
+
+import json
+from unittest.mock import AsyncMock, MagicMock
+
+from franklinwh_cloud.exceptions import FranklinWHError
+
+# Shape validated on live hardware 2026-08-09 — see
+# tests/results/2026-08-09_U2-REAPPLY-WIFI_pass.txt
+STORED_CFG = {
+    "wifi_ssid": "home-net",
+    "wifi_password": "stored-secret",
+    "ap_ssid": "AP_1234",
+    "ap_password": "ap-secret",
+    "wifi_safety": 1,
+}
+ACK_338_OK = json.dumps({"opt": 1, "result": 0, "reason": 0})
+
+
+class _WriteClient(NetworkMixin):
+    """Client stand-in capturing the 337 payload without any I/O."""
+
+    def __init__(self, cfg=STORED_CFG, ack=ACK_338_OK):
+        self.sent = []
+        self.invalidations = []
+        self.get_wifi_config = AsyncMock(return_value=dict(cfg))
+        self._mqtt_send = AsyncMock(return_value={"result": {"dataArea": ack}})
+
+    def _build_payload(self, cmd, dataArea):
+        self.sent.append((int(cmd), dataArea))
+        return {"cmdType": int(cmd), "dataArea": dataArea}
+
+    def invalidate_cache(self, method=None):
+        self.invalidations.append(method)
+
+
+async def test_set_wifi_credentials_refuses_without_confirm():
+    """API-affecting write against physical hardware — CLAUDE.md rule 6."""
+    c = _WriteClient()
+    with pytest.raises(ValueError, match="confirm=True"):
+        await c.set_wifi_credentials("home-net", "pw")
+    assert c.sent == [], "nothing may reach the wire"
+
+
+async def test_set_wifi_credentials_rejects_an_empty_ssid():
+    c = _WriteClient()
+    with pytest.raises(ValueError, match="non-empty"):
+        await c.set_wifi_credentials("", "pw", confirm=True)
+    assert c.sent == []
+
+
+async def test_set_wifi_credentials_echoes_the_ap_identity_unchanged():
+    """Design 2.3b-1 — ap_SSID/ap_Pw are the aGate's OWN AP and are required."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("new-net", "new-pw", confirm=True)
+
+    cmd, area = c.sent[0]
+    assert cmd == 337
+    assert area["opt"] == 1
+    assert area["ap_SSID"] == "AP_1234"
+    assert area["ap_Pw"] == "ap-secret"
+
+
+async def test_set_wifi_credentials_sends_the_validated_payload_shape():
+    """Exactly the five keys proven by U2; no more, no fewer."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("new-net", "new-pw", confirm=True)
+
+    _, area = c.sent[0]
+    assert set(area) == {"opt", "wifi_SSID", "wifi_Pw", "ap_SSID", "ap_Pw"}
+    assert area["wifi_SSID"] == "new-net"
+    assert area["wifi_Pw"] == "new-pw"
+
+
+async def test_set_wifi_credentials_sends_empty_string_for_a_null_password():
+    """Open networks are untested, but the key must still be present."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("open-net", None, confirm=True)
+    assert c.sent[0][1]["wifi_Pw"] == ""
+
+
+async def test_set_wifi_credentials_reports_accepted_not_connected():
+    """Gotcha G7 — a wrong password also returns result:0."""
+    c = _WriteClient()
+    r = await c.set_wifi_credentials("n", "p", confirm=True)
+
+    assert r == {"cmd": 338, "result": 0, "reason": 0, "accepted": True}
+    assert "connected" not in r, "the ack must never claim association"
+
+
+async def test_set_wifi_credentials_marks_a_rejected_write_not_accepted():
+    c = _WriteClient(ack=json.dumps({"opt": 1, "result": 1, "reason": 3}))
+    r = await c.set_wifi_credentials("n", "p", confirm=True)
+    assert r["accepted"] is False
+    assert r["reason"] == 3
+
+
+async def test_set_wifi_credentials_never_returns_the_password():
+    """pii_policy — the return value is logged and lands in tests/results/."""
+    c = _WriteClient()
+    r = await c.set_wifi_credentials("n", "hunter2", confirm=True)
+    assert "hunter2" not in json.dumps(r)
+
+
+async def test_set_wifi_credentials_invalidates_cache_before_and_after():
+    """G6 — a stale ap_SSID must not be echoed, and the verifier reads next."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("n", "p", confirm=True)
+
+    assert "get_wifi_config" in c.invalidations
+    assert "get_network_info" in c.invalidations
+    assert c.invalidations.count("get_network_info") >= 2, "before read and after write"
+
+
+async def test_set_wifi_credentials_refuses_when_the_agate_has_no_ap_identity():
+    """Without ap_SSID the payload is incomplete; do not guess one."""
+    c = _WriteClient(cfg={**STORED_CFG, "ap_ssid": None})
+    with pytest.raises(FranklinWHError, match="ap_SSID"):
+        await c.set_wifi_credentials("n", "p", confirm=True)
+    assert c.sent == []
+
+
+async def test_set_wifi_credentials_does_not_log_the_password(caplog):
+    import logging
+
+    c = _WriteClient()
+    with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
+        await c.set_wifi_credentials("MyHomeNetwork", "hunter2", confirm=True)
+
+    assert "hunter2" not in caplog.text
+    assert "MyHomeNetwork" not in caplog.text
+    assert "My***" in caplog.text
