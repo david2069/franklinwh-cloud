@@ -594,3 +594,201 @@ async def test_verify_carries_the_before_snapshot_through(nosleep):
         "home-net", timeout_s=30, poll_interval_s=5, before=before
     )
     assert r["before"] == before
+
+
+# ── P2-5 switch_to_wifi orchestrator (design section 5.3) ────────────
+
+class _SwitchClient(NetworkMixin):
+    """Full orchestrator stand-in: state, scan, write and verify all mocked."""
+
+    def __init__(
+        self,
+        available=("wifi", "4g"),
+        active=("4g", 4, None),
+        stored_ssid="home-net",
+        scan_networks=(("home-net", 90),),
+        net_sequence=None,
+        scan_error=None,
+    ):
+        key, tid, ip = active
+        self._state = {
+            "available_transports": list(available),
+            "linked_transports": [key],
+            "active": {"id": tid, "key": key, "ip": ip},
+        }
+        self._stored_ssid = stored_ssid
+        self._scan_networks = scan_networks
+        self._scan_error = scan_error
+        self._net_seq = list(net_sequence) if net_sequence else [ON_WIFI, ON_WIFI]
+        self.writes = []
+        self.invalidations = []
+
+    def invalidate_cache(self, method=None):
+        self.invalidations.append(method)
+
+    async def get_network_state(self):
+        return self._state
+
+    async def get_wifi_config(self):
+        return {"wifi_ssid": self._stored_ssid, "wifi_password": "stored-secret"}
+
+    async def scan_wifi_networks_ranked(self, **kw):
+        if self._scan_error:
+            raise self._scan_error
+        return {"networks": [{"ssid": s, "signal_pct": p}
+                             for s, p in self._scan_networks]}
+
+    async def get_network_info(self):
+        return self._net_seq.pop(0) if self._net_seq else ON_WIFI
+
+    async def get_connection_status(self):
+        return {"awsStatus": 1, "netStatus": 1}
+
+    async def set_wifi_credentials(self, ssid, password, *, confirm=False):
+        self.writes.append({"ssid": ssid, "password": password, "confirm": confirm})
+        return {"cmd": 338, "result": 0, "reason": 0, "accepted": True}
+
+
+async def test_switch_refuses_without_confirm():
+    c = _SwitchClient()
+    with pytest.raises(ValueError, match="confirm=True"):
+        await c.switch_to_wifi("home-net", "pw")
+    assert c.writes == []
+
+
+async def test_switch_happy_path_returns_the_5_3_contract(nosleep):
+    c = _SwitchClient()
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert set(r) == {"requested", "preflight", "write_ack", "verification"}
+    assert r["requested"] == {"ssid": "home-net", "password_source": "user"}
+    assert r["preflight"]["passed"] is True
+    assert r["preflight"]["fallback"] == "4g"
+    assert r["write_ack"]["accepted"] is True
+    assert r["verification"]["state"] == "connected"
+
+
+async def test_switch_reuses_the_stored_password_for_the_stored_ssid(nosleep):
+    """The primary use case: stranded on 4G, no password to hand."""
+    c = _SwitchClient()
+    r = await c.switch_to_wifi("home-net", None, confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["requested"]["password_source"] == "stored"
+    assert c.writes[0]["password"] == "stored-secret"
+
+
+async def test_switch_refuses_a_null_password_for_an_unknown_ssid():
+    """337 returns a password for the stored network only — nothing to reuse."""
+    c = _SwitchClient(stored_ssid="home-net")
+    with pytest.raises(ValueError, match="not the network currently stored"):
+        await c.switch_to_wifi("cafe-wifi", None, confirm=True)
+    assert c.writes == []
+
+
+async def test_switch_does_not_leak_the_ssid_in_that_error():
+    c = _SwitchClient(stored_ssid="home-net")
+    with pytest.raises(ValueError) as e:
+        await c.switch_to_wifi("SecretNetwork", None, confirm=True)
+    assert "SecretNetwork" not in str(e.value)
+
+
+async def test_switch_refused_preflight_sends_no_write(nosleep):
+    """WiFi is the only available transport — rewriting it strands the gateway."""
+    c = _SwitchClient(available=("wifi",), active=("wifi", 3, "192.168.0.110"))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True)
+
+    assert r["preflight"]["passed"] is False
+    assert r["write_ack"] is None
+    assert r["verification"]["state"] == "skipped"
+    assert c.writes == [], "no write may reach the gateway on a refusal"
+
+
+async def test_switch_refused_preflight_is_returned_not_raised(nosleep):
+    """The caller needs `reasons` to decide whether an override is right."""
+    c = _SwitchClient(available=("wifi",))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True)
+    assert r["preflight"]["reasons"], "refusal must explain itself"
+
+
+async def test_switch_refuses_a_weak_target(nosleep):
+    c = _SwitchClient(scan_networks=(("home-net", 12),))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True)
+
+    assert r["preflight"]["passed"] is False
+    assert r["preflight"]["target_signal_pct"] == 12
+    assert c.writes == []
+
+
+async def test_switch_allow_weak_signal_proceeds(nosleep):
+    c = _SwitchClient(scan_networks=(("home-net", 12),))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               allow_weak_signal=True,
+                               timeout_s=30, poll_interval_s=5)
+    assert r["preflight"]["passed"] is True
+    assert len(c.writes) == 1
+
+
+async def test_switch_scan_failure_skips_the_signal_gate_not_the_write(nosleep):
+    """Unknown signal is not bad signal; the fallback gate still protects."""
+    c = _SwitchClient(scan_error=GatewayOfflineException("136"))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["preflight"]["passed"] is True
+    assert r["preflight"]["target_signal_pct"] is None
+    assert len(c.writes) == 1
+
+
+async def test_switch_scan_disabled_skips_the_signal_gate(nosleep):
+    c = _SwitchClient(scan_networks=(("home-net", 5),))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True, scan=False,
+                               timeout_s=30, poll_interval_s=5)
+    assert r["preflight"]["passed"] is True
+
+
+async def test_switch_no_verify_says_skipped_not_connected(nosleep):
+    """G7 — skipped verification must never read as success."""
+    c = _SwitchClient()
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True, verify=False)
+
+    assert r["write_ack"]["accepted"] is True
+    assert r["verification"]["state"] == "skipped"
+    assert r["verification"]["reason"] == "verify=False"
+
+
+async def test_switch_verify_timeout_is_reported_not_raised(nosleep):
+    c = _SwitchClient(net_sequence=[ON_4G] * 12)
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=20, poll_interval_s=5)
+
+    assert r["write_ack"]["accepted"] is True
+    assert r["verification"]["state"] == "timeout"
+    assert "recovery_hint" in r["verification"]
+
+
+async def test_switch_carries_the_before_snapshot_into_verification(nosleep):
+    c = _SwitchClient(active=("4g", 4, None))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["verification"]["before"] == {"type_id": 4, "type": "4g", "ip": None}
+    assert r["verification"]["after"]["type"] == "wifi"
+
+
+async def test_switch_passes_confirm_through_to_the_write(nosleep):
+    c = _SwitchClient()
+    await c.switch_to_wifi("home-net", "pw", confirm=True,
+                           timeout_s=30, poll_interval_s=5)
+    assert c.writes[0]["confirm"] is True
+
+
+async def test_switch_preflight_target_is_wifi_not_the_active_transport(nosleep):
+    """2026-08-07 regression: on 4G, rewriting WiFi — 4G is the fallback."""
+    c = _SwitchClient(available=("4g",), active=("4g", 4, None))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["preflight"]["passed"] is True
+    assert r["preflight"]["fallback"] == "4g"
