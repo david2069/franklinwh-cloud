@@ -440,3 +440,163 @@ class NetworkMixin:
                 "(tools/network_probe.py recover)."
             ),
         }
+
+    async def switch_to_wifi(
+        self,
+        ssid,
+        password=None,
+        *,
+        confirm=False,
+        verify=True,
+        scan=True,
+        timeout_s=180,
+        poll_interval_s=5.0,
+        min_rssi=DEFAULT_MIN_RSSI,
+        allow_no_fallback=False,
+        allow_weak_signal=False,
+    ):
+        """Put the aGate onto ``ssid`` and confirm it actually landed there.
+
+        The SDK equivalent of the vendor app's WiFi Configuration wizard:
+        scan, preflight, write, verify. Design sections 3-5; the returned dict
+        is the section 5.3 contract.
+
+        The problem this solves: the aGate always falls back to 4G when local
+        connectivity drops, but does not reliably come back to WiFi, so it
+        strands itself on cellular. Recovering from that has until now required
+        the vendor app (``docs/troubleshooting/2026-03-21_wifi_dhcp_failure.md``).
+
+        Parameters
+        ----------
+        ssid : str
+            Network to join.
+        password : str, optional
+            Passphrase. ``None`` reuses the password already stored on the
+            aGate, which is permitted **only** when ``ssid`` matches the stored
+            SSID — cmdType 337 returns a plaintext password for the currently
+            stored network only, and there is no per-SSID credential lookup
+            anywhere in the API. That restriction is not a limitation in
+            practice: the common case is a gateway stranded on 4G that needs
+            putting back on the WiFi it already knows, which needs no password
+            at all.
+        confirm : bool
+            Must be True — this writes to physical hardware.
+        verify : bool
+            Poll until the link is confirmed (default True). With False the
+            result carries ``verification.state == "skipped"``.
+        scan : bool
+            Run a scan first so the preflight can check the target's signal
+            (default True). Without it the signal gate is skipped as unknown.
+        min_rssi, allow_no_fallback, allow_weak_signal
+            Passed to :func:`network_write_preflight`.
+        timeout_s, poll_interval_s
+            Passed to the verify loop.
+
+        Returns
+        -------
+        dict
+            ``{requested, preflight, write_ack, verification}`` per section 5.3.
+
+        Important
+        ---------
+        **A refused preflight is returned, not raised.** Check
+        ``result["preflight"]["passed"]`` — on refusal no write is sent,
+        ``write_ack`` is None and ``verification.state`` is ``"skipped"``.
+        The refusal carries ``reasons``, which a caller needs in order to
+        decide whether an override is appropriate. A verify timeout likewise
+        comes back as ``verification.state == "timeout"``; the write was
+        accepted but the link was not confirmed, and it is deliberately not
+        retried.
+
+        Raises
+        ------
+        ValueError
+            If ``confirm`` is not True, or ``password`` is None for an SSID
+            other than the one currently stored.
+        """
+        if not confirm:
+            raise ValueError(
+                "switch_to_wifi() changes the network configuration of physical "
+                "hardware and can strand the gateway. Pass confirm=True."
+            )
+
+        # 1. Resolve the password. The cloud is not a credential vault.
+        password_source = "user"
+        if password is None:
+            self._invalidate_network_cache()
+            stored = await self.get_wifi_config()
+            if stored.get("wifi_ssid") != ssid:
+                raise ValueError(
+                    f"no password given for SSID {_redact(ssid)}, and it is not "
+                    f"the network currently stored on the aGate. cmdType 337 "
+                    f"returns a password only for the stored network, so there "
+                    f"is nothing to reuse. Supply password= explicitly."
+                )
+            password = stored.get("wifi_password") or ""
+            password_source = "stored"
+
+        # 2. Snapshot before, for the caller's before/after.
+        state = await self.get_network_state()
+        active = state.get("active") or {}
+        before = {
+            "type_id": active.get("id"),
+            "type": active.get("key"),
+            "ip": active.get("ip"),
+        }
+
+        # 3. Scan, so the preflight can judge the target's signal.
+        scan_result = None
+        if scan:
+            try:
+                scan_result = await self.scan_wifi_networks_ranked()
+            except (DeviceTimeoutException, GatewayOfflineException, FranklinWHError) as e:
+                # Unknown signal is not the same as bad signal; the fallback
+                # gate still applies and is the one that protects the gateway.
+                logger.warning("switch_to_wifi: scan failed (%s); signal gate skipped", e)
+
+        # 4. Preflight. The target is the WiFi interface, and the fallback set
+        #    is computed relative to it — not to whatever is active now.
+        preflight = network_write_preflight(
+            state, "wifi",
+            ssid=ssid, scan=scan_result, min_rssi=min_rssi,
+            allow_no_fallback=allow_no_fallback,
+            allow_weak_signal=allow_weak_signal,
+        )
+        requested = {"ssid": ssid, "password_source": password_source}
+
+        if not preflight["passed"]:
+            logger.warning(
+                "switch_to_wifi: preflight refused: %s", "; ".join(preflight["reasons"])
+            )
+            return {
+                "requested": requested,
+                "preflight": preflight,
+                "write_ack": None,
+                "verification": {"state": "skipped", "reason": "preflight refused"},
+            }
+
+        # 5. The write.
+        ack = await self.set_wifi_credentials(ssid, password, confirm=True)
+
+        if not verify:
+            return {
+                "requested": requested,
+                "preflight": preflight,
+                "write_ack": ack,
+                # "accepted" is not "connected" (G7) — say so rather than
+                # letting a caller read skipped verification as success.
+                "verification": {"state": "skipped", "reason": "verify=False"},
+            }
+
+        verification = await self._verify_wifi_switch(
+            ssid,
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+            before=before,
+        )
+        return {
+            "requested": requested,
+            "preflight": preflight,
+            "write_ack": ack,
+            "verification": verification,
+        }
