@@ -388,3 +388,209 @@ async def test_set_wifi_credentials_does_not_log_the_password(caplog):
     assert "hunter2" not in caplog.text
     assert "MyHomeNetwork" not in caplog.text
     assert "My***" in caplog.text
+
+
+# ── P2-4 verify loop (design section 4) ──────────────────────────────
+
+from franklinwh_cloud.exceptions import (
+    DeviceTimeoutException,
+    GatewayOfflineException,
+)
+
+
+def _net(type_id, ip):
+    return {"currentNetType": type_id, "wifi": {"ip": ip}}
+
+
+ON_WIFI = _net(3, "192.168.0.110")
+ON_4G = _net(4, "0.0.0.0")
+ASSOCIATED_NO_LEASE = _net(3, "0.0.0.0")   # the 2026-03-21 failure mode
+
+
+class _VerifyClient(NetworkMixin):
+    """Replays a scripted sequence of 317 reads with no sleeping."""
+
+    def __init__(self, sequence, ssid="home-net", cfg_sequence=None):
+        self._seq = list(sequence)
+        self._cfg_seq = list(cfg_sequence) if cfg_sequence else None
+        self._ssid = ssid
+        self.write_calls = 0
+        self.invalidations = []
+
+    def invalidate_cache(self, method=None):
+        self.invalidations.append(method)
+
+    async def get_network_info(self):
+        if not self._seq:
+            return ON_4G
+        item = self._seq.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    async def get_wifi_config(self):
+        if self._cfg_seq:
+            item = self._cfg_seq.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return item
+        return {"wifi_ssid": self._ssid}
+
+    async def get_connection_status(self):
+        return {"awsStatus": 0, "netStatus": 0}
+
+    async def set_wifi_credentials(self, *a, **k):
+        self.write_calls += 1
+
+
+@pytest.fixture
+def nosleep(monkeypatch):
+    """Run the verify loop without real delays."""
+    async def _instant(_seconds):
+        return None
+    monkeypatch.setattr("franklinwh_cloud.mixins.network.asyncio.sleep", _instant)
+
+
+async def test_verify_one_passing_poll_is_not_success(nosleep):
+    """Debounce — reassociation dips through other transports (2.3a)."""
+    c = _VerifyClient([ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=10, poll_interval_s=5)
+    assert r["state"] == "timeout"
+
+
+async def test_verify_two_consecutive_passing_polls_succeed(nosleep):
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["polls"] == 2
+    assert r["after"] == {"type_id": 3, "type": "wifi", "ip": "192.168.0.110"}
+
+
+async def test_verify_transient_dip_resets_the_counter(nosleep):
+    """The observed 3 -> 4 -> 3 dip, five seconds apart."""
+    c = _VerifyClient([ON_WIFI, ON_4G, ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["polls"] == 4, "the dip must not count toward the debounce"
+
+
+async def test_verify_rejects_associated_without_a_lease(nosleep):
+    """2026-03-21: associated at 76% holding 0.0.0.0, no working path."""
+    c = _VerifyClient([ASSOCIATED_NO_LEASE] * 6)
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout"
+    assert r["last_known"] == {"type_id": 3, "ip": None}
+
+
+async def test_verify_requires_the_requested_ssid(nosleep):
+    """G9 — the aGate roams unprompted; currentNetType alone proves nothing."""
+    c = _VerifyClient([ON_WIFI] * 6, cfg_sequence=[{"wifi_ssid": "someone-else"}] * 6)
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout", "wrong SSID is not success"
+
+
+async def test_verify_ssid_mismatch_resets_the_counter(nosleep):
+    c = _VerifyClient(
+        [ON_WIFI] * 4,
+        cfg_sequence=[
+            {"wifi_ssid": "home-net"},
+            {"wifi_ssid": "other"},
+            {"wifi_ssid": "home-net"},
+            {"wifi_ssid": "home-net"},
+        ],
+    )
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["polls"] == 4
+
+
+async def test_verify_survives_unreachable_polls_and_counts_them(nosleep):
+    """G8 — the gateway genuinely disappears mid-cutover."""
+    c = _VerifyClient([
+        GatewayOfflineException("code 136"),
+        DeviceTimeoutException("code 102"),
+        ON_WIFI,
+        ON_WIFI,
+    ])
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["unreachable_polls"] == 2
+
+
+async def test_verify_survives_cloudfront_html(nosleep):
+    """G10 — InvalidResponseError killed a 60-minute poll on iteration 2."""
+    from franklinwh_cloud.exceptions import InvalidResponseError
+
+    c = _VerifyClient([InvalidResponseError("<html>504</html>"), ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["unreachable_polls"] == 1
+
+
+async def test_verify_unreachable_poll_resets_the_debounce(nosleep):
+    """A blackout between two good polls is not two consecutive confirmations."""
+    c = _VerifyClient([ON_WIFI, GatewayOfflineException("136"), ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout"
+
+
+async def test_verify_tolerates_a_failing_ssid_read(nosleep):
+    c = _VerifyClient(
+        [ON_WIFI] * 4,
+        cfg_sequence=[
+            GatewayOfflineException("136"),
+            {"wifi_ssid": "home-net"},
+            {"wifi_ssid": "home-net"},
+        ],
+    )
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["unreachable_polls"] == 1
+
+
+async def test_verify_never_retries_the_write(nosleep):
+    """A retry against a reassociating aGate is how it becomes a dead one."""
+    c = _VerifyClient([ON_4G] * 10)
+    await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert c.write_calls == 0
+
+
+async def test_verify_timeout_carries_last_known_and_a_recovery_hint(nosleep):
+    c = _VerifyClient([ON_4G] * 10)
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout"
+    assert r["last_known"]["type_id"] == 4
+    assert "NOT been retried" in r["recovery_hint"]
+    assert "falls back to 4G on its own" in r["recovery_hint"]
+
+
+async def test_verify_does_not_gate_success_on_cloud_flags(nosleep):
+    """2026-08-08 — on WiFi with a lease while 339 reported everything zero."""
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["cloud"] == {"aws_status_raw": 0, "net_status_raw": 0}
+
+
+async def test_verify_invalidates_cache_before_every_poll(nosleep):
+    """Defect 6 — a cached read is not a verification."""
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert c.invalidations.count("get_network_info") >= 2
+
+
+async def test_verify_is_bounded_when_the_clock_does_not_advance(nosleep):
+    """Poll-count guard — never an unbounded loop against hardware."""
+    c = _VerifyClient([ON_4G] * 500)
+    r = await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert r["state"] == "timeout"
+    assert r["polls"] <= 8
+
+
+async def test_verify_carries_the_before_snapshot_through(nosleep):
+    before = {"type_id": 4, "type": "4g", "ip": None}
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch(
+        "home-net", timeout_s=30, poll_interval_s=5, before=before
+    )
+    assert r["before"] == before
