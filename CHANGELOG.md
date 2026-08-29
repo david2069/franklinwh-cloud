@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **aGate WiFi switching (`FEAT-NETWORK-PHASE2`)** — Added `NetworkMixin` with `set_wifi_credentials()` and `switch_to_wifi()`, putting the gateway back onto a chosen WiFi SSID from the cloud without the vendor app. Closes the field failure where the aGate falls back to 4G on lost connectivity and does not reliably return. Uses cmdType 337 `opt:1`, the shape validated on live hardware (U2, 2026-08-09). Every write passes a preflight requiring a surviving fallback transport, and is confirmed by a debounced verify loop that correlates `currentNetType`, a real DHCP lease and the SSID actually in use. Traceable to `docs/NETWORK_PHASE2_IMPLEMENTATION_PLAN.md`.
+- **`fwh network` CLI (`FEAT-NETWORK-PHASE2`)** — Added `network` (alias `net`) with `status`, `scan` and `set-wifi` subcommands. Exit codes 0/2/3/4 for success, preflight refusal, verify timeout and gateway offline. `--use-stored` re-asserts a known network without needing its password.
 - **System Settings Mappings (`FEAT-HAR-API-EXTENSIONS`)** — Added `get_system_settings()` and `update_system_settings()` to `DevicesMixin` mapping to `/hes-gateway/terminal/system/getSystemSetting` and `/system/updateSystemSetting`.
 - **AI Dispatch & VPP Eligibility (`FEAT-HAR-API-EXTENSIONS`)** — Added `check_ai_dispatch_invitation()`, `get_ai_offline_disable_flag()`, `check_vpp_eligibility()`, and `notify_ai_cache()` to `TouMixin`.
 - **JA12 Compliance (`FEAT-HAR-API-EXTENSIONS`)** — Added `query_compliance_capacity()` to `TouMixin` to retrieve compliance cycling capacity constraints.
@@ -15,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Help tooltips helper (`FEAT-HAR-API-EXTENSIONS`)** — Added `get_page_by_type_list()` to `DevicesMixin`.
 
 ### Fixed
+- **`DEF-NETWORK-CACHE-STALE`** — Network reads (`get_network_info` 120s, `get_wifi_config` 300s, `get_connectivity_overview` 120s) are now invalidated on the write path and before every verification poll. Previously a post-write check read state from before the write. Defects 6 and 7 of `docs/NETWORK_CONNECTIVITY_DESIGN.md`.
 - **`DEF-NOTIFICATION-SETTINGS-TYPO`** — Fixed critical URL typo in `get_notification_settings()` in `AccountMixin`, correcting it from `/hes-gateway/terminal/selectTerPusselectEventClassification` to `/hes-gateway/terminal/selectEventClassification`.
 - **`DEF-USER-RESOURCES-DRIFT`** — Fixed endpoint drift in `get_user_resources()`, correcting path to `/hes-gateway/newApi/api-user/app/resource/getUserResources/v2` and adding a robust fallback to parse both legacy `"result"` and new `"data"` JSON structures.
 
