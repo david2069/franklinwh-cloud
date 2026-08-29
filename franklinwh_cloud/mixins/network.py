@@ -22,7 +22,12 @@ import json
 import logging
 import time
 
-from franklinwh_cloud.exceptions import FranklinWHError
+from franklinwh_cloud.const.devices import UNASSIGNED_IPS
+from franklinwh_cloud.exceptions import (
+    DeviceTimeoutException,
+    FranklinWHError,
+    GatewayOfflineException,
+)
 from franklinwh_cloud.models import MqttCmd
 
 logger = logging.getLogger("franklinwh_cloud")
@@ -297,4 +302,141 @@ class NetworkMixin:
             "reason": ack.get("reason"),
             # "accepted", deliberately not "connected" — see the warning above.
             "accepted": ack.get("result") == 0,
+        }
+
+    async def _verify_wifi_switch(
+        self,
+        ssid,
+        *,
+        timeout_s=180,
+        poll_interval_s=5.0,
+        required_stable=2,
+        before=None,
+    ):
+        """Poll until the aGate is demonstrably on ``ssid``, or give up.
+
+        Implements design section 4. Returns the ``verification`` block of the
+        section 5.3 contract. Read-only — it never writes, and in particular it
+        **never retries the 337 write**: retrying against a gateway that is
+        mid-reassociation is how a slow switch becomes a dead one.
+
+        Success requires all three of these, on ``required_stable`` consecutive
+        polls:
+
+        1. ``currentNetType == 3`` (WiFi).
+        2. A real address — ``wifi.ip`` not in ``UNASSIGNED_IPS``. On 2026-03-21
+           and again on 2026-08-08 the aGate sat *associated* at ~76% holding
+           0.0.0.0 with no working path. Association is not connectivity.
+        3. The SSID actually in use matches the one requested. ``currentNetType``
+           alone proves nothing: the aGate roams unprompted, and 17 of 19
+           observed transport changes followed no command at all (gotcha G9).
+
+        The debounce exists because reassociation transiently dips through
+        another transport — 3 to 4 and back to 3 within five seconds was
+        observed directly. A verifier that latches on the first reading reports
+        the wrong answer in either direction.
+
+        Unreachable polls are **expected, not failures**. The gateway genuinely
+        disappears mid-cutover (gotcha G8), and the cloud sits behind CloudFront,
+        which serves HTML error pages for 502/503/504 that killed a 60-minute
+        poll on its second iteration (G10). They are counted and reported.
+
+        Note
+        ----
+        Success is never gated on ``awsStatus``/``netStatus``. On 2026-08-08 the
+        aGate was on WiFi with a valid lease, answering MQTT *through the cloud*,
+        while cmdType 339 reported ``netStatus=0, awsStatus=0, routerStatus=0``.
+        Those flags contradict observable reality (design section 2.5a).
+        """
+        start = time.monotonic()
+        deadline = start + timeout_s
+        # Bound by poll count as well as wall clock: a clock that fails to
+        # advance must not turn this into an unbounded loop against hardware.
+        max_polls = int(timeout_s / poll_interval_s) + 2
+
+        polls = 0
+        unreachable = 0
+        stable = 0
+        last_known = None
+
+        while time.monotonic() < deadline and polls < max_polls:
+            await asyncio.sleep(poll_interval_s)  # 5 s — the app's own cadence
+            polls += 1
+
+            try:
+                # Invalidate first: a poll that reads a 120 s-cached answer is
+                # not a verification at all (defect 6).
+                self._invalidate_network_cache()
+                net = await self.get_network_info()
+            except (DeviceTimeoutException, GatewayOfflineException, FranklinWHError):
+                unreachable += 1
+                stable = 0
+                logger.debug(
+                    "verify: poll %d unreachable (expected during cut-over)", polls
+                )
+                continue
+
+            wifi = net.get("wifi") or {}
+            ip = wifi.get("ip")
+            last_known = {
+                "type_id": net.get("currentNetType"),
+                "ip": ip if ip not in UNASSIGNED_IPS else None,
+            }
+
+            if net.get("currentNetType") != 3 or ip in UNASSIGNED_IPS:
+                stable = 0
+                continue
+
+            # Only now is the extra 337 read worth its sendMqtt budget.
+            try:
+                cfg = await self.get_wifi_config()
+            except (DeviceTimeoutException, GatewayOfflineException, FranklinWHError):
+                unreachable += 1
+                stable = 0
+                continue
+
+            if cfg.get("wifi_ssid") != ssid:
+                # On WiFi, but not the network that was asked for — the aGate
+                # roamed for unrelated reasons.
+                stable = 0
+                continue
+
+            stable += 1
+            if stable >= required_stable:
+                cloud = {}
+                try:
+                    conn = await self.get_connection_status()
+                    cloud = {
+                        "aws_status_raw": conn.get("awsStatus"),
+                        "net_status_raw": conn.get("netStatus"),
+                    }
+                except (DeviceTimeoutException, GatewayOfflineException,
+                        FranklinWHError):
+                    pass  # best-effort only; never gates success
+
+                return {
+                    "state": "connected",
+                    "elapsed_s": round(time.monotonic() - start, 1),
+                    "polls": polls,
+                    "unreachable_polls": unreachable,
+                    "before": before,
+                    "after": {"type_id": 3, "type": "wifi", "ip": ip},
+                    "cloud": cloud,
+                }
+
+        return {
+            "state": "timeout",
+            "elapsed_s": round(time.monotonic() - start, 1),
+            "polls": polls,
+            "unreachable_polls": unreachable,
+            "before": before,
+            "last_known": last_known,
+            "recovery_hint": (
+                "The write was accepted but the link was not confirmed within "
+                f"{timeout_s}s. The write has NOT been retried, deliberately. "
+                "The aGate falls back to 4G on its own; check "
+                "'fwh network status' before changing anything else. If it is "
+                "unreachable, recovery is via the aGate's own AP "
+                "(tools/network_probe.py recover)."
+            ),
         }
