@@ -50,6 +50,7 @@ from franklinwh_cloud.mixins.devices import DevicesMixin
 from franklinwh_cloud.mixins.account import AccountMixin
 from franklinwh_cloud.mixins.discover import DiscoverMixin
 from franklinwh_cloud.mixins.force import ForceMixin
+from franklinwh_cloud.mixins.network import NetworkMixin
 from franklinwh_cloud.force_state import ForceStateStore, ForceAuditLog
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,7 @@ async def retry(func, filter, refresh_func):
     return await func()
 
 
-class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin, ForceMixin):
+class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin, ForceMixin, NetworkMixin):
 
     """Client for interacting with FranklinWH gateway API."""
 
