@@ -39,6 +39,45 @@ def _parse_mqtt_json(raw, cmd_type: int):
         ) from e
 
 
+def _connectivity_signals(conn_status, net_info, stats):
+    """Resolve WiFi and cellular signal for :meth:`get_connectivity_overview`.
+
+    DEF-DIAG-SIGNAL-SOURCE. Both values previously came from
+    ``runtimeData`` (cmdType 203), which reads ``0.0`` on hardware where
+    cmdType 339 reports 72% WiFi and cmdType 317 reports ``operatorRSSI`` 22
+    with the SIM active.
+
+    The two transports are handled differently, because their units differ:
+
+    * **WiFi** — 339-extended ``WifiSignalStrength`` and
+      ``runtimeData.wifi_signal`` are *both* 0-100 percentages, so preferring
+      the extended payload is a same-unit swap. Falls back to runtimeData when
+      the firmware does not return the extended form.
+    * **4G** — ``runtimeData.signal`` is a 0-100 percentage but 317
+      ``operatorRSSI`` is a **0-52 vendor scale**. These are not
+      interchangeable, so the raw value is exposed under its own key rather
+      than overwriting a percentage with something that is not one. Writing 22
+      into ``mobile_signal`` would repeat the dBm-mislabelling class of defect,
+      not fix it.
+    """
+    wifi_pct = conn_status.get("WifiSignalStrength")
+    wifi_source = "339"
+    if wifi_pct is None:
+        wifi_pct = stats.current.wifi_signal
+        wifi_source = "203/runtimeData"
+
+    return {
+        # 0-100 %
+        "wifi_signal": wifi_pct,
+        "wifi_signal_source": wifi_source,
+        # 0-100 %, from runtimeData. Key and unit deliberately unchanged.
+        "mobile_signal": stats.current.mobile_signal,
+        # 0-52 vendor scale — NOT a percentage. See the note above.
+        "mobile_signal_raw": (net_info.get("operator") or {}).get("rssi"),
+        "mobile_signal_scale": "0-52",
+    }
+
+
 class DevicesMixin:
     """Accessory, device, and hardware information methods."""
 
@@ -1338,10 +1377,7 @@ class DevicesMixin:
                 "gateway": primary_gateway
             },
             "backups": backups,
-            "signals": {
-                "wifi_signal": stats.current.wifi_signal,
-                "mobile_signal": stats.current.mobile_signal
-            }
+            "signals": _connectivity_signals(conn_status, net_info, stats),
         }
         
         if deep_scan:
