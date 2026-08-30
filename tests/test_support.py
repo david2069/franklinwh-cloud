@@ -422,3 +422,78 @@ class TestStatusConnTypeEnum:
         src = inspect.getsource(status)
         assert "CONN_TYPE_NAMES" in src
         assert "NETWORK_TYPES.get(conn_type" not in src
+
+
+class TestSupportSignalUnits:
+    """DEF-SUPPORT-RSSI-DBM — the last of the dBm mislabels.
+
+    Two distinct scales were both being printed as dBm, and neither is:
+      * operatorRSSI (cmdType 317) is a 0-52 vendor scale (gotcha G3)
+      * mobile_signal is a 0-100 percentage, verified over 20,471 samples
+    """
+
+    def _snapshot(self):
+        return {
+            "connectivity": {"routerStatus": 1, "netStatus": 1, "awsStatus": 1},
+            "network": {
+                "currentNetType": 3,
+                "wifi": {"mac": "AA:BB:CC:DD:EE:01", "ip": "192.168.0.110"},
+                "eth0": {"mac": "", "ip": ""}, "eth1": {"mac": "", "ip": ""},
+                "operator": {"mac": "AA:BB:CC:DD:EE:02", "rssi": 22},
+            },
+            "wifi_config": {}, "switches": {},
+        }
+
+    def test_cellular_finding_does_not_claim_dbm(self):
+        from franklinwh_cloud.cli_commands.support import analyze_connectivity
+
+        cellular = [f for f in analyze_connectivity(self._snapshot())
+                    if f["check"] == "Cellular"]
+        assert cellular
+        assert "dBm" not in cellular[0]["detail"]
+
+    def test_cellular_finding_states_the_real_scale(self):
+        from franklinwh_cloud.cli_commands.support import analyze_connectivity
+
+        cellular = [f for f in analyze_connectivity(self._snapshot())
+                    if f["check"] == "Cellular"]
+        assert "22/52" in cellular[0]["detail"]
+
+    def test_no_dbm_labels_remain_in_support_output(self):
+        """Guard: only the deprecated output key may still carry the name.
+
+        Checks string literals, so the comments explaining the defect do not
+        trip their own guard.
+        """
+        import ast
+        import inspect
+
+        from franklinwh_cloud.cli_commands import support
+
+        tree = ast.parse(inspect.getsource(support))
+        literals = [n.value for n in ast.walk(tree)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        offenders = [s for s in literals
+                     if "dBm" in s and "mobile_signal_dbm" not in s]
+        assert offenders == [], f"unit mislabels remain: {offenders}"
+
+    def test_the_deprecated_alias_key_is_still_emitted(self):
+        """Backward compatibility — the key stays, only its use as a source goes."""
+        import ast
+        import inspect
+
+        from franklinwh_cloud.cli_commands import support
+
+        tree = ast.parse(inspect.getsource(support))
+        literals = {n.value for n in ast.walk(tree)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+        assert "mobile_signal_dbm" in literals
+
+    def test_percentage_is_read_from_the_correctly_named_key(self):
+        import inspect
+
+        from franklinwh_cloud.cli_commands import support
+
+        src = inspect.getsource(support)
+        assert 'power.get("mobile_signal_pct"' in src, \
+            "must not consume its own deprecated alias"
