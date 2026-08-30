@@ -22,8 +22,8 @@ async def run(client, *, json_output: bool = False):
     # ── Get device info to find aPower serials ────────────────────
     try:
         dev_res = await client.get_device_info()
-        dev_result = dev_res.get("result", {})
-        apower_list = dev_result.get("apowerList", [])
+        dev_result = (dev_res.get("result") or {})
+        apower_list = (dev_result.get("apowerList") or [])
         total_cap = dev_result.get("totalCap", 0)
     except Exception as e:
         if json_output:
@@ -110,8 +110,8 @@ async def run(client, *, json_output: bool = False):
         print_kv("Grid Frequency", f"{freq} Hz")
 
         # ── Cell Telemetry ───────────────────────────────────────
-        bat_volts = bms.get("batVolt", [])
-        bat_temps = bms.get("batTemp", [])
+        bat_volts = (bms.get("batVolt") or [])
+        bat_temps = (bms.get("batTemp") or [])
         highest_v = bms.get("singleHighestVolt", 0)
         lowest_v = bms.get("singleLowestVolt", 0)
         highest_t = bms.get("singleHighestTemp", 0)

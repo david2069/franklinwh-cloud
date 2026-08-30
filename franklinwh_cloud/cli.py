@@ -417,13 +417,13 @@ async def async_main():
     # Gateway discovery if not specified
     if not gateway:
         info = fetcher.info or {}
-        gateway_list = info.get("gatewayList", [])
+        gateway_list = (info.get("gatewayList") or [])
         if not gateway_list:
             # Try get_home_gateway_list via a temporary client
             temp_client = Client(fetcher, "")
             try:
                 res = await temp_client.get_home_gateway_list()
-                gateway_list = res.get("result", [])
+                gateway_list = (res.get("result") or [])
             except Exception:
                 pass
         if gateway_list:

@@ -71,7 +71,7 @@ async def run(client, *, json_output: bool = False):
     print_kv("Min / Max", f'{metrics["min_response_time_s"]:.3f}s / {metrics["max_response_time_s"]:.3f}s')
     print_kv("By HTTP Verb", str(metrics["calls_by_method"]))
 
-    python_methods = metrics.get("calls_by_python_method", {})
+    python_methods = (metrics.get("calls_by_python_method") or {})
     if python_methods:
         print_kv("By Python Method", "")
         for meth, count in sorted(python_methods.items(), key=lambda x: -x[1]):
@@ -120,7 +120,7 @@ async def run(client, *, json_output: bool = False):
         print_kv("Cache Hit Rate", c(cache_color, cache_str))
 
         # PoP distribution
-        pop_dist = et_snapshot.get("pop_distribution", {})
+        pop_dist = (et_snapshot.get("pop_distribution") or {})
         if pop_dist:
             print_kv("PoP Distribution", "")
             for pop_name, cnt in sorted(pop_dist.items(), key=lambda x: -x[1]):
@@ -130,13 +130,13 @@ async def run(client, *, json_output: bool = False):
         transitions = et_snapshot.get("edge_transitions", 0)
         if transitions > 0:
             print_kv("⚠️ Edge Transitions", c("yellow", str(transitions)))
-            for t in et_snapshot.get("transition_log", []):
+            for t in (et_snapshot.get("transition_log") or []):
                 print_kv(f"  {t['from']} → {t['to']}", t.get("at_iso", ""))
         else:
             print_kv("Edge Transitions", c("green", "0 (stable)"))
 
         # CDN distribution IDs
-        dist_ids = et_snapshot.get("distribution_ids", [])
+        dist_ids = (et_snapshot.get("distribution_ids") or [])
         if dist_ids:
             print_kv("CDN Distribution", ", ".join(d[:16] for d in dist_ids))
     else:

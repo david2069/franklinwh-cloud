@@ -83,47 +83,47 @@ async def run(client, *, json_output: bool = False, show_power: bool = False):
     # Gateway info (for aGate model cross-ref)
     try:
         gw_res = await client.get_home_gateway_list()
-        gateways = gw_res.get("result", [])
+        gateways = (gw_res.get("result") or [])
         gw = gateways[0] if gateways else {}
     except Exception:
         gw = {}
 
     agate_hw_ver = int(gw.get("sysHdVersion", -1))
-    agate_model = FRANKLINWH_MODELS.get(agate_hw_ver, {})
+    agate_model = (FRANKLINWH_MODELS.get(agate_hw_ver) or {})
 
     # Device info (aPower list, V2L flags)
     try:
         dev_res = await client.get_device_info()
-        dev_result = dev_res.get("result", {})
+        dev_result = (dev_res.get("result") or {})
     except Exception:
         dev_result = {}
 
     # Device composite info (three-phase solar PV)
     try:
         comp_res = await client.get_device_composite_info()
-        comp_result = comp_res.get("result", {}) if isinstance(comp_res, dict) else {}
-        solar_vo = comp_result.get("solarHaveVo", {}) if comp_result else {}
+        comp_result = (comp_res.get("result") or {}) if isinstance(comp_res, dict) else {}
+        solar_vo = (comp_result.get("solarHaveVo") or {}) if comp_result else {}
     except Exception:
         solar_vo = {}
 
     # Warranty info
     try:
         warranty_res = await client.get_warranty_info()
-        warranty = warranty_res.get("result", {})
+        warranty = (warranty_res.get("result") or {})
     except Exception:
         warranty = {}
 
     # Accessory list
     try:
         acc_res = await client.get_accessories(2)
-        accessories = acc_res.get("result", [])
+        accessories = (acc_res.get("result") or [])
     except Exception:
         accessories = []
 
     # Power Cap Config (aPower hardware model mapping)
     try:
         cap_res = await client.get_power_cap_config_list()
-        power_caps = cap_res.get("result", [])
+        power_caps = (cap_res.get("result") or [])
     except Exception:
         power_caps = []
     
@@ -175,17 +175,17 @@ async def run(client, *, json_output: bool = False, show_power: bool = False):
             "sku": agate_model.get("sku"),
         }
 
-        apower_list = dev_result.get("apowerList", [])
-        pe_hw_ver_list = dev_result.get("peHwVerList", [])
+        apower_list = (dev_result.get("apowerList") or [])
+        pe_hw_ver_list = (dev_result.get("peHwVerList") or [])
         warranty_devices = {
-            d.get("sn"): d for d in warranty.get("deviceExpirationList", [])
+            d.get("sn"): d for d in (warranty.get("deviceExpirationList") or [])
         }
         output["apower"] = []
         for i, ap in enumerate(apower_list):
             ap_sn = ap.get("id", "?")
             hw_ver = pe_hw_ver_list[i] if i < len(pe_hw_ver_list) else None
-            ap_model = apower_models_by_hw.get(hw_ver, {})
-            w = warranty_devices.get(ap_sn, {})
+            ap_model = (apower_models_by_hw.get(hw_ver) or {})
+            w = (warranty_devices.get(ap_sn) or {})
             output["apower"].append({
                 "serial": ap_sn,
                 "rated_power_w": ap.get("ratedPwr", 0),
@@ -292,23 +292,23 @@ async def run(client, *, json_output: bool = False, show_power: bool = False):
             print_kv("Throughput Used", f"{used:.0f} / {throughput:.0f} kWh ({pct}%)")
 
     # aPower batteries
-    apower_list = dev_result.get("apowerList", [])
-    pe_hw_ver_list = dev_result.get("peHwVerList", [])
+    apower_list = (dev_result.get("apowerList") or [])
+    pe_hw_ver_list = (dev_result.get("peHwVerList") or [])
     total_cap = dev_result.get("totalCap", 0)
-    warranty_devices = {d.get("sn"): d for d in warranty.get("deviceExpirationList", [])}
+    warranty_devices = {d.get("sn"): d for d in (warranty.get("deviceExpirationList") or [])}
 
     if apower_list:
         print_section("🔋", f"aPower Batteries ({len(apower_list)} units, {total_cap} kWh)")
         for i, ap in enumerate(apower_list):
             ap_sn = ap.get("id", "?")
             hw_ver = pe_hw_ver_list[i] if isinstance(pe_hw_ver_list, list) and i < len(pe_hw_ver_list) else None
-            ap_model = apower_models_by_hw.get(hw_ver, {})
+            ap_model = (apower_models_by_hw.get(hw_ver) or {})
             model_name = ap_model.get("modelName")
             rated = ap.get("ratedPwr", 0)
             cap = ap.get("rateBatCap", 0)
             sn_short = ap_sn[-6:] if len(str(ap_sn)) > 6 else ap_sn
             
-            w = warranty_devices.get(ap_sn, {})
+            w = (warranty_devices.get(ap_sn) or {})
             w_exp = w.get("expirationTime", "")
             
             model_str = f"  Model: {model_name}" if model_name else ""

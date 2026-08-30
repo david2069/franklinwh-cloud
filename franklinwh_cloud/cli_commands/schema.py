@@ -283,10 +283,10 @@ def network_health(state):
     Returns a list of ``{level, code, detail}`` dicts, most severe first.
     """
     findings = []
-    ifaces = {i["key"]: i for i in state.get("interfaces", [])}
-    available = state.get("available_transports", [])
+    ifaces = {i["key"]: i for i in (state.get("interfaces") or [])}
+    available = (state.get("available_transports") or [])
 
-    wifi = ifaces.get("wifi", {})
+    wifi = (ifaces.get("wifi") or {})
     if wifi.get("enabled") and wifi.get("signal_pct") and not wifi.get("ip"):
         findings.append({
             "level": "WARN", "code": "wifi_no_lease",
@@ -294,7 +294,7 @@ def network_health(state):
                       f"— no DHCP lease. This is the 2026-03-21 failure mode.",
         })
 
-    cell = ifaces.get("4g", {})
+    cell = (ifaces.get("4g") or {})
     if cell.get("enabled") and cell.get("sim_status") not in (None, 2):
         findings.append({
             "level": "WARN", "code": "sim_not_active",
@@ -325,7 +325,7 @@ def network_health(state):
     # so, and lean on the per-port address, which the firmware does report
     # separately.
     for key in ("eth0", "eth1"):
-        e = ifaces.get(key, {})
+        e = (ifaces.get(key) or {})
         if e.get("enabled") and not e.get("link") and not e.get("ip"):
             shared = " The Ethernet link flag is shared by both ports (firmware " \
                      "reports one status for the pair), so this rests on the " \
@@ -336,7 +336,7 @@ def network_health(state):
                           f"likely unplugged. Not counted as a fallback.{shared}",
             })
 
-    cloud = state.get("cloud", {})
+    cloud = (state.get("cloud") or {})
     if not cloud.get("aws_connected"):
         # Surface the disagreement between the two self-reports rather than
         # just the one. DEF-AWS-STATUS-SOURCE.
@@ -407,7 +407,7 @@ async def run(client, json_output: bool = False, show_live: bool = False,
     if show_live:
         try:
             pcs_res = await client.get_power_control_settings()
-            live_grid_limits = pcs_res.get("result", {}) if isinstance(pcs_res, dict) else {}
+            live_grid_limits = (pcs_res.get("result") or {}) if isinstance(pcs_res, dict) else {}
         except Exception as e:
             if not json_output:
                 print(f"⚠ Could not fetch grid limits: {e}")
@@ -708,14 +708,14 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
 
         if live_network is not None:
             print_section("📶", "Network — Current State")
-            act = live_network.get("active", {})
+            act = (live_network.get("active") or {})
             print(f"  ACTIVE   {act.get('label')}   {act.get('ip') or '—'}"
                   f"   gw {act.get('gateway') or '—'}   ({act.get('selection')})")
             print()
             print(f"  {'iface':<6} {'enabled':<8} {'link':<6} {'active':<7} "
                   f"{'available':<10} {'address':<16} {'addr src':<9} "
                   f"{'signal':<10} note")
-            for i in live_network.get("interfaces", []):
+            for i in (live_network.get("interfaces") or []):
                 sig = ""
                 note = ""
                 if i["key"] == "wifi" and i.get("signal_pct") is not None:
@@ -735,14 +735,14 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
                       f"{str(i.get('ip') or '—'):<16} {addr_src:<9} "
                       f"{sig:<10} {note}")
 
-            cloud = live_network.get("cloud", {})
+            cloud = (live_network.get("cloud") or {})
             print(f"\n  carrying traffic : {live_network.get('linked_transports')}")
             print(f"  available        : {live_network.get('available_transports')}"
                   f"   redundant={live_network.get('redundant')}")
             print(f"  cloud            : aws={cloud.get('aws_connected')} "
                   f"internet={cloud.get('internet')} "
                   f"routerStatus={cloud.get('router_status_raw')} (raw code)")
-            print(f"  extended 339     : {live_network.get('source', {}).get('extended_339')}")
+            print(f"  extended 339     : {(live_network.get('source') or {}).get('extended_339')}")
 
             findings = network_health(live_network)
             print_section("🩺", "Network — Health Check")

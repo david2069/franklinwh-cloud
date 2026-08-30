@@ -115,7 +115,7 @@ async def run(client, method: str, values: list[str] | None = None,
                 print_error(f"Invalid JSON on stdin: {e}")
                 return
 
-    info = AVAILABLE_METHODS.get(method, {})
+    info = (AVAILABLE_METHODS.get(method) or {})
     expected = info.get("args", 0) if info else 0
 
     if not stdin_payload and expected and len(args) < expected:
@@ -250,7 +250,7 @@ def _validate_live_schema(client, live_payload: dict):
         print_error(f"Failed to load OpenAPI spec: {e}")
         return
         
-    defined_paths = spec.get("paths", {})
+    defined_paths = (spec.get("paths") or {})
     if path not in defined_paths or method not in defined_paths[path]:
         print_warning(f"Undocumented endpoint signature: {method.upper()} {path} is missing from OpenAPI 3.0 spec.")
         return

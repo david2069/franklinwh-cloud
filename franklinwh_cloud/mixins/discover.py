@@ -107,7 +107,7 @@ class DiscoverMixin:
             if gateways:
                 gw = gateways[0]
                 hw_ver = int(gw.get("sysHdVersion", 0))
-                model_info = catalog["agate_models"].get(str(hw_ver), {})
+                model_info = (catalog["agate_models"].get(str(hw_ver)) or {})
 
                 snap.agate.serial = gw.get("id", "")
                 snap.agate.hw_version = hw_ver
@@ -137,13 +137,11 @@ class DiscoverMixin:
                 snap.site.timezone = gw.get("zoneInfo", "")
                 snap.site.country_id = gw.get("countryId", 0)
                 snap.site.province_id = gw.get("provinceId", 0)
-                country_info = catalog["countries"].get(
-                    str(gw.get("countryId", 0)), {}
-                )
+                country_info = (catalog["countries"].get(str(gw.get("countryId", 0))) or {})
                 snap.site.country = country_info.get("name", "")
                 
                 # Attach region and accessory catalog quirks
-                snap.region_quirks = (catalog.get("region_quirks") or {}).get(str(snap.site.country_id), {})
+                snap.region_quirks = ((catalog.get("region_quirks") or {}).get(str(snap.site.country_id)) or {})
                 snap.accessory_quirks = (catalog.get("accessory_quirks") or {})
         except Exception as e:
             logger.warning(f"discover: get_home_gateway_list failed: {e}")

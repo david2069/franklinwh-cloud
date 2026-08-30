@@ -87,7 +87,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
     print_section("📋", "TOU Configuration")
     try:
         res = await client.get_gateway_tou_list()
-        result = res.get("result", {})
+        result = (res.get("result") or {})
 
         tariff = result.get("tariffSettingFlag", False)
         status_text = c("green", "CONFIGURED") if tariff else c("yellow", "NOT CONFIGURED")
@@ -112,14 +112,14 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
     dispatch_result = None
     try:
         res = await client.get_tou_dispatch_detail()
-        dispatch_result = res.get("result", {})
-        template = dispatch_result.get("template", {})
-        strategies = dispatch_result.get("strategyList", [])
+        dispatch_result = (res.get("result") or {})
+        template = (dispatch_result.get("template") or {})
+        strategies = (dispatch_result.get("strategyList") or [])
 
         # Build dispatch lookup from detailDefaultVo
         dispatch_lookup = {}
-        default_vo = dispatch_result.get("detailDefaultVo", {})
-        tou_dispatch_list = default_vo.get("touDispatchList", [])
+        default_vo = (dispatch_result.get("detailDefaultVo") or {})
+        tou_dispatch_list = (default_vo.get("touDispatchList") or [])
         for d in tou_dispatch_list:
             if d.get("id") is not None:
                 dispatch_lookup[d["id"]] = d
@@ -169,7 +169,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
 
                 print_section("📅", f"{season_name} — {month_display}")
 
-                day_types = season.get("dayTypeVoList", [])
+                day_types = (season.get("dayTypeVoList") or [])
                 if not day_types:
                     print_warning("No day types configured for this season.")
                     continue
@@ -194,7 +194,7 @@ async def run(client, *, json_output: bool = False, show_dispatch: bool = False,
                         print()
 
                     # ── Dispatch periods ─────────────────────────
-                    periods = day_type.get("detailVoList", [])
+                    periods = (day_type.get("detailVoList") or [])
                     if periods:
                         has_soc = extended or any(b.get("maxChargeSoc") is not None or b.get("minDischargeSoc") is not None for b in periods)
 
@@ -374,7 +374,7 @@ def _extract_rates(day_type: dict) -> list:
 
 def _resolve_dispatch(dispatch_id: int, dispatch_lookup: dict) -> str:
     """Resolve dispatch ID to display name using lookup table."""
-    info = dispatch_lookup.get(dispatch_id, {})
+    info = (dispatch_lookup.get(dispatch_id) or {})
     title = info.get("title", "")
     code = info.get("dispatchCode", "")
     if title:
@@ -576,7 +576,7 @@ async def _handle_set(client, set_mode: str, start: str | None, end: str | None,
     if wait_confirm:
         try:
             existing = await client.get_tou_dispatch_detail()
-            existing_strategy = existing.get("result", {}).get("strategyList", [])
+            existing_strategy = ((existing.get("result") or {}).get("strategyList") or [])
         except Exception:
             pass  # non-fatal — restore will warn if None
 
@@ -727,7 +727,7 @@ async def _print_set_result(result: dict, json_output: bool, client=None,
         return True
 
     if result.get("code") == 200:
-        tou_id = result.get("result", {}).get("id", "?")
+        tou_id = (result.get("result") or {}).get("id", "?")
         print_success(f"Schedule submitted — touId={tou_id}")
 
         if wait_confirm and client:
@@ -925,7 +925,7 @@ async def _wait_for_dispatch(client, *, verbose: bool = False,
     while elapsed < timeout:
         try:
             res = await client.get_gateway_tou_list()
-            result = res.get("result", {})
+            result = (res.get("result") or {})
             send_status = result.get("touSendStatus", None)
             work_mode = result.get("workMode", None)
 
@@ -1083,9 +1083,9 @@ async def _handle_next(client, json_output: bool):
 
     # Build dispatch lookup for display names
     res = await client.get_tou_dispatch_detail()
-    result = res.get("result", {})
-    default_vo = result.get("detailDefaultVo", {})
-    tou_dispatch_list = default_vo.get("touDispatchList", [])
+    result = (res.get("result") or {})
+    default_vo = (result.get("detailDefaultVo") or {})
+    tou_dispatch_list = (default_vo.get("touDispatchList") or [])
     dispatch_lookup = {}
     for d in tou_dispatch_list:
         if d.get("id") is not None:
@@ -1190,7 +1190,7 @@ async def _handle_next(client, json_output: bool):
 
 def _resolve_dispatch_name(dispatch_id: int, dispatch_lookup: dict) -> str:
     """Resolve dispatch ID to human-readable name via lookup or fallback."""
-    info = dispatch_lookup.get(dispatch_id, {})
+    info = (dispatch_lookup.get(dispatch_id) or {})
     title = info.get("title", "")
     if title:
         return title
@@ -1283,8 +1283,8 @@ async def _handle_price(client, json_output: bool, active_only: bool = False, sh
         print_kv("  💰 Current Rate", f"Buy: ${b:.2f}{sell_str}")
         print()
     else:
-        buy = price.get("buy_rates", {})
-        sell = price.get("sell_rates", {})
+        buy = (price.get("buy_rates") or {})
+        sell = (price.get("sell_rates") or {})
         rate_labels = [
             ("On-Peak", "peak"), ("Shoulder", "shoulder"), ("Off-Peak", "valley"),
             ("Sharp", "sharp"), ("Super Off-Peak", "super_off_peak"),
@@ -1353,7 +1353,7 @@ async def _handle_multi_season(client, multi_season_file: str, json_output: bool
         if json_output:
             print_json_output(result)
         elif result.get("code") == 200:
-            tou_id = result.get("result", {}).get("id", "?")
+            tou_id = (result.get("result") or {}).get("id", "?")
             print_success(f"Multi-season schedule submitted — touId={tou_id}")
             print(f"  {c('dim', 'The aGate will apply this within ~1 minute.')}")
             print()
