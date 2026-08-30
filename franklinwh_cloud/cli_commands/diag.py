@@ -389,19 +389,27 @@ async def run(client, *, json_output: bool = False):
 
     results["network"] = net_info
 
-    NET_TYPES = {
-        0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi+Ethernet",
-        4: "4G/LTE", 5: "WiFi+4G", 6: "Ethernet+4G",
-        13: "WiFi+Ethernet+4G",
-    }
+    # DEF-DIAG-NETTYPE-ENUM. This previously used a local bitmask-style table
+    # (0=None, 1=WiFi, 2=Ethernet, 3=WiFi+Ethernet, ...) indexed with
+    # currentNetType, which is POSITIONAL (1=Eth0, 2=Eth1, 3=WiFi, 4=4G). So a
+    # gateway on WiFi (currentNetType 3) rendered as "WiFi+Ethernet". Wrong for
+    # ids 1 and 3, coincidentally near-right for 2 and 4, which is how it
+    # survived. Gotcha G2 in NETWORK_CONNECTIVITY_DESIGN.md: never mix the two
+    # network enums. The bitmask table matched no field this code reads.
+    #
+    # Note the near-identical table in cli_commands/support.py is indexed with
+    # runtimeData.connType, a THIRD encoding (0=4G, 1=WiFi, 2=Ethernet) — see
+    # DEF-SUPPORT-CONNTYPE-ENUM. Do not unify them without checking the field.
+    from franklinwh_cloud.const.devices import NETWORK_TYPES
 
     if not json_output:
         print_section("📶", "Network Configuration")
         if "error" in net_info:
             print_kv("Status", c("yellow", f'⚠ {net_info["error"]}'))
         else:
-            net_type = net_info.get("currentNetType", 0)
-            print_kv("Active Network", c("cyan", NET_TYPES.get(net_type, f"Type {net_type}")))
+            net_type = net_info.get("currentNetType")
+            print_kv("Active Network",
+                     c("cyan", NETWORK_TYPES.get(net_type, f"Unknown ({net_type})")))
 
             aws = net_info.get("awsStatus", 0)
             aws_text = c("green", "● Connected") if aws else c("red", "○ Disconnected")
