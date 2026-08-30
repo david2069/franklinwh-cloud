@@ -792,3 +792,98 @@ async def test_switch_preflight_target_is_wifi_not_the_active_transport(nosleep)
 
     assert r["preflight"]["passed"] is True
     assert r["preflight"]["fallback"] == "4g"
+
+
+# ── DEF-PREFLIGHT-UNVERIFIED-ETHERNET / DEF-ETH-LINK-SHARED-FLAG ─────
+
+def _state_eth(available, active_key="wifi"):
+    return {
+        "available_transports": list(available),
+        "linked_transports": [active_key],
+        "active": {"key": active_key},
+    }
+
+
+def test_preflight_does_not_trust_an_idle_ethernet_port():
+    """One aGate Ethernet port is reserved for FranklinWH-internal use.
+
+    It can hold an address while having no route to the cloud, and the API
+    exposes nothing that distinguishes it from a user port. Counting it would
+    let a write proceed on a fallback that cannot catch it.
+    """
+    r = network_write_preflight(_state_eth(["wifi", "eth0"]), "wifi")
+
+    assert r["passed"] is False
+    assert r["unverified_fallbacks"] == ["eth0"]
+    assert "FranklinWH-internal" in r["reasons"][0]
+
+
+def test_preflight_trusts_ethernet_when_it_is_the_active_transport():
+    """Active means proven — the gateway is answering through it right now."""
+    r = network_write_preflight(
+        _state_eth(["wifi", "eth0"], active_key="eth0"), "wifi",
+    )
+    assert r["passed"] is True
+    assert r["fallback"] == "eth0"
+    assert r["unverified_fallbacks"] == []
+
+
+def test_preflight_still_passes_when_cellular_is_the_real_fallback():
+    """The primary use case must not regress: idle eth0 is ignored, 4G carries."""
+    r = network_write_preflight(_state_eth(["wifi", "eth0", "4g"]), "wifi")
+
+    assert r["passed"] is True
+    assert r["fallback"] == "4g"
+    assert r["unverified_fallbacks"] == ["eth0"]
+
+
+def test_preflight_trust_ethernet_opt_in_records_the_override():
+    r = network_write_preflight(
+        _state_eth(["wifi", "eth0"]), "wifi", trust_ethernet=True,
+    )
+    assert r["passed"] is True
+    assert any("trust_ethernet" in o for o in r["overrides"])
+
+
+def test_preflight_both_ethernet_ports_are_distrusted_together():
+    r = network_write_preflight(_state_eth(["wifi", "eth0", "eth1"]), "wifi")
+    assert r["passed"] is False
+    assert r["unverified_fallbacks"] == ["eth0", "eth1"]
+
+
+def test_preflight_wifi_and_4g_are_never_treated_as_unverified():
+    """Only Ethernet has the internal-port ambiguity."""
+    r = network_write_preflight(_state_eth(["wifi", "4g"], active_key="4g"),
+                                "wifi")
+    assert r["unverified_fallbacks"] == []
+    assert r["passed"] is True
+
+
+def test_preflight_refusal_names_the_override_that_would_help():
+    r = network_write_preflight(_state_eth(["wifi", "eth0"]), "wifi")
+    assert "trust_ethernet=True" in r["reasons"][0]
+
+
+async def test_switch_to_wifi_threads_trust_ethernet_through(nosleep):
+    c = _SwitchClient(available=("wifi", "eth0"), active=("wifi", 3, "1.2.3.4"))
+    refused = await c.switch_to_wifi("home-net", "pw", confirm=True)
+    assert refused["preflight"]["passed"] is False
+    assert c.writes == []
+
+    c2 = _SwitchClient(available=("wifi", "eth0"), active=("wifi", 3, "1.2.3.4"))
+    ok = await c2.switch_to_wifi("home-net", "pw", confirm=True,
+                                 trust_ethernet=True,
+                                 timeout_s=30, poll_interval_s=5)
+    assert ok["preflight"]["passed"] is True
+    assert len(c2.writes) == 1
+
+
+def test_network_state_tags_the_shared_ethernet_link_flag():
+    """DEF-ETH-LINK-SHARED-FLAG — firmware reports one status for both ports."""
+    import inspect
+
+    from franklinwh_cloud.mixins import devices
+
+    src = inspect.getsource(devices.DevicesMixin.get_network_state)
+    assert "link_shared" in src
+    assert "SHARED_LINK_IDS" in src

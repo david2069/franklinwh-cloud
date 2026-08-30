@@ -83,6 +83,9 @@ def _render_status(state):
             flags.append(c("green", "← active"))
         if iface.get("available"):
             flags.append("available")
+        if iface.get("link_shared"):
+            # DEF-ETH-LINK-SHARED-FLAG — one firmware status covers both ports.
+            flags.append(c("dim", "link flag shared with the other Eth port"))
         print_kv(
             iface["key"],
             f"{'enabled ' if iface.get('enabled') else 'disabled'} "
@@ -197,6 +200,7 @@ async def _cmd_set_wifi(client, args):
         min_rssi=args.min_rssi,
         allow_no_fallback=args.allow_no_fallback,
         allow_weak_signal=args.allow_weak_signal,
+        trust_ethernet=getattr(args, "trust_ethernet", False),
     )
 
     if args.json:
@@ -318,4 +322,9 @@ def register(subs):
                          "over if it fails")
     sw.add_argument("--allow-weak-signal", action="store_true",
                     help="Write even if the target is weak or not in the scan")
+    sw.add_argument("--trust-ethernet", action="store_true",
+                    help="Count an idle Ethernet port as a fallback. Off by "
+                         "default: one aGate port is reserved for "
+                         "FranklinWH-internal use and may hold an address "
+                         "while having no route to the cloud.")
     return p

@@ -1101,12 +1101,23 @@ class DevicesMixin:
 
         # Per-transport link state. The extended 339 fields are authoritative
         # when present; otherwise fall back to "has a usable address".
+        # DEF-ETH-LINK-SHARED-FLAG. The 339-extended payload carries ONE
+        # Ethernet status, not one per port, so eth0 and eth1 necessarily read
+        # the same value. That is a firmware limitation, not a bug here — but
+        # it must not be presented as two independent per-port observations.
+        # Entries for ids 1 and 2 are tagged link_shared=True so renderers can
+        # say so rather than implying precision the wire does not provide.
+        #
+        # `available` is unaffected: it also requires a per-port ADDRESS, which
+        # the firmware does report separately, so a port cannot be judged a
+        # fallback on the shared flag alone.
         link_by_id = {
             1: conn_status.get("EthConnectRouterStatus"),
             2: conn_status.get("EthConnectRouterStatus"),
             3: conn_status.get("wifiConnectRouterStatus"),
             4: conn_status.get("4GConnectBSStatus"),
         }
+        SHARED_LINK_IDS = (1, 2)
 
         interfaces = []
         for iface_id, key in NETWORK_TYPE_KEYS.items():
@@ -1129,6 +1140,9 @@ class DevicesMixin:
                 "mac": cfg.get("mac"),
                 "is_active": iface_id == active_id,
             }
+            if iface_id in SHARED_LINK_IDS:
+                # True => `link` is the Ethernet-family flag, not this port's.
+                entry["link_shared"] = True
             if iface_id == 3:
                 entry["signal_pct"] = conn_status.get("WifiSignalStrength")
             if iface_id == 4:
