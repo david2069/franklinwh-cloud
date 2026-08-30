@@ -124,9 +124,13 @@ async def run(client, *, json_output: bool = False):
 
     # Connectivity
     print_section("📡", "Connectivity")
-    from franklinwh_cloud.const import NETWORK_TYPES
+    # network_connection is runtimeData.connType (0=4G, 1=WiFi, 2=Ethernet), NOT
+    # currentNetType. Rendering it through NETWORK_TYPES reported a gateway on
+    # WiFi as "Ethernet 1" — the exact mapping const/devices.py warns against.
+    # DEF-STATUS-CONNTYPE-ENUM.
+    from franklinwh_cloud.const.devices import CONN_TYPE_NAMES
     conn_type = cur.network_connection or 0
-    print_kv("Network", NETWORK_TYPES.get(conn_type, f"Type {conn_type}"))
+    print_kv("Network", CONN_TYPE_NAMES.get(conn_type, f"Unknown ({conn_type})"))
     if cur.wifi_signal:
         print_kv("WiFi Signal", f"{cur.wifi_signal}")
     if cur.mobile_signal:

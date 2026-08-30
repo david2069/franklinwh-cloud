@@ -844,11 +844,16 @@ def sign_snapshot(data: dict) -> str:
 
 # ── Connectivity analysis ────────────────────────────────────────────
 
-NET_TYPES = {
-    0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi",
-    4: "4G/LTE", 5: "WiFi+4G", 6: "Ethernet+4G",
-    13: "WiFi+Ethernet+4G",
-}
+# DEF-SUPPORT-NETTYPE-ENUM. This was a local bitmask-style table
+# (0=None, 1=WiFi, 2=Ethernet, 3=WiFi+Ethernet, ...) indexed with
+# currentNetType, which is positional. All three call sites below read
+# currentNetType — the variable and key names saying "connType" are a misnomer
+# and are what disguised the defect. Index 3 had already been hand-patched from
+# "WiFi+Ethernet" to "WiFi", fixing one symptom of the wrong table.
+#
+# For runtimeData.connType, which is a genuinely different encoding, use
+# const.devices.CONN_TYPE_NAMES.
+from franklinwh_cloud.const.devices import NETWORK_TYPES as NET_TYPES
 
 
 def analyze_connectivity(snapshot: dict) -> list[dict]:
@@ -939,9 +944,11 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
 
         # 4G fallback detection
         conn_type = net.get("currentNetType", 0)
-        if conn_type in (4, 5, 6, 13) and wifi_mac:
+        # Only 4 is cellular under this encoding; 5/6/13 were bitmask values
+        # that can never occur here and were dead branches.
+        if conn_type == 4 and wifi_mac:
             findings.append({"severity": "warning", "check": "4G Fallback",
-                             "detail": f"Active (connType {conn_type}: {NET_TYPES.get(conn_type, '?')}) — WiFi/Ethernet may have failed"})
+                             "detail": f"Active (currentNetType {conn_type}: {NET_TYPES.get(conn_type, '?')}) — WiFi/Ethernet may have failed"})
 
         # DNS checks
         wifi_dns = wifi.get("dns", "")
@@ -1203,8 +1210,11 @@ async def _collect_nettest_config(client) -> dict:
         # get_network_info returns flat dict: {currentNetType, wifi, eth0, eth1, operator}
         r = await client.get_network_info()
         if isinstance(r, dict) and "error" not in r:
+            # Key names kept for snapshot-format compatibility, but the value
+            # is currentNetType, not connType. Misnomer, not a bug.
             config["connType"] = r.get("currentNetType", 0)
-            config["connTypeName"] = NET_TYPES.get(config["connType"], f"Type {config['connType']}")
+            config["connTypeName"] = NET_TYPES.get(
+                config["connType"], f"Unknown ({config['connType']})")
 
             wifi = r.get("wifi", {})
             if wifi.get("ip") and wifi["ip"] != "0.0.0.0":
@@ -1495,7 +1505,7 @@ def _display_nettest_config(net_config: dict):
         sim = "SIM: Active" if net_config.get("sim_active") else ""
         print_kv("Backup", f"{backup}  {sim}")
     conn_name = net_config.get("connTypeName", "?")
-    print_kv("connType", f"{net_config.get('connType', '?')} ({conn_name})")
+    print_kv("currentNetType", f"{net_config.get('connType', '?')} ({conn_name})")
     # Source IP (this machine)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2684,7 +2694,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
         if "error" not in net:
             conn_type = net.get("currentNetType", 0)
             print_section("📶", "Network")
-            print_kv("Active", NET_TYPES.get(conn_type, f"Type {conn_type}"))
+            print_kv("Active", NET_TYPES.get(conn_type, f"Unknown ({conn_type})"))
             for iface, label_name in [("wifi", "WiFi"), ("eth0", "Eth0"), ("eth1", "Eth1")]:
                 idata = net.get(iface, {})
                 if idata.get("mac"):
