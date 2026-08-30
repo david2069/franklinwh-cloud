@@ -320,13 +320,20 @@ def network_health(state):
                       f"targeting it risks stranding the gateway.",
         })
 
+    # DEF-ETH-LINK-SHARED-FLAG: firmware reports ONE Ethernet link status for
+    # both ports, so these two findings are not independent observations. Say
+    # so, and lean on the per-port address, which the firmware does report
+    # separately.
     for key in ("eth0", "eth1"):
         e = ifaces.get(key, {})
         if e.get("enabled") and not e.get("link") and not e.get("ip"):
+            shared = " The Ethernet link flag is shared by both ports (firmware " \
+                     "reports one status for the pair), so this rests on the " \
+                     "per-port address." if e.get("link_shared") else ""
             findings.append({
                 "level": "INFO", "code": f"{key}_no_link",
                 "detail": f"{key} is enabled but has no link and no address — cable "
-                          f"likely unplugged. Not counted as a fallback.",
+                          f"likely unplugged. Not counted as a fallback.{shared}",
             })
 
     cloud = state.get("cloud", {})

@@ -50,6 +50,13 @@ NETWORK_CACHED_READERS = (
 DEFAULT_MIN_RSSI = 30
 
 
+#: Interfaces whose presence on the LAN does not prove a path to the cloud.
+#: At least one aGate Ethernet port is reserved for FranklinWH-internal use and
+#: sits on a segment with no internet route, and the API exposes nothing that
+#: distinguishes it from a user port. See :func:`network_write_preflight`.
+UNVERIFIED_FALLBACK_KEYS = ("eth0", "eth1")
+
+
 def network_write_preflight(
     state,
     target,
@@ -59,6 +66,7 @@ def network_write_preflight(
     min_rssi=DEFAULT_MIN_RSSI,
     allow_no_fallback=False,
     allow_weak_signal=False,
+    trust_ethernet=False,
 ):
     """Decide whether a network write is safe to send.
 
@@ -120,11 +128,40 @@ def network_write_preflight(
     available = set(state.get("available_transports") or [])
     fallbacks = sorted(available - {target})
 
+    # An Ethernet port that is not currently carrying traffic cannot be shown
+    # to reach the cloud. One aGate port is reserved for FranklinWH-internal
+    # use on a segment with no internet route, and nothing in the API says
+    # which. A port that is *active* is proven — the gateway is answering
+    # through it right now. A port that merely holds an address is not.
+    #
+    # The asymmetry decides the default: trusting a bad fallback strands the
+    # gateway and recovery becomes physical, while distrusting a good one costs
+    # a refusal the caller can override. So unverified Ethernet does not count.
+    active_key = (state.get("active") or {}).get("key")
+    unverified = sorted(
+        k for k in fallbacks
+        if k in UNVERIFIED_FALLBACK_KEYS and k != active_key
+    )
+    if unverified and not trust_ethernet:
+        fallbacks = [k for k in fallbacks if k not in unverified]
+    elif unverified:
+        overrides.append(
+            f"trust_ethernet: counting {', '.join(unverified)} as a fallback "
+            f"without proof it reaches the cloud"
+        )
+
     if not fallbacks:
         msg = (
             f"no transport other than {target!r} could carry traffic if this "
             f"write fails (available={sorted(available) or 'none'})"
         )
+        if unverified and not trust_ethernet:
+            msg += (
+                f"; {', '.join(unverified)} holds an address but is not the "
+                f"active transport, so it is not proven to reach the cloud — "
+                f"one aGate Ethernet port is reserved for FranklinWH-internal "
+                f"use. Pass trust_ethernet=True if you know it is a real path."
+            )
         if allow_no_fallback:
             overrides.append(f"allow_no_fallback: {msg}")
         else:
@@ -166,6 +203,7 @@ def network_write_preflight(
         "fallback": fallbacks[0] if fallbacks else None,
         "fallbacks": fallbacks,
         "target_signal_pct": target_signal_pct,
+        "unverified_fallbacks": unverified,
         "reasons": reasons,
         "overrides": overrides,
     }
@@ -454,6 +492,7 @@ class NetworkMixin:
         min_rssi=DEFAULT_MIN_RSSI,
         allow_no_fallback=False,
         allow_weak_signal=False,
+        trust_ethernet=False,
     ):
         """Put the aGate onto ``ssid`` and confirm it actually landed there.
 
@@ -561,6 +600,7 @@ class NetworkMixin:
             ssid=ssid, scan=scan_result, min_rssi=min_rssi,
             allow_no_fallback=allow_no_fallback,
             allow_weak_signal=allow_weak_signal,
+            trust_ethernet=trust_ethernet,
         )
         requested = {"ssid": ssid, "password_source": password_source}
 
