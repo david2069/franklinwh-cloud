@@ -18,16 +18,18 @@ from tests.test_diag_gateway_nulls import _NullClient, FULL_COMPOSITE
 
 
 def _net_info(current_net_type):
+    # Placeholder MACs. This fixture exercises enum labelling and has no need
+    # of real hardware identifiers — and this is a public repository.
     return {
         "currentNetType": current_net_type,
-        "wifi": {"mac": "4C:24:CE:67:3A:7C", "dhcp": True,
+        "wifi": {"mac": "AA:BB:CC:DD:EE:03", "dhcp": True,
                  "ip": "192.168.0.110", "dns": "8.8.8.8",
                  "gateway": "192.168.0.1"},
-        "eth0": {"mac": "88:C9:B3:20:00:80", "dhcp": False, "ip": "0.0.0.0",
+        "eth0": {"mac": "AA:BB:CC:DD:EE:01", "dhcp": False, "ip": "0.0.0.0",
                  "dns": "8.8.8.8", "gateway": "172.16.1.1"},
-        "eth1": {"mac": "88:C9:B3:21:2C:B8", "dhcp": True, "ip": "0.0.0.0",
+        "eth1": {"mac": "AA:BB:CC:DD:EE:02", "dhcp": True, "ip": "0.0.0.0",
                  "dns": "8.8.8.8", "gateway": "0.0.0.0"},
-        "operator": {"mac": "FE:46:0D:F1:E8:4C", "rssi": 22,
+        "operator": {"mac": "AA:BB:CC:DD:EE:04", "rssi": 22,
                      "dns": "192.192.192.192"},
         "awsStatus": 1,
     }
