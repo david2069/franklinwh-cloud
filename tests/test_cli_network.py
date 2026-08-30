@@ -53,7 +53,8 @@ class _CliClient:
     def _invalidate_network_cache(self):
         pass
 
-    async def get_network_state(self):
+    async def get_network_state(self, probe_local=False):
+        # Mirrors the real signature; the local probe is opt-in I/O.
         return self._state
 
     async def scan_wifi_networks_ranked(self, **kw):
@@ -287,7 +288,7 @@ async def test_gateway_offline_exits_four(capsys):
     from franklinwh_cloud.exceptions import GatewayOfflineException
 
     class _Offline(_CliClient):
-        async def get_network_state(self):
+        async def get_network_state(self, probe_local=False):
             raise GatewayOfflineException("code 136")
 
     code = await netcmd.run(_Offline(), _args())

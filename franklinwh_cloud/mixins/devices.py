@@ -1015,7 +1015,7 @@ class DevicesMixin:
             "warnings": warnings_out,
         }
 
-    async def get_network_state(self):
+    async def get_network_state(self, *, probe_local=False, local_timeout_s=1.5):
         """Unified view of which transport the aGate is using right now.
 
         Composes three MQTT reads — cmdType 317 (interface detail), 339
@@ -1045,8 +1045,24 @@ class DevicesMixin:
               interface you are about to modify. Note the *active* transport
               counts as a fallback when you are modifying a different one.
             - ``redundant``: True when more than one transport is available
+            - ``cloud``: see ``gateway_reachable`` — the only evidenced claim
+              in that block
+            - ``local``: LAN reachability, populated only when
+              ``probe_local=True``. A discriminator, never a verdict: it says
+              the gateway is powered and on the network, not that it can reach
+              FranklinWH. Never gate a write on it.
             - ``source``: which cmdTypes answered, and whether the firmware
               returned the extended 339 payload
+
+        Parameters
+        ----------
+        probe_local : bool
+            Open a TCP connection to the gateway's LAN address to check it is
+            answering locally (default False). Off by default because it is
+            I/O, only meaningful from the same LAN, and irrelevant to every
+            existing caller.
+        local_timeout_s : float
+            Per-port connect timeout for that probe.
 
         Warning
         -------
@@ -1190,6 +1206,18 @@ class DevicesMixin:
         by_id = {i["id"]: i for i in interfaces}
         active = by_id.get(active_id)
 
+        # Opportunistic LAN check. Separate from the cloud verdict on purpose:
+        # answering on the LAN says the gateway is powered and addressed, not
+        # that it can reach FranklinWH. Together the two localise a fault that
+        # neither can localise alone.
+        local_block = {"probed": False, "reachable": None, "port": None,
+                       "host": None}
+        if probe_local:
+            from franklinwh_cloud.mixins.network import probe_local_reachability
+            local_block = await probe_local_reachability(
+                active["ip"] if active else None, timeout_s=local_timeout_s,
+            )
+
         # Two different questions, deliberately kept apart:
         #
         #   linked_transports    — what is carrying traffic right now (factual)
@@ -1246,6 +1274,7 @@ class DevicesMixin:
                 "router_status_raw": conn_status.get("routerStatus"),
                 "self_report_trusted": False,
             },
+            "local": local_block,
             "linked_transports": linked,
             "available_transports": available,
             # True when losing the transport currently in use would still leave

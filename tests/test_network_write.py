@@ -626,7 +626,7 @@ class _SwitchClient(NetworkMixin):
     def invalidate_cache(self, method=None):
         self.invalidations.append(method)
 
-    async def get_network_state(self):
+    async def get_network_state(self, probe_local=False):
         return self._state
 
     async def get_wifi_config(self):

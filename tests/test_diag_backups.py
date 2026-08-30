@@ -140,7 +140,7 @@ class _DiagClient:
         return dict(LIVE_OVERVIEW, span_connected=False,
                     modbus_tcp_502_open=True)
 
-    async def get_network_state(self):
+    async def get_network_state(self, probe_local=False):
         if isinstance(self._net_state, BaseException):
             raise self._net_state
         return self._net_state
