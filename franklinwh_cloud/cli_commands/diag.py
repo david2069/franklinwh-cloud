@@ -109,7 +109,9 @@ async def run(client, *, json_output: bool = False):
         conn_info["authenticated"] = True
         conn_info["response_time_s"] = round(elapsed, 3)
 
-        gateways = gw_res.get("result", [])
+        # `.get(k, default)` returns the default only when the key is ABSENT.
+        # A key present with a null value yields None — DEF-DIAG-GATEWAY-NONE-GUARD.
+        gateways = gw_res.get("result") or []
         conn_info["gateways_found"] = len(gateways)
         conn_info["gateway_sns"] = [g.get("id", "?") for g in gateways]
         checks_passed += 1
@@ -234,8 +236,13 @@ async def run(client, *, json_output: bool = False):
     gateway_info = {}
     try:
         res = await client.get_device_composite_info()
-        data = res.get("result", {})
-        solar_vo = data.get("solarHaveVo", {})
+        # Every nested lookup here uses `or {}` rather than a .get() default:
+        # the API returns these keys PRESENT WITH A NULL VALUE on some
+        # gateways, and .get(k, {}) hands back None in that case, not {}.
+        # That crashed this whole section with "'NoneType' object has no
+        # attribute 'get'" — DEF-DIAG-GATEWAY-NONE-GUARD.
+        data = res.get("result") or {}
+        solar_vo = data.get("solarHaveVo") or {}
 
         is_three_phase = solar_vo.get("isThreePhaseInstall", False)
         if is_three_phase:
@@ -247,8 +254,8 @@ async def run(client, *, json_output: bool = False):
         for g in gateways:
             if g.get("id") == client.gateway:
                 from franklinwh_cloud.const import FRANKLINWH_MODELS, COUNTRY_ID
-                hw_ver = int(g.get("sysHdVersion", 0))
-                model_info = FRANKLINWH_MODELS.get(hw_ver, {})
+                hw_ver = int(g.get("sysHdVersion") or 0)
+                model_info = FRANKLINWH_MODELS.get(hw_ver) or {}
                 gw_detail = {
                     "name": g.get("name", "?"),
                     "model": model_info.get("model", f"HW v{hw_ver}"),
@@ -268,13 +275,13 @@ async def run(client, *, json_output: bool = False):
         }
 
         from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
-        rt = data.get("runtimeData", {})
-        work_mode = data.get("currentWorkMode", 0)
-        run_status_code = rt.get("run_status", 0)
+        rt = data.get("runtimeData") or {}
+        work_mode = data.get("currentWorkMode") or 0
+        run_status_code = rt.get("run_status") or 0
 
         gateway_info["operating_mode"] = OPERATING_MODES.get(work_mode, f"Unknown ({work_mode})")
         gateway_info["run_status"] = RUN_STATUS.get(int(run_status_code), f"Unknown ({run_status_code})")
-        gateway_info["soc"] = rt.get("soc", 0)
+        gateway_info["soc"] = rt.get("soc") or 0
 
         checks_passed += 1
     except Exception as e:
