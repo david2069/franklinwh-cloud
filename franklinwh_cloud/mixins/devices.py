@@ -1302,7 +1302,7 @@ class DevicesMixin:
             # Match on gateway serial (self.gateway) to get the correct siteId.
             try:
                 res = await self.get_home_gateway_list()
-                gateways = res.get("result", [])
+                gateways = (res.get("result") or [])
                 # Match by gateway serial number, fall back to first gateway
                 matched = next(
                     (gw for gw in gateways if gw.get("id") == self.gateway),
@@ -1397,11 +1397,11 @@ class DevicesMixin:
         primary_ip = None
         primary_gateway = None
         if primary_id == 1:
-            cfg = net_info.get("eth0", {})
+            cfg = (net_info.get("eth0") or {})
         elif primary_id == 2:
-            cfg = net_info.get("eth1", {})
+            cfg = (net_info.get("eth1") or {})
         elif primary_id == 3:
-            cfg = net_info.get("wifi", {})
+            cfg = (net_info.get("wifi") or {})
         else:
             cfg = {}
             
@@ -1412,16 +1412,16 @@ class DevicesMixin:
         # Map NETWORK_TYPES id → net_info interface key for IP lookup
         backups = []
         if net_switches.get("ethernet0NetSwitch") == 1 and primary_id != 1:
-            ip = net_info.get("eth0", {}).get("ip")
+            ip = (net_info.get("eth0") or {}).get("ip")
             backups.append({"id": 1, "name": NETWORK_TYPES.get(1), "ip": ip})
         if net_switches.get("ethernet1NetSwitch") == 1 and primary_id != 2:
-            ip = net_info.get("eth1", {}).get("ip")
+            ip = (net_info.get("eth1") or {}).get("ip")
             backups.append({"id": 2, "name": NETWORK_TYPES.get(2), "ip": ip})
         if net_switches.get("wifiNetSwitch") == 1 and primary_id != 3:
-            ip = net_info.get("wifi", {}).get("ip")
+            ip = (net_info.get("wifi") or {}).get("ip")
             backups.append({"id": 3, "name": NETWORK_TYPES.get(3), "ip": ip})
         if net_switches.get("4GNetSwitch") == 1 and primary_id != 4:
-            rssi = net_info.get("operator", {}).get("rssi")
+            rssi = (net_info.get("operator") or {}).get("rssi")
             backups.append({"id": 4, "name": NETWORK_TYPES.get(4), "rssi": rssi})
             
         overview = {
@@ -1593,7 +1593,7 @@ class DevicesMixin:
             await asyncio.sleep(verify_interval_s)
             try:
                 verify_resp = await self.get_gateway_tou_list()
-                verify_result = verify_resp.get("result", {})
+                verify_result = (verify_resp.get("result") or {})
                 final_send_status = verify_result.get("touSendStatus")
                 final_alert_message = verify_result.get("touAlertMessage") or ""
                 if final_send_status is None:

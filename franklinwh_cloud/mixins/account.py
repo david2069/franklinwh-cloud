@@ -40,10 +40,10 @@ class AccountMixin:
             "version": info.get("version"),
             "distributorId": info.get("distributorId"),
             "installerId": info.get("installerId"),
-            "affiliateCompany": info.get("affiliateCompany", []),
-            "userTypes": info.get("userTypes", []),
+            "affiliateCompany": (info.get("affiliateCompany") or []),
+            "userTypes": (info.get("userTypes") or []),
             "currentType": info.get("currentType"),
-            "roles": info.get("roles", []),
+            "roles": (info.get("roles") or []),
             "passwordUpdateFlag": info.get("passwordUpdateFlag"),
             "ninetyDaysPwdUpdate": info.get("ninetyDaysPwdUpdate"),
             "surveyFlag": info.get("surveyFlag"),
@@ -60,7 +60,7 @@ class AccountMixin:
         """
         url = self.url_base + "hes-gateway/terminal/tou/getEntranceInfo"
         data = await self._get(url)
-        return data.get("result", {})
+        return (data.get("result") or {})
 
     async def get_unread_count(self):
         """Get the count of unread push notification messages.
@@ -285,7 +285,7 @@ class AccountMixin:
         url = self.url_base + "hes-gateway/terminal/selectProgramFlag"
         params = {"gatewayId": self.gateway}
         data = await self._get(url, params=params)
-        return data.get("result", [])
+        return (data.get("result") or [])
 
     async def get_benefit_info(self, data_type: int = 1, day_time: str = None):
         """Get benefit/savings information.
@@ -316,7 +316,7 @@ class AccountMixin:
             "dayTime": day_time,
         }
         data = await self._get(url, params=params)
-        return data.get("result", {})
+        return (data.get("result") or {})
 
     async def get_gateway_alarm(self):
         """Get active gateway alarms.
@@ -359,7 +359,7 @@ class AccountMixin:
 
         try:
             data = await self._get(url, params=params)
-            return data.get("result", {})
+            return (data.get("result") or {})
         except KeyError:
             logger.warning(f"get_grid_profile_info: Response missing expected keys for requestType {requestType}")
             return {}

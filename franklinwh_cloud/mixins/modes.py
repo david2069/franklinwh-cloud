@@ -321,7 +321,7 @@ class ModesMixin:
         if not composite_result:
             return {"error": f"Composite info returned no result (code={composite.get('code')})"}
 
-        runtime = composite_result.get("runtimeData", {})
+        runtime = (composite_result.get("runtimeData") or {})
         current_work_mode = int(composite_result.get("currentWorkMode", 0))
         target_mode = int(requestedMode) if requestedMode is not None else current_work_mode
 
@@ -340,7 +340,7 @@ class ModesMixin:
         )
 
         # Off-grid state
-        solar_have_vo = composite_result.get("solarHaveVo", {})
+        solar_have_vo = (composite_result.get("solarHaveVo") or {})
         off_grid_reason = solar_have_vo.get(
             "offGridReason", runtime.get("offgridreason", 0)
         )
@@ -362,7 +362,7 @@ class ModesMixin:
             return {"error": f"TOU list returned error (code={tou_res.get('code') if tou_res else 'None'})"}
 
         tou_result = tou_res["result"]
-        tou_list = tou_result.get("list", [])
+        tou_list = (tou_result.get("list") or [])
 
         # Find the matching mode entry
         mode_entry = next(
@@ -497,7 +497,7 @@ class ModesMixin:
         """
         data = await self.get_gateway_tou_list()
         current_id = data["result"]["currendId"]
-        tou_list = data["result"].get("list", [])
+        tou_list = (data["result"].get("list") or [])
         results = []
         for entry in tou_list:
             wm = entry.get("workMode")

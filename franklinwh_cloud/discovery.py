@@ -326,7 +326,7 @@ def compile_capabilities(
     hw_ver = str(dev_res.get("sysHdVersion", "100"))
     try:
         catalog = get_catalog()
-        model_info = catalog.get("agate_models", {}).get(hw_ver, {})
+        model_info = (catalog.get("agate_models") or {}).get(hw_ver, {})
         agate_generation = model_info.get("generation", 1)
     except Exception:
         agate_generation = 1

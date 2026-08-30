@@ -78,7 +78,7 @@ class FranklinWHCloud:
             gateways_raw = await temp_client.get_home_gateway_list()
             
             # Unwrap the API envelope
-            gw_list = gateways_raw.get("result", []) if isinstance(gateways_raw, dict) else gateways_raw
+            gw_list = (gateways_raw.get("result") or []) if isinstance(gateways_raw, dict) else gateways_raw
             
             if not gw_list:
                 raise ValueError("No gateways found via get_home_gateway_list(). Cannot auto-bind Client.")
