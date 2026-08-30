@@ -8,6 +8,7 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
+| DEF-OPERATOR-RSSI-SCALE-UNSOURCED | Const / Mixins / CLI / Docs | The claim that `operatorRSSI` / `4GSignalStrength` use a **0-52 vendor scale** is asserted in 10 places, all as unsourced comments, and is **not supported by the corpus**. Evidence found while auditing after `DEF-CONNTYPE-ENCODING-WRONG`: `operatorRSSI` appears **4 times total, every one of them the value 22** — four samples of a single value cannot establish a range. `4GSignalStrength` does not appear in the corpus at all (the design doc quotes one instance of 45). Meanwhile `runtimeData.signal`, the mobile signal, has **20,542 samples spanning 0-99 and clustering at 20-22** — matching `operatorRSSI`'s only observed value, and it is an established 0-100 percentage (D3, same scan). That correlation suggests the two are the same quantity and that `operatorRSSI` is a **percentage**, making `22/52` wrong. **Deliberately not changed:** n=4 is too thin to justify flipping it, and asserting a percentage on this evidence would repeat the `DEF-CONNTYPE-ENCODING-WRONG` mistake in the opposite direction. **To resolve:** `tools/network_probe.py observe` over a period where cellular signal actually varies, or find where 52 originally came from. If it is a percentage, everything currently rendering `n/52` is understating a healthy signal. | 2026-08-30 |
 
 ### S3 — Medium
 
