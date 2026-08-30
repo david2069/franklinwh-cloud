@@ -467,7 +467,11 @@ async def run(client, *, json_output: bool = False):
             print_kv("Status", c("yellow", f'⚠ {conn_overview["error"]}'))
         else:
             primary = conn_overview.get("primary", {})
-            print_kv("Primary Link", primary.get("name"))
+            # "Active", never "Primary": the aGate selects its own transport and
+            # 17 of 19 observed changes followed no command at all (gotcha G9).
+            # Calling it "primary" implies a setting the user chose. There is
+            # none. DEF-DIAG-PRIMARY-LINK-WORDING.
+            print_kv("Active Link", primary.get("name"))
             print_kv("Device IP", primary.get("ip") or "—")
             print_kv("Network Gateway", primary.get("gateway") or "—")
 
