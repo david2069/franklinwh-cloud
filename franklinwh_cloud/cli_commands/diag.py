@@ -421,7 +421,9 @@ async def run(client, *, json_output: bool = False):
             if op.get("mac"):
                 rssi = op.get("rssi", "?")
                 dns = op.get("dns", "—")
-                print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi} dBm  DNS: {dns}')
+                # operatorRSSI is a 0-52 vendor scale, NOT dBm — gotcha G3.
+                # DEF-DIAG-RSSI-DBM.
+                print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi}/52 (vendor scale)  DNS: {dns}')
 
     # ── 5e. Connectivity Overview (Deep Scan) ────────────────────────
 
@@ -463,13 +465,19 @@ async def run(client, *, json_output: bool = False):
 
             print_kv("Backup Links", _fallback_summary(net_state, conn_overview))
 
-            # NOTE: these two still read 203/runtimeData and report 0.0 on
-            # hardware where 339/317 report real values — DEF-DIAG-SIGNAL-SOURCE,
-            # queued separately and deliberately not fixed here (AP-1).
             sig = conn_overview.get("signals", {})
             if "wifi_signal" in sig:
-                print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%")
-            if "mobile_signal" in sig:
+                src = sig.get("wifi_signal_source")
+                suffix = "" if src == "339" else c("dim", f"  (via {src})")
+                print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%{suffix}")
+            # 4G is reported on a 0-52 vendor scale, not as a percentage
+            # (DEF-DIAG-SIGNAL-SOURCE). Prefer the raw reading and only fall
+            # back to the runtimeData percentage, which reads 0.0 on hardware
+            # where the SIM is demonstrably active.
+            raw = sig.get("mobile_signal_raw")
+            if raw is not None:
+                print_kv("4G/Mobile Signal", f"{raw}/52 (vendor scale)")
+            elif "mobile_signal" in sig:
                 print_kv("4G/Mobile Signal", f"{sig.get('mobile_signal')}%")
 
             span = conn_overview.get("span_connected", False)
