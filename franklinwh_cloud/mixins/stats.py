@@ -98,7 +98,7 @@ class StatsMixin:
         #
         # Dual-gate: trigger get_grid_status() when EITHER signal is present, because the
         # API may report offgridreason before updating main_sw (observed live 2026-04-10).
-        main_sw_early = runtimedata_v2.get("main_sw", [])
+        main_sw_early = (runtimedata_v2.get("main_sw") or [])
         grid_relay_raw = main_sw_early[0] if main_sw_early else 1  # 1=CLOSED=connected default
         offgridreason_val = offgridreason if offgridreason is not None else 0
 
@@ -151,7 +151,7 @@ class StatsMixin:
         # under different names and adds unnecessary MQTT overhead on every poll.
         # Call get_power_info() explicitly when electrical metrics or extended relays
         # (gridRelay2, blackStartRelay, pvRelay2, BFPVApboxRelay) are required.
-        main_sw = runtimedata_v2.get("main_sw", [])
+        main_sw = (runtimedata_v2.get("main_sw") or [])
         grid_relay1  = main_sw[0] if len(main_sw) > 0 else 0
         oil_relay    = main_sw[1] if len(main_sw) > 1 else 0
         solar_relay1 = main_sw[2] if len(main_sw) > 2 else 0
@@ -251,10 +251,10 @@ class StatsMixin:
                 runtimedata_v2.get("name", "Unknown"),
                 runtimedata_v2.get("run_status", 0),
                 run_desc,
-                runtimedata_v2.get("fhpSn", []),
-                runtimedata_v2.get("fhpSoc", []),
-                runtimedata_v2.get("fhpPower", []),
-                runtimedata_v2.get("bms_work", []),
+                (runtimedata_v2.get("fhpSn") or []),
+                (runtimedata_v2.get("fhpSoc") or []),
+                (runtimedata_v2.get("fhpPower") or []),
+                (runtimedata_v2.get("bms_work") or []),
                 runtimedata_v2.get("t_amb", 0.0),
                 grid_relay1,
                 oil_relay,

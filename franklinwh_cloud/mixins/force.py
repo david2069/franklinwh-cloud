@@ -19,12 +19,12 @@ class ForceMixin:
         tou_res = await self.get_gateway_tou_list()
         prog_res = await self.get_programme_info()
         
-        runtime = res.get("result", {}).get("runtimeData", {})
+        runtime = ((res.get("result") or {}).get("runtimeData") or {})
         run_status = int(runtime.get("run_status", 0) or 0)
         mode = int(runtime.get("mode", 0) or 0)
         firmware_vpp_active = (run_status == 9 or mode == 9)
         
-        tou_result = tou_res.get("result", {})
+        tou_result = (tou_res.get("result") or {})
         vpp_vo = tou_result.get("todayVppVo") or {}
         vpp_soc_vo = tou_result.get("vppSocVo") or {}
         
@@ -75,8 +75,8 @@ class ForceMixin:
         composite = await self.get_device_composite_info()
         tou_res = await self.get_gateway_tou_list()
         
-        comp_res = composite.get("result", {})
-        tou_result = tou_res.get("result", {})
+        comp_res = (composite.get("result") or {})
+        tou_result = (tou_res.get("result") or {})
         
         prior_work_mode = comp_res.get("currentWorkMode", 0)
         prior_soc = 0
@@ -91,7 +91,7 @@ class ForceMixin:
             pass
             
         # Get prior SoC
-        tou_list = tou_result.get("list", [])
+        tou_list = (tou_result.get("list") or [])
         for entry in tou_list:
             if entry.get("workMode") == prior_work_mode:
                 prior_soc = entry.get("soc", 0)
@@ -169,15 +169,15 @@ class ForceMixin:
                 
             # Check Canary for firmware auto-release
             tou_res = await self.get_gateway_tou_list()
-            tou_result = tou_res.get("result", {})
-            for entry in tou_result.get("list", []):
+            tou_result = (tou_res.get("result") or {})
+            for entry in (tou_result.get("list") or []):
                 if entry.get("socExceedTimerEndTime") is not None:
                     logger.warning(f"[FWC:{session_id}] Canary Alert: 'socExceedTimerEndTime' is populated! Value: {entry.get('socExceedTimerEndTime')}")
             
             # Check VPP pre-emption
             comp_res = await self.get_device_composite_info()
-            runtime = comp_res.get("result", {}).get("runtimeData", {})
-            if runtime.get("run_status", 0) == 9 or tou_result.get("todayVppVo", {}).get("vppStatus") is not None:
+            runtime = ((comp_res.get("result") or {}).get("runtimeData") or {})
+            if runtime.get("run_status", 0) == 9 or (tou_result.get("todayVppVo") or {}).get("vppStatus") is not None:
                 if session.state != "SUSPENDED":
                     session.state = "SUSPENDED"
                     self._force_state.save(self.gateway, session, snapshot)
