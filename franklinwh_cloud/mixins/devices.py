@@ -1221,11 +1221,30 @@ class DevicesMixin:
             },
             "interfaces": interfaces,
             "cloud": {
-                # routerStatus is NOT a boolean (0, 1 and 4 all observed) — passed
-                # through unmapped until its semantics are established.
+                # `gateway_reachable` is the only claim in this block that is
+                # actually evidenced. It is tautological — this payload reached
+                # us through the cloud, so the cloud path works — and that is
+                # precisely why it is trustworthy. Everything else here is the
+                # gateway's SELF-REPORT, which has been observed reporting all
+                # three flags as zero while answering MQTT through the very
+                # cloud it claimed was down (design section 2.5a).
+                "gateway_reachable": True,
+                # Kept with their existing meaning and value so downstream
+                # consumers do not break. Do not gate anything on them.
                 "aws_connected": conn_status.get("awsStatus") == 1,
                 "internet": conn_status.get("netStatus") == 1,
+                # Raw self-reports, exposed for comparison. cmdType 317 and 339
+                # each carry an awsStatus and they have been observed
+                # disagreeing on the same gateway at the same moment (317 said
+                # 1, 339 said 0, and 317 matched observable reality).
+                # DEF-AWS-STATUS-SOURCE.
+                "aws_status_339_raw": conn_status.get("awsStatus"),
+                "aws_status_317_raw": net_info.get("awsStatus"),
+                "net_status_raw": conn_status.get("netStatus"),
+                # routerStatus is NOT a boolean (0, 1 and 4 all observed) —
+                # passed through unmapped until its semantics are established.
                 "router_status_raw": conn_status.get("routerStatus"),
+                "self_report_trusted": False,
             },
             "linked_transports": linked,
             "available_transports": available,
