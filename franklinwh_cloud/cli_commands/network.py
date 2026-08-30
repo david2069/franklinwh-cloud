@@ -75,6 +75,20 @@ def _render_status(state):
             "observed contradicting reality (design 2.5a). Do not act on it."
         )
 
+    local = state.get("local") or {}
+    if local.get("probed"):
+        if local.get("reachable"):
+            print_kv("Local", c("green", f"✓ answering on :{local['port']}")
+                              + f"   ({local.get('host')})")
+        else:
+            # Not a fault on its own — you may simply not be on its LAN.
+            print_kv("Local", c("dim", "✗ no answer on :9000 or :22")
+                              + f"   ({local.get('host')})")
+            print_warning(
+                "A local miss is only meaningful from the gateway's own LAN. "
+                "From anywhere else it says nothing about the gateway."
+            )
+
     print_section("🔌", "Interfaces")
     for iface in state.get("interfaces") or []:
         signal = iface.get("signal_pct")
@@ -105,9 +119,9 @@ def _render_status(state):
         print_warning("No fallback — a network write could strand this gateway.")
 
 
-async def _cmd_status(client, *, json_output, watch):
+async def _cmd_status(client, *, json_output, watch, probe_local=False):
     if not watch:
-        state = await client.get_network_state()
+        state = await client.get_network_state(probe_local=probe_local)
         if json_output:
             print_json_output(state)
         else:
@@ -121,7 +135,7 @@ async def _cmd_status(client, *, json_output, watch):
         while True:
             try:
                 client._invalidate_network_cache()
-                state = await client.get_network_state()
+                state = await client.get_network_state(probe_local=probe_local)
                 print("\033[2J\033[H", end="")
                 _render_status(state)
             except Exception as e:
@@ -264,7 +278,9 @@ async def run(client, args):
     try:
         if action == "status":
             return await _cmd_status(
-                client, json_output=args.json, watch=getattr(args, "watch", None)
+                client, json_output=args.json,
+                watch=getattr(args, "watch", None),
+                probe_local=getattr(args, "probe_local", False),
             )
         if action == "scan":
             return await _cmd_scan(
@@ -293,6 +309,11 @@ def register(subs):
     st = actions.add_parser("status", help="What is the aGate connected on?")
     st.add_argument("--watch", type=int, nargs="?", const=5, metavar="SECS",
                     help="Refresh every SECS seconds (default 5)")
+    st.add_argument("--probe-local", action="store_true",
+                    help="Also check whether the aGate answers on the LAN "
+                         "(TCP 9000, else 22). Distinguishes 'gateway alive, "
+                         "cloud path broken' from 'gateway down'. Only "
+                         "meaningful from the gateway's own network.")
 
     sc = actions.add_parser("scan", help="List visible WiFi networks by signal")
     sc.add_argument("--min-rssi", type=int, default=0, metavar="PCT",

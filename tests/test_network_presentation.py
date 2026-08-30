@@ -27,7 +27,7 @@ async def test_diag_says_active_link_not_primary_link():
             return {"primary": {"id": 3, "name": "WiFi"}, "backups": [],
                     "signals": {}}
 
-        async def get_network_state(self):
+        async def get_network_state(self, probe_local=False):
             return {"active": {"key": "wifi"}, "interfaces": [],
                     "available_transports": ["wifi"]}
 
@@ -55,7 +55,7 @@ async def test_diag_json_primary_key_is_unchanged():
             return {"primary": {"id": 3, "name": "WiFi"}, "backups": [],
                     "signals": {}}
 
-        async def get_network_state(self):
+        async def get_network_state(self, probe_local=False):
             return {"active": {"key": "wifi"}, "interfaces": [],
                     "available_transports": ["wifi"]}
 

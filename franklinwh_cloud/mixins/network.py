@@ -43,6 +43,84 @@ NETWORK_CACHED_READERS = (
     "get_wifi_config",           # cmdType 337 — SSID correlation in the verify loop
     "get_connectivity_overview", # derived from network_info; never used as a verifier
 )
+# ── local reachability probe ─────────────────────────────────────────
+
+#: The aGate's local broker protocol, the "Direct Connection" the mobile app
+#: uses over the gateway's own hotspot. Verified against franklinwh-local
+#: (``franklinwh_local/transport.py`` ``DEFAULT_PORT``). It also answers on the
+#: LAN address on the firmware observed here. Preferred probe target because it
+#: proves the APPLICATION is up, and because it is a product feature FranklinWH
+#: has reason to keep.
+LOCAL_API_PORT = 9000
+
+#: Fallback only. SSH answering proves the box booted, not that the API works,
+#: and it is incidental rather than a feature — a hardening release could close
+#: it, at which point anything depending on it reports a healthy gateway dead.
+LOCAL_SSH_PORT = 22
+
+#: Probed for information only, never for liveness: Modbus listens only when
+#: explicitly enabled, so a closed port is evidence of nothing.
+LOCAL_MODBUS_PORT = 502
+
+
+async def probe_tcp(host, port, timeout_s=1.5):
+    """Return True if a TCP connect to ``host:port`` succeeds.
+
+    Runs the blocking connect off the event loop. The pre-existing probe in
+    ``get_connectivity_overview``'s deep scan blocks it for up to 1.5 s.
+    """
+    import socket
+
+    def _connect():
+        try:
+            with socket.create_connection((host, port), timeout=timeout_s):
+                return True
+        except OSError:
+            return False
+
+    try:
+        return await asyncio.to_thread(_connect)
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+async def probe_local_reachability(host, *, timeout_s=1.5):
+    """Is the aGate answering on the LAN, and on which port?
+
+    A **discriminator, not a verdict.** Local reachability proves the gateway
+    is powered, on the network and holding an address. It proves nothing about
+    whether it can reach FranklinWH — a gateway with a dead WAN, broken DNS or
+    an expired certificate answers these ports perfectly while being exactly as
+    disconnected as one that is switched off.
+
+    Its value is in combination with cloud round-trip success:
+
+    ==========  ==========  ==================================================
+    local       cloud       meaning
+    ==========  ==========  ==================================================
+    yes         yes         healthy
+    yes         no          gateway alive, WAN or cloud path broken
+    no          yes         the caller is not on the gateway's LAN
+    no          no          gateway down, or caller off-network entirely
+    ==========  ==========  ==================================================
+
+    Only meaningful from the same LAN, so a negative result is never by itself
+    evidence of a fault, and this must never gate a write.
+
+    Returns ``{"probed", "reachable", "port", "host"}``. ``reachable`` is None
+    when there was no address to probe — which is the case mid-reassociation,
+    exactly when it would be most wanted.
+    """
+    if not host or host in UNASSIGNED_IPS:
+        return {"probed": False, "reachable": None, "port": None, "host": None}
+
+    for port in (LOCAL_API_PORT, LOCAL_SSH_PORT):
+        if await probe_tcp(host, port, timeout_s=timeout_s):
+            return {"probed": True, "reachable": True, "port": port,
+                    "host": host}
+    return {"probed": True, "reachable": False, "port": None, "host": host}
+
+
 # ── P2-2 preflight ───────────────────────────────────────────────────
 
 #: Minimum target signal percentage accepted by default. Working links are

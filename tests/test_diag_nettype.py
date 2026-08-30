@@ -42,7 +42,7 @@ async def _active_network_line(current_net_type):
             return {"primary": {"id": current_net_type, "name": "x"},
                     "backups": [], "signals": {}}
 
-        async def get_network_state(self):
+        async def get_network_state(self, probe_local=False):
             return {"active": {"key": "wifi"}, "interfaces": [],
                     "available_transports": ["wifi"]}
 
