@@ -22,6 +22,31 @@ def main():
     geo_lat = re.compile(r'-33\.\d{5,}')
     geo_lon = re.compile(r'151\.\d{5,}')
     serial_regex = re.compile(r'100[56][A-Z0-9]{16}')
+    mac_regex = re.compile(r'\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b')
+
+    # ── MAC addresses ─────────────────────────────────────────────────────────
+    # Added 2026-08-30 after a real cellular-modem MAC was copied out of live
+    # terminal output into a test fixture and committed to this PUBLIC repo.
+    # The scanner passed, because it had never looked for MACs. Reading caught
+    # it; reading is not a control.
+    #
+    # Obvious placeholders are fine — the point is to make fabricated values the
+    # path of least resistance, not to ban the notation.
+    mac_placeholder_prefixes = ("AA:BB:CC:", "DE:AD:BE:", "00:00:00:", "11:22:33:")
+
+    # Real MACs already committed to this repo before the check existed, and
+    # therefore already public. Listing them keeps CI honest about NEW leaks
+    # instead of failing permanently on history nobody is going to rewrite.
+    # Removing them for real means rewriting main's history — a separate and
+    # much larger decision. Do NOT extend this list to admit a new address;
+    # scrub the address instead.
+    known_public_macs = {
+        "4C:24:CE:67:3A:7C",   # aGate WiFi
+        "88:C9:B3:20:00:80",   # aGate eth0
+        "88:C9:B3:21:2C:B8",   # aGate eth1
+        "E6:4F:68:B1:91:5C",   # aGate cellular
+        "3A:24:91:B4:CA:64",   # support-snapshot fixture
+    }
 
     # Allowed emails / version-string false positives
     ignore_emails = [
@@ -120,6 +145,16 @@ def main():
                     found += 1
                 if geo_lon.search(line):
                     print(f"PII Leak [Longitude]: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                    found += 1
+
+                # ── MAC addresses ─────────────────────────────────────────
+                for match in mac_regex.finditer(line):
+                    mac = match.group(0).upper()
+                    if mac.startswith(mac_placeholder_prefixes):
+                        continue
+                    if mac in known_public_macs:
+                        continue
+                    print(f"PII Leak [MAC {mac}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
                     found += 1
 
                 # ── Serial numbers ────────────────────────────────────────
