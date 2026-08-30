@@ -8,9 +8,13 @@ Used for device discovery and HA config flow integration.
 # This is the encoding used by commSetPara.currentNetType (cmdType 317) and by
 # the extended cmdType 339 payload.
 #
-# WARNING: this is NOT the same encoding as Current.network_connection, which
-# comes from runtimeData.connType and uses 0=4G, 1=WiFi, 2=Ethernet. The two are
-# incompatible — never map one through the other.
+# runtimeData.connType (cmdType 203), surfaced as Current.network_connection,
+# uses THIS SAME encoding. A long-standing comment claimed it was
+# 0=4G, 1=WiFi, 2=Ethernet and that the two were incompatible. That claim was
+# never sourced and is contradicted by the corpus: across 20,471 runtimeData
+# samples, connType is observed only as {2: 559, 3: 19797, 4: 115}. Values 0
+# and 1 never occur, and 3 dominating matches a gateway that lives on WiFi.
+# See DEF-CONNTYPE-ENCODING-WRONG.
 NETWORK_TYPES = {
     1: "Ethernet 1",
     2: "Ethernet 2",
@@ -18,17 +22,6 @@ NETWORK_TYPES = {
     4: "4G Mobile"
 }
 
-# The OTHER encoding. runtimeData.connType (cmdType 203), surfaced as
-# Current.network_connection. It exists because the warning above was being
-# ignored in practice: cli_commands/status.py rendered connType through
-# NETWORK_TYPES and so reported a gateway on WiFi as "Ethernet 1".
-#
-# Never map one through the other. If you need a label for connType, use this.
-CONN_TYPE_NAMES = {
-    0: "4G Mobile",
-    1: "WiFi",
-    2: "Ethernet",
-}
 
 # currentNetType -> the interface key used by get_network_info() / get_network_state()
 NETWORK_TYPE_KEYS = {
