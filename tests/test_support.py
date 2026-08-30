@@ -186,11 +186,18 @@ class TestAnalyzeConnectivity:
         assert "0.0.0.0" in wifi_dhcp[0]["detail"]
 
     def test_4g_fallback_warning(self):
-        """connType 4/5/6/13 with WiFi configured should warn."""
+        """currentNetType 4 (cellular) with WiFi configured should warn.
+
+        Was written as currentNetType=5. That is a bitmask value from the old
+        NET_TYPES table and cannot occur: currentNetType is positional with the
+        domain 1-4 (const.devices.NETWORK_TYPES; the HAR corpus shows 2, 3 and
+        4). The fixture was encoding the defect, so it asserted behaviour for a
+        value the gateway never emits. DEF-SUPPORT-NETTYPE-ENUM.
+        """
         snapshot = {
             "connectivity": {"routerStatus": 1, "netStatus": 1, "awsStatus": 1},
             "network": {
-                "currentNetType": 5,
+                "currentNetType": 4,
                 "wifi": {"mac": "4C:24:CE:67:3A:7C", "ip": "0.0.0.0"},
                 "eth0": {"mac": "", "ip": ""},
                 "eth1": {"mac": "", "ip": ""},
@@ -335,3 +342,83 @@ class TestCompareSnapshots:
         new = {"data": {"versions": {"ibgVersion": "V2"}, "power": {"solar_kw": 2.0}}}
         changes = compare_snapshots(old, new, scope="all")
         assert len(changes) == 2
+
+
+class TestSupportNetworkEnum:
+    """DEF-SUPPORT-NETTYPE-ENUM — currentNetType must use the positional map.
+
+    support.py held its own bitmask-style table indexed with currentNetType,
+    the same defect already fixed in diag. All three call sites read
+    currentNetType; the variable and key names saying "connType" are a misnomer
+    and are what disguised it.
+    """
+
+    def test_ethernet_1_is_not_labelled_wifi(self):
+        from franklinwh_cloud.cli_commands.support import NET_TYPES
+
+        assert NET_TYPES.get(1) == "Ethernet 1"
+
+    def test_wifi_is_labelled_wifi(self):
+        from franklinwh_cloud.cli_commands.support import NET_TYPES
+
+        assert NET_TYPES.get(3) == "WiFi"
+
+    def test_the_bitmask_table_is_gone(self):
+        from franklinwh_cloud.cli_commands.support import NET_TYPES
+
+        assert 5 not in NET_TYPES, "bitmask values cannot occur for currentNetType"
+        assert 13 not in NET_TYPES
+        assert 0 not in NET_TYPES, "0 was 'None'; the domain starts at 1"
+
+    def test_support_shares_the_canonical_table(self):
+        from franklinwh_cloud.cli_commands.support import NET_TYPES
+        from franklinwh_cloud.const.devices import NETWORK_TYPES
+
+        assert NET_TYPES is NETWORK_TYPES, "no local copy to drift again"
+
+    def test_an_impossible_value_does_not_raise_a_4g_warning(self):
+        """5 was a dead branch — it can never be emitted."""
+        from franklinwh_cloud.cli_commands.support import analyze_connectivity
+
+        snapshot = {
+            "connectivity": {"routerStatus": 1, "netStatus": 1, "awsStatus": 1},
+            "network": {
+                "currentNetType": 5,
+                "wifi": {"mac": "AA:BB:CC:DD:EE:01", "ip": "0.0.0.0"},
+                "eth0": {"mac": "", "ip": ""}, "eth1": {"mac": "", "ip": ""},
+                "operator": {"mac": "AA:BB:CC:DD:EE:02", "rssi": 21},
+            },
+            "wifi_config": {}, "switches": {},
+        }
+        findings = analyze_connectivity(snapshot)
+        assert [f for f in findings if f["check"] == "4G Fallback"] == []
+
+
+class TestStatusConnTypeEnum:
+    """DEF-STATUS-CONNTYPE-ENUM — the genuinely different encoding.
+
+    runtimeData.connType is 0=4G, 1=WiFi, 2=Ethernet. status.py rendered it
+    through NETWORK_TYPES (1=Ethernet 1, 2=Ethernet 2, 3=WiFi, 4=4G Mobile),
+    so a gateway on WiFi reported as "Ethernet 1" — precisely the mapping
+    const/devices.py warns against, three lines after importing it.
+    """
+
+    def test_conn_type_names_match_the_documented_encoding(self):
+        from franklinwh_cloud.const.devices import CONN_TYPE_NAMES
+
+        assert CONN_TYPE_NAMES == {0: "4G Mobile", 1: "WiFi", 2: "Ethernet"}
+
+    def test_wifi_is_not_reported_as_ethernet(self):
+        from franklinwh_cloud.const.devices import CONN_TYPE_NAMES, NETWORK_TYPES
+
+        assert CONN_TYPE_NAMES[1] == "WiFi"
+        assert NETWORK_TYPES[1] == "Ethernet 1", "the two encodings still differ"
+
+    def test_status_does_not_import_network_types_for_conn_type(self):
+        import inspect
+
+        from franklinwh_cloud.cli_commands import status
+
+        src = inspect.getsource(status)
+        assert "CONN_TYPE_NAMES" in src
+        assert "NETWORK_TYPES.get(conn_type" not in src

@@ -18,6 +18,18 @@ NETWORK_TYPES = {
     4: "4G Mobile"
 }
 
+# The OTHER encoding. runtimeData.connType (cmdType 203), surfaced as
+# Current.network_connection. It exists because the warning above was being
+# ignored in practice: cli_commands/status.py rendered connType through
+# NETWORK_TYPES and so reported a gateway on WiFi as "Ethernet 1".
+#
+# Never map one through the other. If you need a label for connType, use this.
+CONN_TYPE_NAMES = {
+    0: "4G Mobile",
+    1: "WiFi",
+    2: "Ethernet",
+}
+
 # currentNetType -> the interface key used by get_network_info() / get_network_state()
 NETWORK_TYPE_KEYS = {
     1: "eth0",
