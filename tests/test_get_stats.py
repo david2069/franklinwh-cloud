@@ -99,6 +99,9 @@ class TestGetStatsResponseParsing:
             c.stale_cache = None
             c.edge_tracker = None
             c._not_grid_tied = False   # default: grid-tied (set by Client.__init__ in production)
+            # In-memory only (state_dir=None) so tests never touch disk.
+            from franklinwh_cloud.heartbeat import GatewayHeartbeat
+            c._heartbeat = GatewayHeartbeat("test-gateway", None)
             yield c
 
     @respx.mock
@@ -269,6 +272,9 @@ class TestGetStatsConditionalCalls:
             c.stale_cache = None
             c.edge_tracker = None
             c._not_grid_tied = False   # default: grid-tied (set by Client.__init__ in production)
+            # In-memory only (state_dir=None) so tests never touch disk.
+            from franklinwh_cloud.heartbeat import GatewayHeartbeat
+            c._heartbeat = GatewayHeartbeat("test-gateway", None)
             yield c
 
     @respx.mock

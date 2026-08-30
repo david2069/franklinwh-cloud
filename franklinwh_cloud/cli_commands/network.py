@@ -42,7 +42,44 @@ def _bars(pct):
     return "▁▂▄▆█"[filled] * 1 + f" {int(pct):3d}%"
 
 
-def _render_status(state):
+def _fmt_age(seconds):
+    """Human-readable age. Warranty questions are asked in hours and days."""
+    if seconds is None:
+        return "unknown"
+    s = int(seconds)
+    if s < 90:
+        return f"{s}s"
+    if s < 5400:
+        return f"{s // 60}m"
+    if s < 172800:
+        return f"{s // 3600}h"
+    return f"{s // 86400}d"
+
+
+def _render_heartbeat(hb):
+    """Cloud-contact history — the part a single reading cannot show."""
+    if not hb or not hb.get("last_success"):
+        if hb and hb.get("last_outcome") == "failure":
+            print_warning(
+                f"No successful gateway contact on record, and the last "
+                f"{hb.get('consecutive_failures')} attempt(s) failed."
+            )
+        return
+
+    offline = hb.get("offline_for_s")
+    if hb.get("last_outcome") == "failure" and offline:
+        # This is the warranty-relevant state, and the only one a single
+        # reading could never have told you.
+        print_error(
+            f"No cloud contact for {_fmt_age(offline)} "
+            f"({hb['consecutive_failures']} consecutive failures). "
+            f"Last confirmed: {hb['last_success']}"
+        )
+    else:
+        print_kv("Last contact", f"{hb['last_success']}   ({_fmt_age(offline)} ago)")
+
+
+def _render_status(state, heartbeat=None):
     """The section 6 terminal sketch."""
     print_header(f"aGate Network — {state.get('gateway_id')}")
 
@@ -110,6 +147,8 @@ def _render_status(state):
             f"{(iface.get('ip') or '—'):<16}{sig}  {'  '.join(flags)}",
         )
 
+    _render_heartbeat(heartbeat)
+
     fallbacks = [t for t in (state.get("available_transports") or [])
                  if t != (active.get("key"))]
     print_section("🛟", "Write safety")
@@ -119,13 +158,20 @@ def _render_status(state):
         print_warning("No fallback — a network write could strand this gateway.")
 
 
+def _heartbeat_of(client):
+    """Best-effort: a client built without a heartbeat must still render."""
+    getter = getattr(client, "get_gateway_heartbeat", None)
+    return getter() if getter else None
+
+
 async def _cmd_status(client, *, json_output, watch, probe_local=False):
     if not watch:
         state = await client.get_network_state(probe_local=probe_local)
+        hb = _heartbeat_of(client)
         if json_output:
-            print_json_output(state)
+            print_json_output({**state, "heartbeat": hb})
         else:
-            _render_status(state)
+            _render_status(state, hb)
         return EXIT_OK
 
     # --watch is the natural "did it work" view during a cutover, so an
@@ -137,7 +183,7 @@ async def _cmd_status(client, *, json_output, watch, probe_local=False):
                 client._invalidate_network_cache()
                 state = await client.get_network_state(probe_local=probe_local)
                 print("\033[2J\033[H", end="")
-                _render_status(state)
+                _render_status(state, _heartbeat_of(client))
             except Exception as e:
                 print(c("yellow", f"⟳ transitioning — gateway unreachable ({type(e).__name__})"))
             await asyncio.sleep(watch)

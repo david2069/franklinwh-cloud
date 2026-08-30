@@ -240,6 +240,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         not_grid_tied: bool = False,
         track_python_methods: bool = False,
         force_state_dir: str | None = None,
+        heartbeat: bool = True,
+        heartbeat_dir: str | None = None,
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -306,6 +308,20 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         fs_dir = force_state_dir or Path(os.path.expanduser("~/.franklinwh/force_state"))
         self._force_state = ForceStateStore(fs_dir)
         self._force_audit = ForceAuditLog(fs_dir)
+
+        # Cloud-contact heartbeat. Tracks whether GATEWAY round trips are
+        # succeeding, which is the only trustworthy uptime signal — the
+        # gateway's own awsStatus flags have been observed reading zero while
+        # answering through the cloud. FEAT-CLOUD-UPTIME-HEARTBEAT.
+        #
+        # In-memory always; the file only exists so a restart does not lose
+        # the onset of an outage. Nothing is written until an MQTT call is
+        # actually made, so constructing a Client touches no disk.
+        from franklinwh_cloud.heartbeat import GatewayHeartbeat
+        hb_dir = None
+        if heartbeat:
+            hb_dir = heartbeat_dir or Path(os.path.expanduser("~/.franklinwh/heartbeat"))
+        self._heartbeat = GatewayHeartbeat(gateway, hb_dir)
 
         self._dynamic_modes_cache: dict[int, str] | None = None
         self._canary_baseline_version = "APP2.11.0"
@@ -765,22 +781,53 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         return temp.replace('"DATA"', blob.decode("utf-8"))
 
     async def _mqtt_send(self, payload):
+        """Send one command to the gateway and return the raw response.
+
+        This is the single chokepoint for gateway round trips, and therefore
+        where the cloud-contact heartbeat is recorded. A response here proves
+        the gateway is talking to the cloud; a REST call succeeding would only
+        prove that *we* reached the cloud. FEAT-CLOUD-UPTIME-HEARTBEAT.
+        """
         url = self.url_base + "hes-gateway/terminal/sendMqtt"
 
-        res = await self._post(url, payload)
-        code = res.get("code")
-        if code == 102:
-            raise DeviceTimeoutException(res.get("message"))
-        if code == 136:
-            raise GatewayOfflineException(res.get("message"))
-        if code != 200:
-            raise FranklinWHError(
-                f"Command failed gracefully with server rejection: "
-                f"{code} - {res.get('message')}",
-                code=code,
-            )
+        try:
+            res = await self._post(url, payload)
+            code = res.get("code")
+            if code == 102:
+                raise DeviceTimeoutException(res.get("message"))
+            if code == 136:
+                raise GatewayOfflineException(res.get("message"))
+            if code != 200:
+                raise FranklinWHError(
+                    f"Command failed gracefully with server rejection: "
+                    f"{code} - {res.get('message')}",
+                    code=code,
+                )
+        except Exception:
+            self._heartbeat.record_failure()
+            raise
 
+        self._heartbeat.record_success()
         return res
+
+    def get_gateway_heartbeat(self) -> dict:
+        """When did this gateway last complete a cloud round trip?
+
+        Returns ``{gateway_id, last_success, last_attempt, last_outcome,
+        consecutive_failures, offline_for_s, persisted}``.
+
+        Note
+        ----
+        Reading this after a *successful* call is nearly tautological —
+        ``offline_for_s`` will be 0, because you just proved reachability. Its
+        value is across invocations: when a call raises
+        ``GatewayOfflineException``, ask this how long the outage has been
+        running. Persisted state means the answer survives a restart.
+
+        Thresholds are deliberately not implemented here. Home Assistant
+        already polls continuously and should own them.
+        """
+        return self._heartbeat.snapshot()
 
     async def get_resolved_capabilities(self) -> ResolvedCapabilities:
         """Resolve and freeze system capabilities based on live Cloud API responses.

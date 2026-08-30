@@ -30,6 +30,11 @@ def _client(response):
     c = MagicMock(spec=Client)
     c.url_base = "https://example.invalid/"
     c._post = AsyncMock(return_value=response)
+    # A real heartbeat, in-memory only, so _mqtt_send's recording path is
+    # genuinely exercised rather than absorbed by a mock. spec=Client does not
+    # provide it because it is an instance attribute set in __init__.
+    from franklinwh_cloud.heartbeat import GatewayHeartbeat
+    c._heartbeat = GatewayHeartbeat("test-gateway", None)
     c._mqtt_send = Client._mqtt_send.__get__(c)
     return c
 
