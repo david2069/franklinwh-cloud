@@ -57,7 +57,7 @@ def _fallback_summary(net_state, conn_overview):
         return c("dim", "None viable")
 
     # ── legacy derivation (network state unavailable) ────────────────
-    backups = conn_overview.get("backups", [])
+    backups = (conn_overview.get("backups") or [])
     viable = [
         b for b in backups
         if b.get("ip") not in (None, "", "0.0.0.0")
@@ -153,7 +153,7 @@ async def run(client, *, json_output: bool = False):
             "current_pop": et.get("current_pop"),
             "total_requests": et.get("total_cf_requests", 0),
             "cache_hit_rate": et.get("cache_hit_rate", "—"),
-            "distribution_ids": et.get("distribution_ids", []),
+            "distribution_ids": (et.get("distribution_ids") or []),
             "edge_transitions": et.get("edge_transitions", 0),
         }
         checks_passed += 1
@@ -181,9 +181,9 @@ async def run(client, *, json_output: bool = False):
     device_info = {}
     try:
         res = await client.get_device_info()
-        result = res.get("result", {})
+        result = (res.get("result") or {})
 
-        apower_list = result.get("apowerList", [])
+        apower_list = (result.get("apowerList") or [])
         batteries = []
         for ap in apower_list:
             batteries.append({
@@ -226,7 +226,7 @@ async def run(client, *, json_output: bool = False):
                 flags.append("Off-Grid")
             print_kv("Features", ", ".join(flags) if flags else "None detected")
 
-            for bat in device_info.get("batteries", []):
+            for bat in (device_info.get("batteries") or []):
                 sn = bat["serial"]
                 sn_short = sn[-6:] if len(str(sn)) > 6 else sn
                 print_kv(f"aPower {sn_short}", f'{bat["rated_power_w"]}W / {bat["capacity_wh"]}Wh')
@@ -343,7 +343,7 @@ async def run(client, *, json_output: bool = False):
 
     if not json_output and "error" not in gateway_info:
         try:
-            solar_vo = data.get("solarHaveVo", {})
+            solar_vo = (data.get("solarHaveVo") or {})
             if solar_vo:
                 solar_ports = []
                 if solar_vo.get("installProximalsolar"):
@@ -416,7 +416,7 @@ async def run(client, *, json_output: bool = False):
             print_kv("AWS/Cloud", aws_text)
 
             for iface, label in [("wifi", "WiFi"), ("eth0", "Ethernet 0"), ("eth1", "Ethernet 1")]:
-                idata = net_info.get(iface, {})
+                idata = (net_info.get(iface) or {})
                 mac = idata.get("mac")
                 if mac:
                     dhcp = c("green", "DHCP") if idata.get("dhcp") else c("dim", "Static")
@@ -425,7 +425,7 @@ async def run(client, *, json_output: bool = False):
                     dns = idata.get("dns", "—")
                     print_kv(f"{label}", f'{mac}  {dhcp}  IP: {ip}  GW: {gw}  DNS: {dns}')
 
-            op = net_info.get("operator", {})
+            op = (net_info.get("operator") or {})
             if op.get("mac"):
                 rssi = op.get("rssi", "?")
                 dns = op.get("dns", "—")
@@ -466,7 +466,7 @@ async def run(client, *, json_output: bool = False):
         if "error" in conn_overview:
             print_kv("Status", c("yellow", f'⚠ {conn_overview["error"]}'))
         else:
-            primary = conn_overview.get("primary", {})
+            primary = (conn_overview.get("primary") or {})
             # "Active", never "Primary": the aGate selects its own transport and
             # 17 of 19 observed changes followed no command at all (gotcha G9).
             # Calling it "primary" implies a setting the user chose. There is
@@ -477,7 +477,7 @@ async def run(client, *, json_output: bool = False):
 
             print_kv("Backup Links", _fallback_summary(net_state, conn_overview))
 
-            sig = conn_overview.get("signals", {})
+            sig = (conn_overview.get("signals") or {})
             if "wifi_signal" in sig:
                 src = sig.get("wifi_signal_source")
                 suffix = "" if src == "339" else c("dim", f"  (via {src})")

@@ -247,7 +247,7 @@ def _render_flags(snap):
     ])
 
     # MAC-1 flag
-    api_nulls = snap.region_quirks.get("api_null_fields", [])
+    api_nulls = (snap.region_quirks.get("api_null_fields") or [])
     is_us = snap.site.country_id == 2
     if f.mac1_detected:
         flags.append(("MAC-1 (MSA)", True, "Detected"))
@@ -306,11 +306,11 @@ def _render_accessories(snap):
     print_section("🔌", f"Accessories ({len(acc.items)} registered)")
     from franklinwh_cloud.mixins.discover import get_catalog
     catalog = get_catalog()
-    quirks = catalog.get("accessory_quirks", {})
+    quirks = (catalog.get("accessory_quirks") or {})
     for item in acc.items:
         # Look up model/SKU from catalog by type
         model_info = ""
-        for acc_id, acc_data in catalog.get("accessories", {}).items():
+        for acc_id, acc_data in (catalog.get("accessories") or {}).items():
             if acc_data.get("type") == item.type_name and acc_data.get("country_id") == snap.site.country_id:
                 model_info = f"  Model: {acc_data.get('name', '')}  SKU: {acc_data.get('sku', '')}"
                 break
@@ -426,7 +426,7 @@ def _render_warranty(snap):
 def _render_programmes(snap):
     """Render programme info (Tier 2+)."""
     # If the region doesn't support programme lists, skip rendering completely
-    if "programmeList" in snap.region_quirks.get("api_null_fields", []):
+    if "programmeList" in (snap.region_quirks.get("api_null_fields") or []):
         return
         
     p = snap.programmes
