@@ -157,3 +157,68 @@ def test_schema_renders_unknown_dhcp_state_as_dash():
     ])
     row = _iface_row(out, "4g")
     assert "static" not in row and "dhcp" not in row
+
+
+# ── evidenced reachability vs gateway self-report ────────────────────
+
+async def test_net_status_leads_with_evidenced_reachability(capsys):
+    """The only trustworthy claim: this reading arrived through the cloud."""
+    state = {**STATE, "cloud": {"gateway_reachable": True,
+                                "aws_connected": False, "internet": False,
+                                "router_status_raw": 0}}
+    await netcmd.run(_CliClient(state=state), _args())
+    out = capsys.readouterr().out
+
+    assert "reachable" in out
+    assert "arrived through it" in out
+
+
+async def test_net_status_labels_the_flags_as_a_self_report(capsys):
+    """They are the gateway's opinion, not an observation."""
+    state = {**STATE, "cloud": {"gateway_reachable": True,
+                                "aws_connected": False, "internet": False,
+                                "router_status_raw": 0}}
+    await netcmd.run(_CliClient(state=state), _args())
+    out = capsys.readouterr().out
+
+    assert "self-report" in out.lower()
+    assert "Cloud: AWS ✗" not in out, "must not present the flag as the verdict"
+
+
+def test_network_state_exposes_both_raw_aws_flags():
+    """DEF-AWS-STATUS-SOURCE — 317 and 339 have been seen disagreeing."""
+    import inspect
+
+    from franklinwh_cloud.mixins import devices
+
+    src = inspect.getsource(devices.DevicesMixin.get_network_state)
+    assert "aws_status_317_raw" in src
+    assert "aws_status_339_raw" in src
+    assert "gateway_reachable" in src
+
+
+def test_schema_health_check_reports_the_flag_disagreement():
+    from franklinwh_cloud.cli_commands.schema import network_health
+
+    findings = network_health({
+        "interfaces": [],
+        "available_transports": ["wifi", "4g"],
+        "cloud": {"gateway_reachable": True, "aws_connected": False,
+                  "aws_status_339_raw": 0, "aws_status_317_raw": 1},
+    })
+    unreliable = [f for f in findings if f["code"] == "cloud_flags_unreliable"]
+    assert unreliable, "the caveat must still fire"
+    assert "317 reports awsStatus=1" in unreliable[0]["detail"]
+
+
+def test_schema_health_check_omits_the_comparison_when_flags_agree():
+    from franklinwh_cloud.cli_commands.schema import network_health
+
+    findings = network_health({
+        "interfaces": [],
+        "available_transports": ["wifi", "4g"],
+        "cloud": {"gateway_reachable": True, "aws_connected": False,
+                  "aws_status_339_raw": 0, "aws_status_317_raw": 0},
+    })
+    unreliable = [f for f in findings if f["code"] == "cloud_flags_unreliable"]
+    assert "317 reports" not in unreliable[0]["detail"]

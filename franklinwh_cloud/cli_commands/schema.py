@@ -338,11 +338,23 @@ def network_health(state):
 
     cloud = state.get("cloud", {})
     if not cloud.get("aws_connected"):
+        # Surface the disagreement between the two self-reports rather than
+        # just the one. DEF-AWS-STATUS-SOURCE.
+        raw_339 = cloud.get("aws_status_339_raw")
+        raw_317 = cloud.get("aws_status_317_raw")
+        detail = (
+            f"cmdType 339 reports awsStatus={raw_339}, yet this data arrived through "
+            f"the cloud. These flags have been observed contradicting reality — do "
+            f"not gate anything on them."
+        )
+        if raw_317 is not None and raw_317 != raw_339:
+            detail += (
+                f" cmdType 317 reports awsStatus={raw_317} for the same gateway at "
+                f"the same moment, and it is the one matching observable reality. "
+                f"Use round-trip success, not either flag."
+            )
         findings.append({
-            "level": "INFO", "code": "cloud_flags_unreliable",
-            "detail": "cmdType 339 reports awsStatus=0, yet this data arrived through the "
-                      "cloud. These flags have been observed contradicting reality — do "
-                      "not gate anything on them.",
+            "level": "INFO", "code": "cloud_flags_unreliable", "detail": detail,
         })
 
     order = {"WARN": 0, "INFO": 1}

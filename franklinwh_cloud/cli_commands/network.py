@@ -57,19 +57,22 @@ def _render_status(state):
                             f"   dns {active.get('dns') or '—'}")
 
     cloud = state.get("cloud") or {}
-    print_kv("Cloud", f"AWS {'✓' if cloud.get('aws_connected') else '✗'}"
-                      f"   Internet {'✓' if cloud.get('internet') else '✗'}"
-                      f"   routerStatus={cloud.get('router_status_raw')} (raw)")
-    # DEF-NET-STATUS-CLOUD-CAVEAT. These come from cmdType 339, which has been
-    # observed reporting all three as zero while the gateway was on WiFi with a
-    # valid lease, answering MQTT *through the cloud* (design section 2.5a).
-    # Printing bare crosses invites the reader to conclude the gateway is
-    # offline when it plainly is not, so say so at the point of display.
+    # Lead with the evidenced claim, not the self-report. This reading reached
+    # us through the cloud, so the cloud path demonstrably works.
+    if cloud.get("gateway_reachable"):
+        print_kv("Cloud", c("green", "✓ reachable")
+                          + "   (this reading arrived through it)")
+    # The gateway's own flags follow, clearly marked as unreliable rather than
+    # printed as bare crosses that read as "gateway offline".
+    # DEF-NET-STATUS-CLOUD-CAVEAT.
+    print_kv("Gateway self-report",
+             f"AWS {'✓' if cloud.get('aws_connected') else '✗'}"
+             f"   Internet {'✓' if cloud.get('internet') else '✗'}"
+             f"   routerStatus={cloud.get('router_status_raw')} (raw)")
     if not (cloud.get("aws_connected") and cloud.get("internet")):
         print_warning(
-            "Those flags come from cmdType 339 and are known to contradict "
-            "reality — this reading arrived through the cloud they claim is "
-            "down. Do not act on them."
+            "Self-report disagrees with the evidence above and has been "
+            "observed contradicting reality (design 2.5a). Do not act on it."
         )
 
     print_section("🔌", "Interfaces")
