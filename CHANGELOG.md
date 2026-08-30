@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Help tooltips helper (`FEAT-HAR-API-EXTENSIONS`)** — Added `get_page_by_type_list()` to `DevicesMixin`.
 
 ### Fixed
+- **`DEF-DIAG-BACKUP-FALSE-NEGATIVE`** — `franklinwh-cli diag` reported `Backup Links: None viable` on a gateway with a working 4G lifeline. Fallback viability was derived from `signals.mobile_signal` (203/runtimeData), which reads `0.0` on hardware where 317 `operatorRSSI` reports 22/52 with the SIM active. Now sourced from `get_network_state()['available_transports']`, which encodes the per-transport availability rule corrected by live data. The legacy derivation is retained as a fallback when network state is unavailable.
 - **`DEF-NETWORK-CACHE-STALE`** — Network reads (`get_network_info` 120s, `get_wifi_config` 300s, `get_connectivity_overview` 120s) are now invalidated on the write path and before every verification poll. Previously a post-write check read state from before the write. Defects 6 and 7 of `docs/NETWORK_CONNECTIVITY_DESIGN.md`.
 - **`DEF-NOTIFICATION-SETTINGS-TYPO`** — Fixed critical URL typo in `get_notification_settings()` in `AccountMixin`, correcting it from `/hes-gateway/terminal/selectTerPusselectEventClassification` to `/hes-gateway/terminal/selectEventClassification`.
 - **`DEF-USER-RESOURCES-DRIFT`** — Fixed endpoint drift in `get_user_resources()`, correcting path to `/hes-gateway/newApi/api-user/app/resource/getUserResources/v2` and adding a robust fallback to parse both legacy `"result"` and new `"data"` JSON structures.

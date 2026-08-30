@@ -26,6 +26,50 @@ from franklinwh_cloud.cli_output import (
 )
 
 
+def _fallback_summary(net_state, conn_overview):
+    """Render the "Backup Links" value — which transports could take over.
+
+    DEF-DIAG-BACKUP-FALSE-NEGATIVE. Prefers ``get_network_state()``, whose
+    ``available_transports`` answers the question that actually matters: would
+    this transport carry traffic if the one in use stopped? The two families
+    are judged differently, because they fail differently — 4G needs an active
+    SIM plus reception and holds no IP while idle, whereas WiFi and Ethernet
+    must hold an address. See NETWORK_CONNECTIVITY_DESIGN.md section 3.
+
+    The legacy derivation below keyed 4G viability on
+    ``signals.mobile_signal``, which comes from 203/runtimeData and reads 0.0
+    on hardware where 317 ``operatorRSSI`` reports 22/52 with the SIM active.
+    That reported "None viable" on a gateway holding a working cellular
+    lifeline — understating fallback availability, which is the same class of
+    error the 2026-08-08 preflight correction fixed.
+
+    Falls back to the legacy logic only when network state is unavailable, so
+    a failed extra call cannot make this row worse than it was.
+    """
+    if net_state is not None:
+        active_key = (net_state.get("active") or {}).get("key")
+        labels = {i.get("key"): i.get("label")
+                  for i in net_state.get("interfaces") or []}
+        fallbacks = [k for k in net_state.get("available_transports") or []
+                     if k != active_key]
+        if fallbacks:
+            return ", ".join(labels.get(k) or k for k in fallbacks)
+        return c("dim", "None viable")
+
+    # ── legacy derivation (network state unavailable) ────────────────
+    backups = conn_overview.get("backups", [])
+    viable = [
+        b for b in backups
+        if b.get("ip") not in (None, "", "0.0.0.0")
+        or b.get("id") == 4  # 4G: viability checked separately via signal
+    ]
+    mobile_pct = (conn_overview.get("signals") or {}).get("mobile_signal", 0)
+    viable = [b for b in viable if not (b.get("id") == 4 and not mobile_pct)]
+    if viable:
+        return ", ".join(b.get("name") for b in viable)
+    return c("dim", "None viable")
+
+
 async def run(client, *, json_output: bool = False):
     """Execute the diagnostic command."""
     import franklinwh_cloud
@@ -384,6 +428,22 @@ async def run(client, *, json_output: bool = False):
 
     results["connectivity_overview"] = conn_overview
 
+    # DEF-DIAG-BACKUP-FALSE-NEGATIVE — fallback viability is taken from
+    # get_network_state(), which encodes the per-transport availability rule
+    # that live data corrected twice (see NETWORK_CONNECTIVITY_DESIGN.md §3).
+    # The previous derivation keyed on runtimeData signal, which reads 0.0 on
+    # hardware where cellular is demonstrably available, and reported
+    # "None viable" on a gateway holding a working 4G lifeline.
+    net_state = None
+    try:
+        net_state = await client.get_network_state()
+    except Exception as e:
+        # Never make diag worse than it was: fall back to the legacy
+        # derivation below rather than dropping the row entirely.
+        results["network_state_error"] = str(e)
+    if net_state is not None:
+        results["network_state"] = net_state
+
     if not json_output:
         print_section("🌐", "Connectivity Overview")
         if "error" in conn_overview:
@@ -394,24 +454,12 @@ async def run(client, *, json_output: bool = False):
             print_kv("Device IP", primary.get("ip") or "—")
             print_kv("Network Gateway", primary.get("gateway") or "—")
 
-            backups = conn_overview.get("backups", [])
-            viable_backups = [
-                b for b in backups
-                if b.get("ip") not in (None, "", "0.0.0.0")
-                or b.get("id") == 4  # 4G: viability checked separately via signal
-            ]
-            # Drop 4G only if there is genuinely no signal at all
-            sig = conn_overview.get("signals", {})
-            mobile_pct = sig.get("mobile_signal", 0)
-            viable_backups = [
-                b for b in viable_backups
-                if not (b.get("id") == 4 and not mobile_pct)
-            ]
-            if viable_backups:
-                print_kv("Backup Links", ", ".join(b.get("name") for b in viable_backups))
-            else:
-                print_kv("Backup Links", c("dim", "None viable"))
+            print_kv("Backup Links", _fallback_summary(net_state, conn_overview))
 
+            # NOTE: these two still read 203/runtimeData and report 0.0 on
+            # hardware where 339/317 report real values — DEF-DIAG-SIGNAL-SOURCE,
+            # queued separately and deliberately not fixed here (AP-1).
+            sig = conn_overview.get("signals", {})
             if "wifi_signal" in sig:
                 print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%")
             if "mobile_signal" in sig:
