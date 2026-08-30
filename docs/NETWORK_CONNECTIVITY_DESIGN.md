@@ -688,7 +688,7 @@ Items 1–5 are read-side and land in Phase 1. 6–7 are prerequisites for Phase
 | **1a** ✅ | `get_network_state()` + `scan_wifi_networks_ranked()` + defects 1–5. **Read-only.** Shipped `feat/network-readers` (b6308fe); 18 new tests; verified live. | Done |
 | **1b** ✅ | Remediation: live tests made opt-in (0475f40), `FranklinWHError` defined (737e058), fictional scan fixtures corrected (bcf9421). | Done |
 | **1c** ◐ | `mixins/network.py` module split + `fwh network status\|scan` CLI. The CLI shipped with Phase 2 (decision D2); the **module split remains deferred** — `network.py` holds only the write path and the five readers stay in `devices.py` (decision D1). | Not required |
-| **2** ✅ | `set_wifi_credentials()` + `switch_to_wifi()` + preflight + verify loop + `fwh network status\|scan\|set-wifi` + defects 6–7. Offline work complete and unit-tested (92 tests); **live validation P2-7 still outstanding**. See [Phase 2 plan](NETWORK_PHASE2_IMPLEMENTATION_PLAN.md). | Approved 2026-08-29 |
+| **2** ✅ | `set_wifi_credentials()` + `switch_to_wifi()` + preflight + verify loop + `fwh network status\|scan\|set-wifi` + defects 6–7. Offline work complete and unit-tested (92 tests); **live validation P2-7 parked 2026-08-30** — site access required, see the plan's section 5. See [Phase 2 plan](NETWORK_PHASE2_IMPLEMENTATION_PLAN.md). | Approved 2026-08-29 |
 | **3** | `set_primary_network()` / `set_network_interface()` / `reboot_agate()`, behind `FWH_EXPERIMENTAL`. | **Required** + L4 live validation first |
 | **4** | Freeze §5 contracts; add write rows to `MQTT_CMD_CATALOG.md` (currently read-only, §2.5); add the setters to `docs/cli-raw.md` *Devices & Network*; update `docs/franklinwh_openapi.json` and `API_REFERENCE.md`. | Not required |
 
