@@ -694,7 +694,8 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
                   f"   gw {act.get('gateway') or '—'}   ({act.get('selection')})")
             print()
             print(f"  {'iface':<6} {'enabled':<8} {'link':<6} {'active':<7} "
-                  f"{'available':<10} {'address':<16} {'signal':<10} note")
+                  f"{'available':<10} {'address':<16} {'addr src':<9} "
+                  f"{'signal':<10} note")
             for i in live_network.get("interfaces", []):
                 sig = ""
                 note = ""
@@ -703,9 +704,17 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
                 elif i["key"] == "4g":
                     sig = f"{i.get('signal_raw')}/52" if i.get("signal_raw") else "—"
                     note = f"SIM {i.get('sim_status_name') or 'unknown'}"
+                # DEF-SCHEMA-DHCP-NOT-RENDERED. The capability inventory above
+                # advertises interfaces[].dhcp, so show it. It reports whether
+                # the aGate is a DHCP CLIENT — it says nothing about whether
+                # the router holds a reservation for it, which no FranklinWH
+                # endpoint exposes. Hence "addr src", not "reserved".
+                dhcp = i.get("dhcp")
+                addr_src = "—" if dhcp is None else ("dhcp" if dhcp else "static")
                 print(f"  {i['key']:<6} {str(i['enabled']):<8} {str(i['link']):<6} "
                       f"{str(i['is_active']):<7} {str(i['available']):<10} "
-                      f"{str(i.get('ip') or '—'):<16} {sig:<10} {note}")
+                      f"{str(i.get('ip') or '—'):<16} {addr_src:<9} "
+                      f"{sig:<10} {note}")
 
             cloud = live_network.get("cloud", {})
             print(f"\n  carrying traffic : {live_network.get('linked_transports')}")

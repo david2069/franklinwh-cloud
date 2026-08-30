@@ -60,6 +60,17 @@ def _render_status(state):
     print_kv("Cloud", f"AWS {'✓' if cloud.get('aws_connected') else '✗'}"
                       f"   Internet {'✓' if cloud.get('internet') else '✗'}"
                       f"   routerStatus={cloud.get('router_status_raw')} (raw)")
+    # DEF-NET-STATUS-CLOUD-CAVEAT. These come from cmdType 339, which has been
+    # observed reporting all three as zero while the gateway was on WiFi with a
+    # valid lease, answering MQTT *through the cloud* (design section 2.5a).
+    # Printing bare crosses invites the reader to conclude the gateway is
+    # offline when it plainly is not, so say so at the point of display.
+    if not (cloud.get("aws_connected") and cloud.get("internet")):
+        print_warning(
+            "Those flags come from cmdType 339 and are known to contradict "
+            "reality — this reading arrived through the cloud they claim is "
+            "down. Do not act on them."
+        )
 
     print_section("🔌", "Interfaces")
     for iface in state.get("interfaces") or []:
