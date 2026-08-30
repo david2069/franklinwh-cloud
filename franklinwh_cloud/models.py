@@ -153,7 +153,11 @@ class Current:
     # ── Connectivity ─────────────────────────────────────────────────────────
     mobile_signal: float             # runtimeData.signal  (RSSI dBm or %)
     wifi_signal: float               # runtimeData.wifiSignal
-    network_connection: int          # runtimeData.connType  (0=4G, 1=WiFi, 2=Ethernet)
+    # Same encoding as NETWORK_TYPES / currentNetType: 1=Eth0, 2=Eth1, 3=WiFi,
+    # 4=4G. The previous annotation here said 0=4G, 1=WiFi, 2=Ethernet; that was
+    # unsourced and is contradicted by 20,471 corpus samples, in which connType
+    # is only ever {2, 3, 4}. DEF-CONNTYPE-ENCODING-WRONG.
+    network_connection: int          # runtimeData.connType — see NETWORK_TYPES
 
     # ── V2L / Vehicle-to-Load ────────────────────────────────────────────────
     # US hardware only. Only operational when off-grid (relay OPEN).

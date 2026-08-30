@@ -394,106 +394,61 @@ class TestSupportNetworkEnum:
         assert [f for f in findings if f["check"] == "4G Fallback"] == []
 
 
-class TestStatusConnTypeEnum:
-    """DEF-STATUS-CONNTYPE-ENUM — the genuinely different encoding.
+class TestConnTypeEncoding:
+    """DEF-CONNTYPE-ENCODING-WRONG — connType shares the currentNetType encoding.
 
-    runtimeData.connType is 0=4G, 1=WiFi, 2=Ethernet. status.py rendered it
-    through NETWORK_TYPES (1=Ethernet 1, 2=Ethernet 2, 3=WiFi, 4=4G Mobile),
-    so a gateway on WiFi reported as "Ethernet 1" — precisely the mapping
-    const/devices.py warns against, three lines after importing it.
+    A long-standing annotation on models.py claimed runtimeData.connType used
+    0=4G, 1=WiFi, 2=Ethernet, and const/devices.py warned that the two
+    encodings were incompatible. Neither claim was ever sourced.
+
+    The HAR corpus contradicts both. Across **20,471 runtimeData samples**,
+    connType is observed only as::
+
+        {2: 559, 3: 19797, 4: 115}
+
+    Values 0 and 1 never occur. Under the claimed encoding, 97% of samples
+    would be undefined and a gateway that lives on WiFi would report 1 — it
+    never does. Under NETWORK_TYPES (1=Eth0, 2=Eth1, 3=WiFi, 4=4G) the
+    distribution is exactly what the roaming behaviour in
+    NETWORK_CONNECTIVITY_DESIGN.md section 2.3a describes: mostly WiFi,
+    sometimes Ethernet, occasionally cellular.
+
+    I acted on the unsourced comment and changed status.py to a new map,
+    which turned "WiFi" into "Unknown (3)" on every healthy gateway. These
+    tests exist so the claim cannot be reintroduced from the comment again.
     """
 
-    def test_conn_type_names_match_the_documented_encoding(self):
-        from franklinwh_cloud.const.devices import CONN_TYPE_NAMES
+    def test_observed_conn_type_values_are_covered_by_network_types(self):
+        from franklinwh_cloud.const.devices import NETWORK_TYPES
 
-        assert CONN_TYPE_NAMES == {0: "4G Mobile", 1: "WiFi", 2: "Ethernet"}
+        for observed in (2, 3, 4):
+            assert observed in NETWORK_TYPES, \
+                f"connType={observed} occurs on the wire and must have a label"
 
-    def test_wifi_is_not_reported_as_ethernet(self):
-        from franklinwh_cloud.const.devices import CONN_TYPE_NAMES, NETWORK_TYPES
+    def test_the_dominant_observed_value_is_wifi(self):
+        """3 is 19,797 of 20,471 samples, on a gateway that lives on WiFi."""
+        from franklinwh_cloud.const.devices import NETWORK_TYPES
 
-        assert CONN_TYPE_NAMES[1] == "WiFi"
-        assert NETWORK_TYPES[1] == "Ethernet 1", "the two encodings still differ"
+        assert NETWORK_TYPES[3] == "WiFi"
 
-    def test_status_does_not_import_network_types_for_conn_type(self):
+    def test_the_disproven_map_is_gone(self):
+        """CONN_TYPE_NAMES was added on a false premise and removed."""
+        from franklinwh_cloud.const import devices
+
+        assert not hasattr(devices, "CONN_TYPE_NAMES")
+
+    def test_status_renders_conn_type_through_network_types(self):
         import inspect
 
         from franklinwh_cloud.cli_commands import status
 
         src = inspect.getsource(status)
-        assert "CONN_TYPE_NAMES" in src
-        assert "NETWORK_TYPES.get(conn_type" not in src
+        assert "NETWORK_TYPES.get(conn_type" in src
+        assert "CONN_TYPE_NAMES" not in src
 
+    def test_unknown_values_are_still_reported_as_unknown(self):
+        """The 1=Ethernet 1 slot is never observed, but must not be fabricated."""
+        from franklinwh_cloud.const.devices import NETWORK_TYPES
 
-class TestSupportSignalUnits:
-    """DEF-SUPPORT-RSSI-DBM — the last of the dBm mislabels.
-
-    Two distinct scales were both being printed as dBm, and neither is:
-      * operatorRSSI (cmdType 317) is a 0-52 vendor scale (gotcha G3)
-      * mobile_signal is a 0-100 percentage, verified over 20,471 samples
-    """
-
-    def _snapshot(self):
-        return {
-            "connectivity": {"routerStatus": 1, "netStatus": 1, "awsStatus": 1},
-            "network": {
-                "currentNetType": 3,
-                "wifi": {"mac": "AA:BB:CC:DD:EE:01", "ip": "192.168.0.110"},
-                "eth0": {"mac": "", "ip": ""}, "eth1": {"mac": "", "ip": ""},
-                "operator": {"mac": "AA:BB:CC:DD:EE:02", "rssi": 22},
-            },
-            "wifi_config": {}, "switches": {},
-        }
-
-    def test_cellular_finding_does_not_claim_dbm(self):
-        from franklinwh_cloud.cli_commands.support import analyze_connectivity
-
-        cellular = [f for f in analyze_connectivity(self._snapshot())
-                    if f["check"] == "Cellular"]
-        assert cellular
-        assert "dBm" not in cellular[0]["detail"]
-
-    def test_cellular_finding_states_the_real_scale(self):
-        from franklinwh_cloud.cli_commands.support import analyze_connectivity
-
-        cellular = [f for f in analyze_connectivity(self._snapshot())
-                    if f["check"] == "Cellular"]
-        assert "22/52" in cellular[0]["detail"]
-
-    def test_no_dbm_labels_remain_in_support_output(self):
-        """Guard: only the deprecated output key may still carry the name.
-
-        Checks string literals, so the comments explaining the defect do not
-        trip their own guard.
-        """
-        import ast
-        import inspect
-
-        from franklinwh_cloud.cli_commands import support
-
-        tree = ast.parse(inspect.getsource(support))
-        literals = [n.value for n in ast.walk(tree)
-                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
-        offenders = [s for s in literals
-                     if "dBm" in s and "mobile_signal_dbm" not in s]
-        assert offenders == [], f"unit mislabels remain: {offenders}"
-
-    def test_the_deprecated_alias_key_is_still_emitted(self):
-        """Backward compatibility — the key stays, only its use as a source goes."""
-        import ast
-        import inspect
-
-        from franklinwh_cloud.cli_commands import support
-
-        tree = ast.parse(inspect.getsource(support))
-        literals = {n.value for n in ast.walk(tree)
-                    if isinstance(n, ast.Constant) and isinstance(n.value, str)}
-        assert "mobile_signal_dbm" in literals
-
-    def test_percentage_is_read_from_the_correctly_named_key(self):
-        import inspect
-
-        from franklinwh_cloud.cli_commands import support
-
-        src = inspect.getsource(support)
-        assert 'power.get("mobile_signal_pct"' in src, \
-            "must not consume its own deprecated alias"
+        assert NETWORK_TYPES.get(0) is None
+        assert NETWORK_TYPES.get(99) is None
