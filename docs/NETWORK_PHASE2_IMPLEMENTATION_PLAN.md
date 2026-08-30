@@ -1,6 +1,6 @@
 # Network Phase 2 — Implementation Plan
 
-> **Status:** APPROVED 2026-08-29 — executing.
+> **Status:** P2-1..P2-6 COMPLETE and pushed. **P2-7 PARKED 2026-08-30** — see section 5.
 > **Authorises:** Phase 2 of [`NETWORK_CONNECTIVITY_DESIGN.md`](NETWORK_CONNECTIVITY_DESIGN.md) §9.
 > **Traceability:** AGENT.md directive 4. Every commit in this phase cites a step ID below.
 > **Sign-off basis:** `CLAUDE.md` rule 6 — API-affecting writes (`set_wifi_credentials`).
@@ -166,3 +166,63 @@ already exist, and `status --watch` is the natural "did it work" view during a c
 
 **D3 — Confirm P2-7 live write timing.** Build P2-1..P2-6 and stop for your go-ahead
 before touching hardware? **APPROVED:** yes — stop and ask before any hardware write.
+
+---
+
+## 5. P2-7 — parked 2026-08-30
+
+**Everything except live validation is done, tested and pushed.** Phase 2 is
+therefore code that has never touched hardware: the preflight, the cmdType 337
+write and the verify loop are all validated against mocks only.
+
+**Why parked:** the user is away from the site until approximately
+mid-September 2026. Being able to reach the gateway physically is the one
+non-negotiable precondition — the 4G lifeline makes a dead gateway very
+unlikely, but if it happens, recovery is via the aGate's own AP and needs
+proximity. Nothing else about the state is blocking.
+
+### Do this first, when back — zero writes, no window needed
+
+```
+franklinwh-cli network set-wifi --ssid "<the stored SSID>" --use-stored
+# then answer: n
+```
+
+Answering anything but `y` returns before `switch_to_wifi` is called
+(`cli_commands/network.py`, `_cmd_set_wifi`), so this is a full rehearsal of
+the live read path and the real preflight with no write at all. `--use-stored`
+means no password is resolved either.
+
+Expected, and the line that matters:
+
+```
+Would survive: 4g
+```
+
+`nothing` in red means stop and diagnose before going near a write.
+
+### Then P2-7 itself
+
+Conditions, in order of importance:
+
+1. **On-site or able to get there.** Non-negotiable, per above.
+2. **No Force session or VPP event active.** A comms gap during a forced
+   charge/discharge or a VPP dispatch is the only case with consequences
+   beyond missing data.
+3. **Clear of a TOU transition**, so Home Assistant does not miss a dispatch
+   change while blind.
+
+Home Assistant does *not* need pausing. It logs a failed update and recovers;
+pausing is tidiness, not safety.
+
+The test: gateway on its known WiFi, `switch_to_wifi(<stored ssid>,
+password=None)`, expecting preflight `survivors=['4g']`, the write accepted,
+and verification `connected`. Results to `tests/results/` per AP-13.
+
+**Expected impact**, measured by U2 on 2026-08-09 running the identical
+operation via the probe: write accepted in ~1.2 s, DHCP lease dropped and
+restored inside a window bounded between ~1 s and ~34 s, confirmed at ~115 s.
+`currentNetType` never left 3 — re-applying credentials for the SSID already in
+use reassociates *without* changing transport, so no 4G failover occurs. The
+address returned unchanged (192.168.0.110), as it has across every observed
+reassociation since February 2026.
