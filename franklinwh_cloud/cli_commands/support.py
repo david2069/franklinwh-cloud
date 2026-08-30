@@ -938,9 +938,11 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
         # Cellular
         op = net.get("operator", {})
         if op.get("mac"):
+            # operatorRSSI is a 0-52 vendor scale, NOT dBm — gotcha G3.
+            # DEF-SUPPORT-RSSI-DBM.
             rssi = op.get("rssi", "?")
             findings.append({"severity": "info", "check": "Cellular",
-                             "detail": f"Available (RSSI: {rssi} dBm) — backup ready"})
+                             "detail": f"Available (RSSI: {rssi}/52 vendor scale) — backup ready"})
 
         # 4G fallback detection
         conn_type = net.get("currentNetType", 0)
@@ -1225,7 +1227,7 @@ async def _collect_nettest_config(client) -> dict:
 
             op = r.get("operator", {})
             if op.get("mac"):
-                config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')} dBm"
+                config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')}/52 (vendor scale)"
     except Exception:
         pass
 
@@ -2704,7 +2706,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             op = net.get("operator", {})
             if op.get("mac"):
                 rssi = op.get("rssi", "?")
-                rssi_label = f"RSSI: {rssi} dBm" if rssi != "?" else ""
+                rssi_label = f"RSSI: {rssi}/52 (vendor scale)" if rssi != "?" else ""
                 print_kv("Cellular", f'{op["mac"]}  {rssi_label}')
             # SIM subscription status
             sim = data.get("identity", {}).get("simCardStatus")
@@ -2763,13 +2765,17 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv("→ Bat→Grid", f'{pf.get("battery_export_to_grid_kw", 0):.2f} kW')
             # Signals
             wifi = power.get("wifi_signal_pct")
-            mob = power.get("mobile_signal_dbm")
+            # Read the correctly-named key. mobile_signal_dbm is a DEPRECATED
+            # alias carrying the same percentage, kept only for output
+            # compatibility — consuming it here is what produced "4G 45 dBm"
+            # for a value that is a percentage. DEF-SUPPORT-RSSI-DBM.
+            mob = power.get("mobile_signal_pct", power.get("mobile_signal_dbm"))
             if wifi is not None or mob is not None:
                 sig_parts = []
                 if wifi is not None:
                     sig_parts.append(f"WiFi {wifi}%")
                 if mob is not None:
-                    sig_parts.append(f"4G {mob} dBm")
+                    sig_parts.append(f"4G {mob}%")
                 print_kv("Signal", "  ".join(sig_parts))
             # Per-pack aPower state
             from franklinwh_cloud.const.states import BMS_STATE as _BMS_STATE
