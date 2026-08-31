@@ -945,6 +945,17 @@ class DevicesMixin:
         The scan returns no BSSID, band or channel, so individual access points
         in a mesh cannot be distinguished or targeted. Repeated SSIDs are
         therefore collapsed rather than listed separately.
+
+        Warning
+        -------
+        **The aGate can only join 2.4 GHz networks** (FranklinWH System
+        Installation Guide p.59, Method 2), but the scan discovers both bands
+        and reports no band field. So a 5 GHz-only SSID can be returned here at
+        full signal, written by :meth:`switch_to_wifi`, accepted by the gateway
+        — and never associate. It is indistinguishable in advance from a
+        correct network, and indistinguishable afterwards from a wrong
+        password, because neither surfaces an error. A ``warnings`` entry says
+        so on every scan.
         """
         dataArea = {"wifi_ScanTime": scan_time}
         result = None
@@ -1008,6 +1019,15 @@ class DevicesMixin:
                 "usable": rssi >= usable_rssi,
             })
         networks.sort(key=lambda n: (-n["signal_pct"], n["ssid"]))
+
+        if networks:
+            # Cannot be filtered: cmdType 335 returns no band field, so a
+            # 5 GHz-only SSID is indistinguishable from a joinable one here.
+            warnings_out.append(
+                "The aGate joins 2.4 GHz networks only (Installation Guide "
+                "p.59). The scan reports no band, so a 5 GHz-only SSID cannot "
+                "be filtered out and will fail to associate if selected."
+            )
 
         return {
             "scan_seconds": scan_time,

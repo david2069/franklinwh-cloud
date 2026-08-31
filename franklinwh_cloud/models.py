@@ -20,7 +20,11 @@ class MqttCmd(IntEnum):
     SYSTEM_CONTROL = 315        # cmdType 315: aGate reboot / alarm clear / factory reset
     NETWORK_INTERFACES = 317    # cmdType 317: Verbose eth/wifi interface IP and DHCP
     AESTHETICS = 327            # cmdType 327: aPower RGB LEDs
-    WIFI_SCAN = 335             # cmdType 335: Trigger active 2.4/5GHz AP discovery
+    # Discovery spans both bands, but the aGate can only JOIN 2.4 GHz
+    # (FranklinWH System Installation Guide p.59, Method 2). A 5 GHz SSID
+    # can therefore be scanned, ranked and written, and will simply never
+    # associate. See scan_wifi_networks_ranked().
+    WIFI_SCAN = 335             # cmdType 335: active AP discovery, both bands
     WIFI_CONFIG = 337           # cmdType 337: Connected SSID & local AP limits
     CLOUD_CONNECTIVITY = 339    # cmdType 339: AWS Cloud/Internet reachability
     NETWORK_SWITCHES = 341      # cmdType 341: Boolean toggles for eth0/eth1/4G/wifi

@@ -353,10 +353,10 @@ class TestSupportNetworkEnum:
     and are what disguised it.
     """
 
-    def test_ethernet_1_is_not_labelled_wifi(self):
+    def test_ethernet_is_not_labelled_wifi(self):
         from franklinwh_cloud.cli_commands.support import NET_TYPES
 
-        assert NET_TYPES.get(1) == "Ethernet 1"
+        assert NET_TYPES.get(1) == "Ethernet (eth0)"
 
     def test_wifi_is_labelled_wifi(self):
         from franklinwh_cloud.cli_commands.support import NET_TYPES

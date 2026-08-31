@@ -122,6 +122,23 @@ Consequences for the design:
    the aGate re-homed its MQTT session. A verifier that treats one null as failure will
    report a false negative on a successful switch.
 
+### 2.3c Vendor documentation — constraints the wire does not express
+
+**Source:** *FranklinWH System Installation Guide*, p.59. Added 2026-08-31.
+This is the first vendor-documentary evidence in this design; everything above
+it was derived from captures. Where the two disagree, say so explicitly rather
+than silently preferring one.
+
+| Vendor statement | Consequence here |
+|---|---|
+| *"The cable from the household network **may only be connected to the Eth1 port**."* | Exactly **one** Ethernet port reaches the internet. The other cannot be a fallback, whatever address it holds. This is the documentary basis for `DEF-PREFLIGHT-UNVERIFIED-ETHERNET`, which had rested only on a user report. |
+| Eth1 is the household port | Our labels said API `eth0` = "Ethernet 1", colliding with the vendor's `Eth1`, which is a **different** port. Labels are now keyed to the API field (`Ethernet (eth0)`). Which API field is the vendor's Eth1 is **not** established — see `DEF-ETH-PORT-IDENTITY-UNCONFIRMED`. |
+| *"The aGate supports **only 2.4Ghz** Wi-Fi connection to the family router."* | **The most consequential item for Phase 2.** cmdType 335 discovers both bands and returns no band field, so a 5 GHz-only SSID is scanned, ranked at full signal, accepted by a 337 write — and never associates. Afterwards it is indistinguishable from a wrong password, since neither surfaces an error. Cannot be filtered; every scan now carries the caveat and the verify timeout names it. |
+| *"Method 3: Connect via telecommunication 4G network (**only as backup**)."* | Vendor confirmation of the fallback model the preflight assumes, and of §3's conclusion that "switch back to 4G" is not a user-facing operation. |
+| AP account `AP_<last 9 of serial>`, password `<last 12 of serial>` | Confirms the probe's recovery runbook. Also a caution: **the AP password is derivable from the serial**, and serials appear in support snapshots — see `.agents/policies/pii_policy.md`. |
+
+---
+
 ### 2.4 Gotchas that will bite an implementation
 
 | # | Gotcha | Consequence |

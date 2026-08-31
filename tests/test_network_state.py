@@ -444,7 +444,9 @@ class TestScanRanked:
 
         assert len(res["networks"]) == 6
         assert client._mqtt_send.call_count == 3
-        assert res["warnings"] == [] or all("collapsed" in w for w in res["warnings"])
+        # Warnings are now either the dedup note or the 2.4 GHz band caveat,
+        # which is emitted on every non-empty scan (Installation Guide p.59).
+        assert all("collapsed" in w or "2.4 GHz" in w for w in res["warnings"])
 
     @pytest.mark.asyncio
     async def test_never_completing_scan_warns_and_returns_empty(self):
@@ -453,3 +455,41 @@ class TestScanRanked:
 
         assert res["networks"] == []
         assert any("did not complete" in w for w in res["warnings"])
+
+
+class TestScanBandCaveat:
+    """The aGate joins 2.4 GHz only, but scans both bands.
+
+    FranklinWH System Installation Guide p.59, Method 2: "The aGate supports
+    only 2.4Ghz Wi-Fi connection to the family router." cmdType 335 returns no
+    band field, so a 5 GHz-only SSID cannot be filtered out — it is returned at
+    full signal, is writable, and simply never associates. Afterwards it is
+    indistinguishable from a wrong password, because neither surfaces an error.
+
+    The scan cannot prevent this, so it must at least say so.
+    """
+
+    async def test_scan_warns_about_the_band_limit(self):
+        client = _client_with_scan(MOCK_335_COMPLETE)
+        res = await client.scan_wifi_networks_ranked(delay_s=0)
+
+        band = [w for w in res["warnings"] if "2.4 GHz" in w]
+        assert band, "every scan must carry the band caveat"
+        assert "cannot be filtered" in band[0]
+
+    async def test_no_band_warning_when_nothing_was_found(self):
+        """Nothing to mislead the reader about."""
+        client = _client_with_scan(MOCK_335_PENDING)
+        res = await client.scan_wifi_networks_ranked(delay_s=0, max_attempts=1)
+
+        assert res["networks"] == []
+        assert not [w for w in res["warnings"] if "2.4 GHz" in w]
+
+    def test_the_timeout_hint_names_the_band_trap(self):
+        """A 5 GHz target is a leading cause of an unexplained verify timeout."""
+        import inspect
+
+        from franklinwh_cloud.mixins import network
+
+        src = inspect.getsource(network.NetworkMixin._verify_wifi_switch)
+        assert "5 GHz" in src
