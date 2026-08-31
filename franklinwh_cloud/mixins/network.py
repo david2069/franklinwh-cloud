@@ -549,7 +549,11 @@ class NetworkMixin:
             "last_known": last_known,
             "recovery_hint": (
                 "The write was accepted but the link was not confirmed within "
-                f"{timeout_s}s. The write has NOT been retried, deliberately. "
+                f"{timeout_s}s. Most likely causes, none of which surface an "
+                "error: a wrong password, a weak signal, DHCP not completing, "
+                "or a 5 GHz-only network — the aGate joins 2.4 GHz only "
+                "(Installation Guide p.59) but scans both bands. "
+                "The write has NOT been retried, deliberately. "
                 "The aGate falls back to 4G on its own; check "
                 "'fwh network status' before changing anything else. If it is "
                 "unreachable, recovery is via the aGate's own AP "

@@ -67,10 +67,22 @@ async def test_wifi_is_not_labelled_wifi_plus_ethernet():
 
 
 async def test_eth0_is_not_labelled_wifi():
-    """currentNetType 1 is Ethernet 1; the bitmask table called it WiFi."""
+    """currentNetType 1 is an Ethernet port; the bitmask table called it WiFi."""
     line = await _active_network_line(1)
-    assert "Ethernet 1" in line
+    assert "Ethernet" in line
     assert "WiFi" not in line
+
+
+async def test_ethernet_labels_do_not_collide_with_vendor_port_numbers():
+    """Installation Guide p.59: only the vendor's "Eth1" reaches the internet.
+
+    Labelling API `eth0` as "Ethernet 1" invited exactly the wrong reading.
+    Labels are keyed to the API field instead.
+    """
+    from franklinwh_cloud.const.devices import NETWORK_TYPES
+
+    assert NETWORK_TYPES[1] == "Ethernet (eth0)"
+    assert NETWORK_TYPES[2] == "Ethernet (eth1)"
 
 
 # ── the whole enum, so no id regresses ───────────────────────────────

@@ -15,9 +15,23 @@ Used for device discovery and HA config flow integration.
 # samples, connType is observed only as {2: 559, 3: 19797, 4: 115}. Values 0
 # and 1 never occur, and 3 dominating matches a gateway that lives on WiFi.
 # See DEF-CONNTYPE-ENCODING-WRONG.
+# Labels are keyed to the API field name, NOT to the vendor's physical port
+# numbering, because the two do not line up and the collision is dangerous.
+#
+# The FranklinWH System Installation Guide p.59 states: "The cable from the
+# household network may only be connected to the Eth1 port." So the vendor's
+# "Eth1" is the ONE port that reaches the internet. Calling API `eth0`
+# "Ethernet 1" invited a reader to believe eth0 was that port. It is not:
+# on the reference gateway eth0 is static with gateway 172.16.1.1 — a segment
+# unrelated to the household LAN — while eth1 is DHCP, which is what a
+# household port would be.
+#
+# That identification is inference from one gateway, so the labels deliberately
+# assert nothing beyond the API field they came from. See
+# DEF-ETH-PORT-IDENTITY-UNCONFIRMED.
 NETWORK_TYPES = {
-    1: "Ethernet 1",
-    2: "Ethernet 2",
+    1: "Ethernet (eth0)",
+    2: "Ethernet (eth1)",
     3: "WiFi",
     4: "4G Mobile"
 }
