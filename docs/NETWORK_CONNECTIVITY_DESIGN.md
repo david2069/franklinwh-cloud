@@ -132,10 +132,68 @@ than silently preferring one.
 | Vendor statement | Consequence here |
 |---|---|
 | *"The cable from the household network **may only be connected to the Eth1 port**."* | Exactly **one** Ethernet port reaches the internet. The other cannot be a fallback, whatever address it holds. This is the documentary basis for `DEF-PREFLIGHT-UNVERIFIED-ETHERNET`, which had rested only on a user report. |
-| Eth1 is the household port | Our labels said API `eth0` = "Ethernet 1", colliding with the vendor's `Eth1`, which is a **different** port. Labels are now keyed to the API field (`Ethernet (eth0)`). Which API field is the vendor's Eth1 is **not** established — see `DEF-ETH-PORT-IDENTITY-UNCONFIRMED`. |
+| Eth1 is the household port | **Contradicted by the Commissioning Guide — see §2.3d.** Labels are keyed to the API field (`Ethernet (eth0)`) and assert nothing about vendor port numbers. |
 | *"The aGate supports **only 2.4Ghz** Wi-Fi connection to the family router."* | **The most consequential item for Phase 2.** cmdType 335 discovers both bands and returns no band field, so a 5 GHz-only SSID is scanned, ranked at full signal, accepted by a 337 write — and never associates. Afterwards it is indistinguishable from a wrong password, since neither surfaces an error. Cannot be filtered; every scan now carries the caveat and the verify timeout names it. |
 | *"Method 3: Connect via telecommunication 4G network (**only as backup**)."* | Vendor confirmation of the fallback model the preflight assumes, and of §3's conclusion that "switch back to 4G" is not a user-facing operation. |
 | AP account `AP_<last 9 of serial>`, password `<last 12 of serial>` | Confirms the probe's recovery runbook. Also a caution: **the AP password is derivable from the serial**, and serials appear in support snapshots — see `.agents/policies/pii_policy.md`. |
+
+---
+
+### 2.3d Vendor port naming is revision-dependent and reverses meaning
+
+**Source:** *Commissioning Guide (AU & NZ)* p.6-7 and *Commissioning Guide* p.7.
+Added 2026-09-01. This directly contradicts §2.3c, and the contradiction is the
+finding.
+
+| Document | Hardware | Household cable goes to | Other port |
+|---|---|---|---|
+| System Installation Guide p.62 | (unqualified) | **Eth1** | — |
+| Commissioning Guide p.7 | aGate X 1.1 (`AGT-R1V1-US`) | **Eth2** | **Eth1 (Debug)** |
+| Commissioning Guide p.7 | aGate X 1.3 / 1.3.1 (`AGT-R1V2-US`, `AGT-R1V3-US`) | a single **ETH** port | — |
+
+**"Eth1" is the internet port in one document and the *debug* port in another.**
+Anyone reasoning from vendor port labels — including a previous version of this
+document — can get it exactly backwards.
+
+Consequences:
+
+- **Never map vendor port numbers onto `NETWORK_TYPES` ids.** The labels are
+  keyed to the API field name (`Ethernet (eth0)`) precisely so they cannot
+  imply a mapping that is not stable across revisions.
+- The user's report that "one port is reserved for internal FranklinWH use" is
+  confirmed: it is the **Debug** port on two-port revisions.
+- On 1.3/1.3.1 there is only **one** physical Ethernet port, yet the API still
+  exposes both `eth0` and `eth1`. So on those units at least one API field
+  corresponds to no user-accessible port at all.
+- The preflight's refusal to trust a non-active Ethernet port is therefore not
+  conservatism, it is the only defensible default: the API cannot tell us which
+  field is the debug port, and the answer is revision-dependent.
+
+### 2.3e The commissioning Wi-Fi flow is LOCAL, not cloud
+
+*Commissioning Guide (AU & NZ)* p.10-13. Wi-Fi is configured over the aGate's
+own hotspot (`AP_<last 9 of SN>`, password `<last 12 of SN>`), with the phone
+joined to that AP — not through the cloud. Phase 2 emulates the *reconfiguration*
+path instead, which the app also performs over the cloud (`337 opt:1`, captured
+and confirmed live by U2). Both exist; they are different flows and this design
+implements the cloud one.
+
+Three further statements corroborate decisions already made here:
+
+- *"Or tap Skip on the Wifi Configuration page to use 4G connection (**4G is
+  connected by default**)."* — confirms cellular as the out-of-the-box default.
+- *"**Sometimes the phone will drop the connection with the aGate after the Wifi
+  connection has been successfully established.** The mobile app will prompt to
+  reconnect."* — the vendor documents the post-write disconnect. Direct
+  corroboration of gotcha G8 and of the verify loop's blackout tolerance: losing
+  the link after a *successful* write is expected behaviour, not failure.
+- *"A Wifi or Ethernet connection is **preferred to the 4G** cellular network, as
+  4G is easily affected by the carrier services and weather conditions."* — worth
+  stating plainly: **the lifeline the preflight depends on is the transport the
+  vendor considers least reliable.** That does not change the design, since 4G is
+  still the only fallback when WiFi is being rewritten, but it is a reason to
+  require reception rather than mere SIM presence — which
+  `available_transports` already does.
 
 ---
 

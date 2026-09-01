@@ -18,17 +18,23 @@ Used for device discovery and HA config flow integration.
 # Labels are keyed to the API field name, NOT to the vendor's physical port
 # numbering, because the two do not line up and the collision is dangerous.
 #
-# The FranklinWH System Installation Guide p.59 states: "The cable from the
-# household network may only be connected to the Eth1 port." So the vendor's
-# "Eth1" is the ONE port that reaches the internet. Calling API `eth0`
-# "Ethernet 1" invited a reader to believe eth0 was that port. It is not:
-# on the reference gateway eth0 is static with gateway 172.16.1.1 — a segment
-# unrelated to the household LAN — while eth1 is DHCP, which is what a
-# household port would be.
+# Vendor port naming is REVISION-DEPENDENT and reverses meaning between
+# documents, so it must never be mapped onto these ids:
 #
-# That identification is inference from one gateway, so the labels deliberately
-# assert nothing beyond the API field they came from. See
-# DEF-ETH-PORT-IDENTITY-UNCONFIRMED.
+#   FranklinWH System Installation Guide p.62 : household cable -> "Eth1"
+#   Commissioning Guide p.7, aGate X 1.1      : household cable -> "Eth2",
+#                                               and "Eth1 (Debug)"
+#   Commissioning Guide p.7, aGate X 1.3/1.3.1: a single port, "ETH"
+#
+# So "Eth1" is the internet port in one document and the DEBUG port in another.
+# Anyone reasoning from vendor port labels can get it exactly backwards, which
+# is why these labels are keyed to the API field name and assert nothing else.
+#
+# What IS consistent: exactly one Ethernet port reaches the internet, and on
+# two-port revisions the other is a debug port. Which API field that is remains
+# unestablished — on the reference gateway eth0 is static on 172.16.1.1, a
+# segment unrelated to the household LAN, and eth1 is DHCP, but that is one
+# gateway with both ports unplugged. See DEF-ETH-PORT-IDENTITY-UNCONFIRMED.
 NETWORK_TYPES = {
     1: "Ethernet (eth0)",
     2: "Ethernet (eth1)",
