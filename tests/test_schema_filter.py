@@ -64,3 +64,30 @@ def test_matching_is_case_insensitive():
 def test_substring_matching_is_preserved():
     """e.g. --filter load matches "Load Breakdown"."""
     assert _totals_filtered_out("load", "Load Breakdown") is False
+
+
+# ── DEF-BB-GROUP-MISLABEL ────────────────────────────────────────────
+
+def test_bb_discharge_power_is_labelled_battery_bonus_not_backup_battery():
+    """"bb" is Battery Bonus (Hawaiian Electric), not "backup battery".
+
+    discovery.py has always carried `bb: bool  # Hawaii Battery Bonus` for the
+    sibling enrolment flag; only the schema group misread the abbreviation, so
+    an enrolled Hawaii user saw their programme discharge cap presented as a
+    generic backup setting.
+    """
+    from franklinwh_cloud.cli_commands.schema import GRID_LIMITS_SCHEMA
+
+    group = GRID_LIMITS_SCHEMA["bbDischargePower"][3]
+    assert "Backup" not in group
+    assert "Battery Bonus" in group
+
+
+def test_the_sibling_flag_still_documents_the_same_programme():
+    """Guard: the two must not drift apart again."""
+    import inspect
+
+    from franklinwh_cloud import discovery
+
+    src = inspect.getsource(discovery)
+    assert "Hawaii Battery Bonus" in src

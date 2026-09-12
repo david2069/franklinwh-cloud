@@ -234,7 +234,13 @@ GRID_LIMITS_SCHEMA = {
     "solarFlag":                ("solarFlag",                "get_power_control_settings", "bool",    "Grid Connection"),
     "notControlExportSolar":    ("notControlExportSolar",    "get_power_control_settings", "bool",    "Feed-In (Export)"),
     "peakDemandGridMax":        ("peakDemandGridMax",        "get_power_control_settings", "kW / -1", "Peak Demand"),
-    "bbDischargePower":         ("bbDischargePower",         "get_power_control_settings", "kW",      "Backup Battery"),
+    # "bb" is Battery Bonus, the Hawaiian Electric programme — NOT "backup
+    # battery", which is what this group used to say. discovery.py has always
+    # documented the sibling flag correctly ("bb: bool  # Hawaii Battery
+    # Bonus"); only this label misread the abbreviation. Corpus: bbDischargePower
+    # is null in all 3,930 samples, alongside bbEntrance=0 in all 4,001 — i.e.
+    # the cap is only populated once enrolled. DEF-BB-GROUP-MISLABEL.
+    "bbDischargePower":         ("bbDischargePower",         "get_power_control_settings", "kW",      "Battery Bonus (HI)"),
     "sgipFlag":                 ("sgipFlag",                 "get_power_control_settings", "0/1",     "Programmes"),
     "itcFlag":                  ("itcFlag",                  "get_power_control_settings", "0/1",     "Programmes"),
     "isNem3":                   ("isNem3",                   "get_power_control_settings", "0/1",     "Programmes"),
