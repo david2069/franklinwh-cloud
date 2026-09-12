@@ -909,8 +909,12 @@ async def _wait_for_dispatch(client, *, verbose: bool = False,
     """Poll touSendStatus until dispatch is confirmed applied.
 
     The aGate sets touSendStatus=1 when a schedule is pending.
-    When applied, it clears to 0. We also check the work mode
-    changed to TOU (workMode=1).
+    When applied, it clears to 0.
+
+    workMode is reported alongside but NOT waited on: saving a schedule no
+    longer switches the system to TOU, so a non-TOU mode here means the
+    schedule is stored and idle, not that the save failed.
+    DEF-TOU-SAVE-NO-LONGER-SWITCHES-MODE.
 
     Returns dict with confirmation status for JSON output.
     """
@@ -944,7 +948,15 @@ async def _wait_for_dispatch(client, *, verbose: bool = False,
                     if tou_active:
                         print_success(f"Dispatch confirmed — TOU mode active (took {elapsed}s)")
                     else:
-                        print_warning(f"Dispatch sent but workMode={work_mode} (expected 1=TOU) after {elapsed}s")
+                        # Not an anomaly on current firmware: saving no longer
+                        # switches the mode. Say what to do rather than
+                        # implying something went wrong.
+                        print_success(f"Schedule saved (took {elapsed}s)")
+                        print_warning(
+                            f"Not running it — workMode={work_mode}, not TOU. "
+                            f"Saving a schedule no longer switches mode on "
+                            f"current firmware. Run: fwh mode --set tou"
+                        )
                 return {"confirmed": True, "tou_active": tou_active,
                         "elapsed_seconds": elapsed, **last_status}
 
