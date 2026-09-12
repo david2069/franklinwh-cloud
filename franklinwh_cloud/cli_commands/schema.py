@@ -428,13 +428,33 @@ async def run(client, json_output: bool = False, show_live: bool = False,
             if not json_output:
                 print(f"⚠ Could not fetch network state: {e}")
 
+    # JA12 compliance capacity — California Title 24 only, and gated on the
+    # gateway actually advertising it. Firing unconditionally would send a
+    # CA-specific request from every gateway in every market.
+    #
+    # AP-14: this endpoint has ZERO captured responses in the corpus, so its
+    # response shape is unknown. Rendered generically rather than against a
+    # declared schema — inventing field names for a payload nobody has observed
+    # is exactly what the evidence standard forbids. Once a real response is
+    # captured, a JA12_SCHEMA can replace this.
+    live_ja12 = None
+    if show_live:
+        try:
+            entrance = await client.get_entrance_info()
+            ent = (entrance.get("result") or {}) if isinstance(entrance, dict) else {}
+            if ent.get("ja12Entrance"):
+                live_ja12 = await client.query_compliance_capacity()
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ Could not check JA12 compliance capacity: {e}")
+
     if json_output:
         _json_output(live_current, live_totals, live_grid_limits, filter_group,
-                     live_network)
+                     live_network, live_ja12)
         return
 
     _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
-                     live_network)
+                     live_network, live_ja12)
 
 
 def _totals_filtered_out(filter_group, group) -> bool:
@@ -459,7 +479,7 @@ def _totals_filtered_out(filter_group, group) -> bool:
 
 
 def _json_output(live_current, live_totals, live_grid_limits, filter_group,
-                 live_network=None):
+                 live_network=None, live_ja12=None):
     """Emit JSON schema output."""
     result = {"current": {}, "totals": {}, "grid_limits": {}}
 
@@ -523,11 +543,16 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group,
         result["network_state"] = live_network
         result["network_health"] = network_health(live_network)
 
+    # Passed through verbatim: the response shape has never been captured, so
+    # there is nothing to map it onto. AP-14.
+    if live_ja12 is not None:
+        result["ja12_compliance_capacity"] = live_ja12
+
     print_json_output(result)
 
 
 def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
-                     live_network=None):
+                     live_network=None, live_ja12=None):
     """Emit human-readable schema table."""
     print_header("API Field Schema — Current & Totals")
 
@@ -783,6 +808,28 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
                   "selectDeviceRunLogList\n        is a static alarm-code dictionary, not an "
                   "event log. For continuous\n        history, poll with "
                   "`tools/network_probe.py observe`.")
+
+    ja12_filtered = (not filter_group
+                     or filter_group.lower() in "ja12"
+                     or filter_group.lower() in "compliance")
+    if live_ja12 is not None and ja12_filtered:
+        print()
+        print_section("📋", "JA12 Compliance Capacity  (ja12/queryComplianceCapacity)")
+        print("  California Title 24 JA12. Shown because this gateway reports")
+        print("  ja12Entrance — it is not requested otherwise.")
+        print()
+        if isinstance(live_ja12, dict) and live_ja12:
+            # Rendered generically. No field in this payload has ever been
+            # observed in the capture corpus, so no schema is asserted for it
+            # and no units are claimed. AP-14.
+            width = max(len(str(k)) for k in live_ja12)
+            for k, v in live_ja12.items():
+                print(f"  {str(k):<{max(width, 24)}}  {_fmt_value(v)}")
+            print()
+            print("  Field meanings are not documented and no response to this")
+            print("  endpoint appears in the capture corpus — values are shown raw.")
+        else:
+            print(f"  {_fmt_value(live_ja12)}")
 
     if live_current is None:
         print("\n  Tip: run with --live to show current values alongside the schema")
