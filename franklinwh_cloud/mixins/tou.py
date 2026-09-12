@@ -12,9 +12,29 @@ Supports:
 - Pricing rates (buy/sell per tariff tier)
 - Full overwrite (operation=0) — the only mode the Cloud API supports
 
-CAUTION: The saveTouDispatch API endpoint is destructive — it validates,
-saves, AND switches the system to TOU mode. There is no 'update data only'
-path. Calling it always forces a TOU mode switch.
+CAUTION: saveTouDispatch is destructive — it is a full overwrite and there
+is no 'update data only' path.
+
+Whether it ALSO switches the system to TOU mode is version-dependent:
+
+* CONFIRMED through app 2.11.0 / 2026-03: it did. Across 38 distinct
+  saveTouDispatch calls in the HAR corpus, spanning app 2.3.1 to 2.11.0,
+  the app never followed a save with updateTouModeV2 — the backend made
+  the switch itself.
+* OBSERVED ~2026-06 onward (user report, current firmware): it no longer
+  does. The app reports the schedule saved and OFFERS to switch, calling
+  the ordinary mode endpoint (updateTouModeV2, i.e. set_mode) only if the
+  user accepts.
+
+The corpus ends 2026-03-20, so it cannot date the change; it establishes
+only that the old behaviour held to that point. See
+DEF-TOU-SAVE-NO-LONGER-SWITCHES-MODE.
+
+Callers must therefore NOT assume a save activates the schedule. Set the
+mode explicitly when that is the intent::
+
+    await client.set_tou_schedule(...)
+    await client.set_mode("Time of Use")   # no longer implied by the save
 """
 
 import json
@@ -621,9 +641,16 @@ class TouMixin:
         aGate may take a few minutes. touSendStatus=1 may persist as a
         false positive even after the schedule is applied.
 
-        CAUTION: The Cloud API's saveTouDispatch endpoint is destructive.
-        It validates, saves, AND switches the system to TOU mode. There
-        is no 'update data only' path.
+        CAUTION: The Cloud API's saveTouDispatch endpoint is destructive —
+        a full overwrite, with no 'update data only' path.
+
+        It does NOT reliably switch the system to TOU mode. It did so
+        through app 2.11.0 (CONFIRMED: 38 saves in the corpus, none
+        followed by a mode call), but current firmware saves only and
+        leaves the mode alone, with the app offering the switch as a
+        separate step. Call ``set_mode("Time of Use")`` afterwards if the
+        schedule is meant to take effect now.
+        See DEF-TOU-SAVE-NO-LONGER-SWITCHES-MODE.
 
         Parameters
         ----------
