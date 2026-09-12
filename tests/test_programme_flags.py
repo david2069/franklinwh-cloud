@@ -99,3 +99,37 @@ def test_ja12_prefers_the_join_field_when_the_gateway_reports_it():
     assert "Available, not joined" in src, (
         "the informative case — offered but not taken up — must be sayable"
     )
+
+
+# ── AP-14 applied to the support scheme block ────────────────────────
+
+def _support_src():
+    import inspect
+
+    from franklinwh_cloud.cli_commands import support
+
+    return inspect.getsource(support)
+
+
+def test_support_does_not_print_enrolled_for_scheme_flags():
+    """It printed "✅ Enrolled" directly beneath a comment calling the same
+    values "eligibility flags". Both readings cannot be right."""
+    src = _support_src()
+    assert "✅ Enrolled" not in src
+    assert "✅ Flag set" in src
+
+
+def test_support_calls_bb_battery_bonus_not_backup_battery():
+    """Same mislabel as DEF-BB-GROUP-MISLABEL, in a second renderer."""
+    src = _support_src()
+    assert "Backup Battery scheme" not in src
+    assert "Battery Bonus" in src
+
+
+def test_sdcp_expansion_is_not_asserted():
+    """AP-14: the acronym has no vendor citation, so claim neither candidate."""
+    src = _support_src()
+    assert "Smart Device Control Program" not in src, (
+        "unsourced expansion must not be presented as fact"
+    )
+    assert "expansion unverified" in src
