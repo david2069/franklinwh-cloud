@@ -125,22 +125,33 @@ async def test_tariff_fields_populate():
     assert snap.site.der_schedule == "AS4777"
 
 
-async def test_nem_type_resolves_from_the_wire_not_the_default():
-    """Worse than an empty field: this one reported a confident WRONG value.
+async def test_nem_label_is_not_asserted_outside_the_us():
+    """NEM is a US scheme; 0 must not render as "NEM 2.0" on an AU system.
 
-    nemType was absent from the list endpoint, so `result.get("nemType", 0)`
-    yielded 0, and the real catalog maps "0" to "NEM 2.0". Every discover()
-    has therefore claimed NEM 2.0 regardless of the actual tariff. The corpus
-    value here, 2, is "No NEM".
+    Raised by the FWHAI agent. Corpus: 661 samples of nemType=0 on a gateway
+    whose country is Australia and whose retailer is Amber. Whether 0 is a
+    genuine NEM 2.0 or an unset sentinel is still open, but either way the
+    label is wrong here — so assert nothing and keep the raw value.
     """
-    snap = await _run(_DiscoverClient(LIST_PAYLOAD, DETAIL_PAYLOAD))
-    assert snap.flags.nem_type == "No NEM"
+    client = _DiscoverClient(LIST_PAYLOAD, DETAIL_PAYLOAD)
+    snap = await _run(client)
+
+    assert snap.flags.nem_type == "", "no scheme may be claimed outside the US"
+    assert snap.flags.nem_type_raw == 2, "the wire value must survive"
 
 
-async def test_absent_nem_type_no_longer_silently_reports_nem_2():
-    """With nemType missing the field must be left alone, not defaulted."""
+async def test_the_raw_value_is_kept_even_when_unlabelled():
+    """The open question needs the number, so blanking must not discard it."""
+    snap = await _run(_DiscoverClient(LIST_PAYLOAD, {"nemType": 0}))
+    assert snap.flags.nem_type == ""
+    assert snap.flags.nem_type_raw == 0
+
+
+async def test_absent_nem_type_leaves_the_flag_alone():
+    """With nemType missing, nothing is claimed and nothing is invented."""
     snap = await _run(_DiscoverClient(LIST_PAYLOAD, {"template": {}}))
-    assert snap.flags.nem_type != "NEM 2.0"
+    assert snap.flags.nem_type == ""
+    assert snap.flags.nem_type_raw is None
 
 
 # ── the regression the proposed fix would have caused ────────────────

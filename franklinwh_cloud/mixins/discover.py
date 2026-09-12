@@ -758,10 +758,27 @@ class DiscoverMixin:
                 der = template.get("derSchdule", "")
                 snap.site.der_schedule = der or snap.site.der_schedule
             if "nemType" in dresult:
-                nem_type = dresult.get("nemType", 0)
-                snap.flags.nem_type = (catalog.get("nem_types") or {}).get(
-                    str(nem_type), f"Unknown ({nem_type})"
-                )
+                # NEM (Net Energy Metering) is a US scheme. The field is
+                # present as 0 on non-US systems, and the catalog maps 0 to
+                # "NEM 2.0" — a Californian tariff that does not exist in
+                # Australia. Corpus evidence: 661 samples of nemType=0, on a
+                # gateway whose country is Australia and whose retailer is
+                # Amber; the only other observed value, 3, occurs solely
+                # alongside US markers and is not in the catalog at all.
+                #
+                # Whether 0 is a genuine "NEM 2.0" or an unset sentinel is
+                # still open (DEF-NEM-TYPE-ZERO-UNRESOLVED). Either way,
+                # labelling an Australian system "NEM 2.0" is wrong, so
+                # outside the US assert nothing and keep the raw value.
+                nem_raw = dresult.get("nemType")
+                snap.flags.nem_type_raw = nem_raw
+                countries = (catalog.get("countries") or {})
+                us_ids = {k for k, v in countries.items()
+                          if isinstance(v, dict) and v.get("code") == "US"}
+                if str(snap.site.country_id) in us_ids:
+                    snap.flags.nem_type = (catalog.get("nem_types") or {}).get(
+                        str(nem_raw), f"Unknown ({nem_raw})"
+                    )
             # ptoDate sits at the TOP level of result. template.ptoDate exists
             # but is present-and-null in every captured sample, so the fallback
             # must tolerate None rather than assume a string.
