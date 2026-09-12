@@ -1142,8 +1142,11 @@ async def _handle_next(client, json_output: bool):
     print_header("TOU Schedule — Current & Next")
 
     print_section("📋", "Schedule")
-    print(f"  {'':3}{'START':<10}{'END':<10}{'DISPATCH':<32}{'WAVE':<12}{'DURATION'}")
-    print(f"  {'':3}{'─'*9} {'─'*9} {'─'*31} {'─'*11} {'─'*8}")
+    # WAVE is 15 wide, matching the full schedule table. "Super Off-Peak" is
+    # 14 characters and overflowed a 12-wide column straight into DURATION
+    # with no separator. DEF-TOU-NEXT-WAVE-OVERFLOW.
+    print(f"  {'':3}{'START':<10}{'END':<10}{'DISPATCH':<32}{'WAVE':<15}{'DURATION'}")
+    print(f"  {'':3}{'─'*9} {'─'*9} {'─'*31} {'─'*14} {'─'*8}")
 
     for block in sorted_blocks:
         start_str = block.get("startHourTime", "00:00")
@@ -1163,7 +1166,7 @@ async def _handle_next(client, json_output: bool):
         marker = c("green", "▸ ") if is_active else "  "
         name_formatted = c("bold", c(disp_color, f"{disp_name:<32s}")) if is_active else c(disp_color, f"{disp_name:<32s}")
 
-        print(f"  {marker}{start_str:<10}{end_str:<10}{name_formatted}{wave_name:<12}{dur}")
+        print(f"  {marker}{start_str:<10}{end_str:<10}{name_formatted}{wave_name:<15}{dur}")
 
     print()
 
