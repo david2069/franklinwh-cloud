@@ -183,7 +183,10 @@ class FeatureFlags:
     ja12: bool = False
     sdcp: bool = False
     vpp_enrolled: bool = False
+    # US-only. Left blank outside the US rather than asserting a scheme that
+    # does not exist there — see DEF-NEM-TYPE-ZERO-UNRESOLVED.
     nem_type: str = ""           # "NEM 2.0", "NEM 3.0", "No NEM"
+    nem_type_raw: int | None = None   # the wire value, whatever we label it
     ahub_detected: bool = False
     mac1_detected: bool = False
     charging_power_limited: bool = False
