@@ -431,6 +431,27 @@ async def run(client, json_output: bool = False, show_live: bool = False,
                      live_network)
 
 
+def _totals_filtered_out(filter_group, group) -> bool:
+    """Should this TOTALS_SCHEMA row be hidden under ``--filter``?
+
+    DEF-SCHEMA-TOTALS-POWER-FILTER. Plain substring matching rendered the
+    ``stats.totals`` header with zero rows for ``--filter power``: no totals
+    group contains the word. CURRENT_SCHEMA happens to have "Power Flow" and
+    "Power Measurements (211)", so the filter looked like it worked.
+
+    Every TOTALS_SCHEMA group is cumulative energy — Battery, Grid,
+    Generation, Smart Circuits, V2L, Load Breakdown, APbox/MPPT. So "power"
+    and "energy" match all of them, rather than a hardcoded subset that would
+    silently drift as groups are added.
+    """
+    if not filter_group:
+        return False
+    f = filter_group.lower()
+    if f in ("power", "energy"):
+        return False
+    return f not in group.lower()
+
+
 def _json_output(live_current, live_totals, live_grid_limits, filter_group,
                  live_network=None):
     """Emit JSON schema output."""
@@ -445,7 +466,7 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group,
         result["current"][field] = entry
 
     for field, (api_key, source, units, group) in TOTALS_SCHEMA.items():
-        if filter_group and filter_group.lower() not in group.lower():
+        if _totals_filtered_out(filter_group, group):
             continue
         entry = {"api_key": api_key, "source": source, "units": units, "group": group}
         if live_totals is not None:
@@ -551,7 +572,7 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
 
     totals_group = None
     for field, (api_key, source, units, group) in TOTALS_SCHEMA.items():
-        if filter_group and filter_group.lower() not in group.lower():
+        if _totals_filtered_out(filter_group, group):
             continue
         if group != totals_group:
             print(f"\n  ── {group}")

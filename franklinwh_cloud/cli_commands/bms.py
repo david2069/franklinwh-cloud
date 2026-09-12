@@ -198,6 +198,24 @@ async def run(client, *, json_output: bool = False):
             print_kv("Solar (A-N / B-N)", f"{sv_an} V  |  {sv_bn} V")
 
         # ── Hardware States ──────────────────────────────────────
+        #
+        # These print as RAW CODES on purpose. const/states.py has BMS_STATE,
+        # PCS_STATE and DCDC_STATE, and it is tempting to apply them here —
+        # but they decode DIFFERENT FIELDS FROM A DIFFERENT ENDPOINT:
+        #
+        #   BMS_STATE  -> runtimeData.bms_work  (cmdType 203, per-pack list)
+        #   PCS_STATE  -> runtimeData.pe_stat   (cmdType 203, per-pack list)
+        #   DCDC_STATE -> documented as mirroring bms_work
+        #
+        # The fields below are scalars from the cmdType 211 BMS payload.
+        # bmsState is not bms_work and inverterStatus is not pe_stat; the names
+        # merely resemble each other. Mapping one enum through another on the
+        # strength of a similar name is exactly what produced
+        # DEF-CONNTYPE-ENCODING-WRONG.
+        #
+        # Decoding these needs a captured 211 payload to establish the domains.
+        # See DEF-BMS-211-STATE-CODES-UNDECODED. Until then a raw number is
+        # honest and a confident wrong word is not.
         print_section("🔧", "Hardware States")
         print_kv("BMS Status", str(bms.get("bmsState", "?")))
         print_kv("MOS State", str(bms.get("mosState", "?")))
