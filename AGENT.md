@@ -85,6 +85,22 @@ All verification logic (Syntax checks, live testing limits, and offline logs) mu
 > Under no circumstances may an AI Agent test negative authentication handling (e.g. intentionally using invalid passwords) against the **live API** using a REAL email address. Doing so triggers severe anti-bruteforce lockouts and bricks the user's connection.
 > **Exception:** You MAY perform live negative authentication testing (e.g. simulating `InvalidCredentialsException`) ONLY IF you explicitly route the test through a **dummy fallback email** (e.g. `nobody@doesnotexist.invalid`). See `.agents/policies/live_test_protocol.md` for full constraints.
 
+### 🚫 STRICT BOUNDARY: No Unsourced Claims About the API (AP-14)
+
+> **This API is reverse-engineered. There is no specification.** Every statement
+> about what a field *means* is an inference, and a confident wrong label is
+> worse than a blank one — five defects in `defect_list.md` were caused by
+> acting on a plausible comment instead of checking the capture corpus.
+>
+> Before changing behaviour on the strength of an existing comment, **verify it
+> against `hars/`**. A comment is not a source. Cite a sample count or a
+> document page, or mark the claim `INFERRED` / `ASSUMED` with what would
+> settle it. Speculation is welcome — unlabelled speculation is not.
+>
+> Never assert that a field is deprecated, unreleased, regionally gated or
+> defective: from outside, those are indistinguishable. See
+> `.agents/policies/evidence_standard.md`.
+
 ### 🚫 STRICT BOUNDARY: No PII Exposure (AP-3)
 > **Never commit real user details.** Any captured JSON payloads, API outputs, or documentation examples must be rigorously scrubbed of all Personally Identifiable Information before being written to disk or `.md` files.
 > You must strictly adhere to `.agents/policies/pii_policy.md`. Replace real emails with `user@example.com` and real serials with `10060006AXXXXXXXXX`.

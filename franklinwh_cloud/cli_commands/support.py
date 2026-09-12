@@ -2982,17 +2982,33 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             if der and der not in ("", "Other", "None", None):
                 print_kv("DER Schedule", der)
 
-            # Scheme eligibility flags — only print those that are True
+            # Scheme flags. The comment above this block used to say
+            # "eligibility" while the line below printed "Enrolled" — the two
+            # readings cannot both be right, and nothing establishes which.
+            # AP-14: report the flag, do not assert what it means.
+            #
+            # These are US-utility programmes. A gateway outside the US can
+            # carry them set, which is itself evidence the flags are not
+            # enrolment. DEF-PROGRAMME-ENTRANCE-OVERCLAIM.
             _scheme_flags = [
+                # ASSUMED expansions where the vendor has not stated one.
                 ("sgip",       "SGIP",          "Self-Generation Incentive Program (CA)"),
-                ("bb",         "Backup Battery", "Backup Battery scheme"),
-                ("ja12",       "JA12",           "JA12 grid compliance"),
-                ("sdcp",       "SDCP",           "Smart Device Control Program"),
+                # CONFIRMED: discovery.py documents bb as Hawaii Battery Bonus.
+                # It is NOT "backup battery" — see DEF-BB-GROUP-MISLABEL.
+                ("bb",         "Battery Bonus", "Hawaiian Electric Battery Bonus"),
+                ("ja12",       "JA12",           "CA Title 24 JA12 grid compliance"),
+                # ASSUMED: the acronym is unsourced. Candidates include
+                # San Diego Community Power (a CA utility — consistent with the
+                # sibling `sdcpCompanyFlag` and with sdcpFlag appearing in
+                # getTouCompanyListPageV2, a utility-company list) and "Smart
+                # Device Control Program", which the previous label asserted
+                # without a citation. DEF-SDCP-MEANING-UNSOURCED.
+                ("sdcp",       "SDCP",           "scheme flag; expansion unverified"),
                 ("pcs_enabled","PCS",            "Power Control System enabled"),
             ]
             active_schemes = [(label, desc) for key, label, desc in _scheme_flags if prog.get(key)]
             for label, desc in active_schemes:
-                print_kv(label, c("green", f"✅ Enrolled  ({desc})"))
+                print_kv(label, c("green", f"✅ Flag set  ({desc})"))
 
             # Grid limits (from get_power_control_settings)
             # -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW cap

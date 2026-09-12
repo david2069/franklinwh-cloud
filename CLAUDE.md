@@ -15,6 +15,11 @@
 4. **No `ShouldAutoProceed: true`** on implementation plans — wait for user approval
 5. **Save test results** to `tests/results/` for traceability
 6. **API-affecting changes** (`set_tou_schedule`, `set_mode`, etc.) need user sign-off before commit
+7. **No unsourced claims about the API (AP-14)** — it is reverse-engineered, so
+   every field meaning is an inference. Verify against `hars/` before acting on
+   an existing comment; cite a sample count or document page, or label the claim
+   `INFERRED` / `ASSUMED`. Never assert a field is deprecated or defective —
+   that is indistinguishable from outside. See `.agents/policies/evidence_standard.md`
 
 ## Project Layout
 
