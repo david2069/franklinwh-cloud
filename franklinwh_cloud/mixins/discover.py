@@ -713,37 +713,63 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_site_and_device_info failed: {e}")
 
-        # 14. TOU → NEM type, electric company, PTO date
+        # 14. TOU → VPP enrolment, NEM type, tariff, PTO date
+        #
+        # These come from TWO endpoints carrying DISJOINT field sets. Measured
+        # over the HAR corpus (DEF-DISCOVER-TOU-WRONG-ENDPOINT):
+        #
+        #   getGatewayTouListV2   n=1271:  vppSocVo 98%, todayVppVo 100%,
+        #                                  ptoDate/nemType/template  0%
+        #   getTouDispatchDetail  n=672:   ptoDate 72%, nemType 100%,
+        #                                  template 100%, vpp* 0%
+        #
+        # Everything used to be read from the list endpoint, so four fields —
+        # electric_company, tariff_name, der_schedule and nem_type, as well as
+        # pto_date — could never populate for any user. Swapping wholesale to
+        # the detail endpoint would have fixed those and broken the two VPP
+        # fields that do work, since the sets do not overlap. So: both, each
+        # read from the endpoint that actually carries it, and guarded
+        # separately so one failing does not cost the other.
+
+        # 14a. VPP enrolment and SoC bounds — list endpoint
         try:
             tou = await self.get_gateway_tou_list()
             result = (tou.get("result") or {}) if isinstance(tou, dict) else {}
-            if result:
-                template = (result.get("template") or {})
-                if template:
-                    snap.site.electric_company = template.get("electricCompany", "")
-                    snap.site.tariff_name = template.get("name", "")
-                    der = template.get("derSchdule", "")
-                    snap.site.der_schedule = der or snap.site.der_schedule
-                    # NEM type
-                    nem_type = result.get("nemType", 0)
-                    snap.flags.nem_type = (catalog.get("nem_types") or {}).get(
-                        str(nem_type), f"Unknown ({nem_type})"
-                    )
-                pto = result.get("ptoDate", "") or (result.get("template") or {}).get("ptoDate", "")
-                if pto:
-                    snap.site.pto_date = pto
-                # VPP from TOU
-                vpp_soc = (result.get("vppSocVo") or {})
-                if vpp_soc:
-                    snap.programmes.vpp_soc = vpp_soc.get("vppSoc", 20.0)
-                    snap.programmes.vpp_min_soc = vpp_soc.get("vppMinSoc", 5.0)
-                    snap.programmes.vpp_max_soc = vpp_soc.get("vppMaxSoc", 100.0)
-                vpp_vo = (result.get("todayVppVo") or {})
-                if vpp_vo and vpp_vo.get("vppFlag", 0) != 0:
-                    snap.flags.vpp_enrolled = True
-                    snap.programmes.enrolled = True
+            vpp_soc = (result.get("vppSocVo") or {})
+            if vpp_soc:
+                snap.programmes.vpp_soc = vpp_soc.get("vppSoc", 20.0)
+                snap.programmes.vpp_min_soc = vpp_soc.get("vppMinSoc", 5.0)
+                snap.programmes.vpp_max_soc = vpp_soc.get("vppMaxSoc", 100.0)
+            vpp_vo = (result.get("todayVppVo") or {})
+            if vpp_vo and vpp_vo.get("vppFlag", 0) != 0:
+                snap.flags.vpp_enrolled = True
+                snap.programmes.enrolled = True
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list failed: {e}")
+
+        # 14b. Tariff, NEM type and PTO date — dispatch detail endpoint
+        try:
+            detail = await self.get_tou_dispatch_detail()
+            dresult = (detail.get("result") or {}) if isinstance(detail, dict) else {}
+            template = (dresult.get("template") or {})
+            if template:
+                snap.site.electric_company = template.get("electricCompany", "")
+                snap.site.tariff_name = template.get("name", "")
+                der = template.get("derSchdule", "")
+                snap.site.der_schedule = der or snap.site.der_schedule
+            if "nemType" in dresult:
+                nem_type = dresult.get("nemType", 0)
+                snap.flags.nem_type = (catalog.get("nem_types") or {}).get(
+                    str(nem_type), f"Unknown ({nem_type})"
+                )
+            # ptoDate sits at the TOP level of result. template.ptoDate exists
+            # but is present-and-null in every captured sample, so the fallback
+            # must tolerate None rather than assume a string.
+            pto = dresult.get("ptoDate") or (template.get("ptoDate") or "")
+            if pto:
+                snap.site.pto_date = pto
+        except Exception as e:
+            logger.warning(f"discover: get_tou_dispatch_detail failed: {e}")
 
     # ── Flag derivation ───────────────────────────────────────────
 
