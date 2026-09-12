@@ -181,6 +181,17 @@ class FeatureFlags:
     sgip: bool = False
     bb: bool = False             # Hawaii Battery Bonus
     ja12: bool = False
+    # `ja12Entrance` (above) and `isJoinJA12` (here) come from DIFFERENT
+    # endpoints — getEntranceInfo vs the gateway list — and never appear in the
+    # same response. Whether "entrance" means eligible-and-offered or actually
+    # joined is unresolved (DEF-ISJOINJA12-NEVER-READ): no captured gateway has
+    # ja12Entrance=1 together with a known isJoinJA12, so the decisive case has
+    # never been observed. Recorded separately rather than merged, so the first
+    # live gateway that has both settles it by observation.
+    #
+    # None = not reported by this firmware/app version, which is NOT the same
+    # as False. Only 9 corpus samples carry the field at all.
+    ja12_joined: bool | None = None
     sdcp: bool = False
     vpp_enrolled: bool = False
     # US-only. Left blank outside the US rather than asserting a scheme that

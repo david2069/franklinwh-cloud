@@ -134,6 +134,10 @@ class DiscoverMixin:
                 snap.agate.installed = _ts_to_str(gw.get("installTime"))
                 snap.agate.created = _ts_to_str(gw.get("createTime"))
                 # Site basics from gateway
+                # Sibling of ja12Entrance, from a different endpoint. Read,
+                # not interpreted — see FeatureFlags.ja12_joined.
+                if "isJoinJA12" in gw:
+                    snap.flags.ja12_joined = bool(gw.get("isJoinJA12"))
                 snap.site.timezone = gw.get("zoneInfo", "")
                 snap.site.country_id = gw.get("countryId", 0)
                 snap.site.province_id = gw.get("provinceId", 0)
