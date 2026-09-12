@@ -257,12 +257,29 @@ def _render_flags(snap):
     # Programme flags (region-filtered via catalog)
     if "nemType" not in api_nulls:
         flags.append(("NEM Type", bool(f.nem_type), f.nem_type or "—"))
+    # These three read `*Entrance` fields and used to print "Enrolled". The
+    # field name suggests an entry point being OFFERED, and nothing establishes
+    # that it means joined — so claiming enrolment is the same class of
+    # unverified assertion as nemType 0 rendering "NEM 2.0". The asymmetry
+    # decides the wording: 0 safely implies not enrolled, while 1 does not
+    # safely imply enrolled. DEF-PROGRAMME-ENTRANCE-OVERCLAIM.
+    def _entrance(flag):
+        return "Available or enrolled" if flag else "Not enrolled"
+
     if "sgipEntrance" not in api_nulls:
-        flags.append(("SGIP (CA)", f.sgip, "Enrolled" if f.sgip else "Not enrolled"))
+        flags.append(("SGIP (CA)", f.sgip, _entrance(f.sgip)))
     if "bbEntrance" not in api_nulls:
-        flags.append(("BB (Hawaii)", f.bb, "Enrolled" if f.bb else "Not enrolled"))
+        flags.append(("BB (Hawaii)", f.bb, _entrance(f.bb)))
     if "ja12Entrance" not in api_nulls:
-        flags.append(("JA12 (CA)", f.ja12, "Enrolled" if f.ja12 else "Not applicable"))
+        # JA12 alone has a separate join field. When the gateway reports it,
+        # it answers the enrolment question directly and outranks the guess.
+        if f.ja12_joined is not None:
+            detail = "Enrolled" if f.ja12_joined else (
+                "Available, not joined" if f.ja12 else "Not enrolled")
+            flags.append(("JA12 (CA)", f.ja12 or f.ja12_joined, detail))
+        else:
+            flags.append(("JA12 (CA)", f.ja12,
+                          _entrance(f.ja12) if f.ja12 else "Not applicable"))
     
     flags.append(("VPP Programme", f.vpp_enrolled,
                    "Enrolled" if f.vpp_enrolled else "Not enrolled"))
