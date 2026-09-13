@@ -305,6 +305,13 @@ async def run(client, *, json_output: bool = False):
                 print_kv("Country", gateway_info["country"])
             if gateway_info.get("timezone"):
                 print_kv("Timezone", gateway_info["timezone"])
+            # device_time was collected at the Device step but never rendered.
+            # Shown next to the zone it belongs with: the pair is what makes a
+            # gateway's clock interpretable from another time zone.
+            # See docs/TIME_AND_TIMEZONES.md.
+            if device_info.get("device_time"):
+                print_kv("Gateway Time", f'{device_info["device_time"]}'
+                                         f'  ({gateway_info.get("timezone") or "zone unknown"})')
 
             phase_color = "cyan" if gateway_info.get("three_phase_flag") else "dim"
             print_kv("Phase Config", c(phase_color, gateway_info.get("phase", "Unknown")))

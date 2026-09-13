@@ -71,6 +71,7 @@ nav:
     - Sandbox Setup: SANDBOX_SETUP.md
   - Guides:
     - API Cookbook: API_COOKBOOK.md
+    - Time & Time Zones: TIME_AND_TIMEZONES.md
     - API Reference: API_REFERENCE.md
     - API Endpoint Mapping: API_ENDPOINTS_MAPPING.md
     - MQTT Command Catalog: MQTT_CMD_CATALOG.md
