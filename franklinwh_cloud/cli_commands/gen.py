@@ -7,8 +7,16 @@ Usage:
     franklinwh-cli gen              # config + live metrics
     franklinwh-cli --json gen       # machine-readable
 
-Read-only. `set_generator_mode()` exists in the SDK but is not exposed here —
-that is step D and is API-affecting, so it needs sign-off (CLAUDE.md rule 6).
+    franklinwh-cli gen --schedule 11:00-23:59
+    franklinwh-cli gen --schedule 06:00-09:00 --schedule 17:00-21:00
+    franklinwh-cli gen --schedule off          # disable all windows
+
+`--schedule` writes the generator charge windows. Times are **gateway-local
+wall clock** — a gateway in another time zone runs them at ITS local time.
+
+`set_generator_mode()` is deliberately NOT exposed: it posts `manuSw`, which
+the corpus shows is a manual start/stop command rather than a mode setter
+(DEF-GEN-MODE-WRITES-MANUSW).
 """
 
 from franklinwh_cloud.cli_output import (
@@ -16,8 +24,49 @@ from franklinwh_cloud.cli_output import (
 )
 
 
-async def run(client, *, json_output: bool = False):
+def _parse_window(spec):
+    """``"06:00-09:00"`` -> ``{"start": ..., "end": ..., "enabled": True}``."""
+    if "-" not in spec:
+        raise ValueError(f"expected START-END, got {spec!r}")
+    start, _, end = spec.partition("-")
+    return {"start": start.strip(), "end": end.strip(), "enabled": True}
+
+
+async def _set_schedule(client, specs, json_output, assume_yes):
+    """Write the generator charge windows."""
+    disable_all = len(specs) == 1 and specs[0].strip().lower() in ("off", "none")
+    windows = [] if disable_all else [_parse_window(s) for s in specs]
+
+    if not json_output:
+        print_header("Generator — set charge schedule")
+        if windows:
+            for i, w in enumerate(windows, 1):
+                print_kv(f"Window {i}", f'{w["start"]} - {w["end"]}')
+        else:
+            print_kv("Windows", "all disabled")
+        # The single most likely way to get this wrong from another timezone.
+        print_warning("Times are the GATEWAY's local wall clock, not yours. "
+                      "See docs/TIME_AND_TIMEZONES.md")
+        print_warning("This determines when the generator runs.")
+        if not assume_yes:
+            if input("Proceed? [y/N] ").strip().lower() != "y":
+                print("Aborted.")
+                return 2
+
+    result = await client.set_generator_charge_schedule(windows, confirm=True)
+    if json_output:
+        print_json_output({"requested": windows, "result": result})
+    else:
+        print_kv("Result", str(result))
+    return 0
+
+
+async def run(client, *, json_output: bool = False, schedule=None,
+              assume_yes: bool = False):
     """Execute the generator command."""
+    if schedule:
+        return await _set_schedule(client, schedule, json_output, assume_yes)
+
     data = await client.get_generator_detail()
 
     if json_output:

@@ -802,6 +802,117 @@ class DevicesMixin:
         data = await self._post(url, params=params, payload=payload)
         return data["result"]
 
+    #: Generator charge windows exposed by ``selectIotGenerator``.
+    GENERATOR_CHARGE_WINDOWS = 3
+
+    @staticmethod
+    def _parse_hhmm(value, label):
+        """Validate an ``"HH:MM"`` string and return minutes past midnight."""
+        if not isinstance(value, str) or len(value) != 5 or value[2] != ":":
+            raise ValueError(f"{label} must be 'HH:MM', got {value!r}")
+        try:
+            h, m = int(value[:2]), int(value[3:])
+        except ValueError:
+            raise ValueError(f"{label} must be 'HH:MM', got {value!r}") from None
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError(f"{label} out of range: {value!r}")
+        return h * 60 + m
+
+    async def set_generator_charge_schedule(self, windows, *, confirm=False):
+        """Set the generator charge schedule — up to three daily windows.
+
+        The generator runs to charge the batteries inside these windows.
+        Mirrors the write captured from the official app::
+
+            {"charge1En": 1, "charge1StartTime": "11:00",
+             "charge1EndTime": "23:59", "charge2En": 0, "charge3En": 0,
+             "opt": 1}
+
+        Parameters
+        ----------
+        windows : list[dict]
+            Up to three, each ``{"start": "HH:MM", "end": "HH:MM",
+            "enabled": bool}``. ``enabled`` defaults to True. Fewer than three
+            disables the remainder. An empty list disables all.
+        confirm : bool
+            Must be True — this determines when an engine runs.
+
+        Returns
+        -------
+        dict
+            The gateway's response to the write.
+
+        Note
+        ----
+        **Times are gateway-local wall clock**, not the caller's. A gateway in
+        another time zone runs these at ITS local time — see
+        ``docs/TIME_AND_TIMEZONES.md``. Nothing is converted here.
+
+        Disabled windows are sent as ``chargeNEn: 0`` with **no times**,
+        exactly as the app does. Whether omitting the times clears them is not
+        established; mirroring the captured shape is the safer choice.
+
+        Overlapping enabled windows are **rejected**. The official app does not
+        let a user enter them, which suggests the backend may not validate —
+        so this does. Windows spanning midnight (``start >= end``) are also
+        rejected: no such window has been observed, and the behaviour is
+        unverified.
+        """
+        if not confirm:
+            raise ValueError(
+                "set_generator_charge_schedule() determines when the generator "
+                "runs. Pass confirm=True."
+            )
+        windows = list(windows or [])
+        if len(windows) > self.GENERATOR_CHARGE_WINDOWS:
+            raise ValueError(
+                f"at most {self.GENERATOR_CHARGE_WINDOWS} windows, got {len(windows)}"
+            )
+
+        spans = []
+        for i, w in enumerate(windows, start=1):
+            if not w.get("enabled", True):
+                continue
+            start = self._parse_hhmm(w.get("start"), f"window {i} start")
+            end = self._parse_hhmm(w.get("end"), f"window {i} end")
+            if start >= end:
+                raise ValueError(
+                    f"window {i}: start {w['start']} must be before end "
+                    f"{w['end']}. Windows spanning midnight have never been "
+                    f"observed and are not supported."
+                )
+            spans.append((start, end, i))
+
+        # The app prevents overlaps in its UI, so the backend may accept them
+        # silently and behave unpredictably. Reject rather than find out.
+        spans.sort()
+        for (s1, e1, i1), (s2, e2, i2) in zip(spans, spans[1:]):
+            if s2 < e1:
+                raise ValueError(
+                    f"windows {i1} and {i2} overlap; the official app does not "
+                    f"permit this"
+                )
+
+        payload = {"gatewayId": self.gateway}
+        for i in range(1, self.GENERATOR_CHARGE_WINDOWS + 1):
+            w = windows[i - 1] if i <= len(windows) else None
+            enabled = bool(w and w.get("enabled", True))
+            payload[f"charge{i}En"] = 1 if enabled else 0
+            if enabled:
+                payload[f"charge{i}StartTime"] = w["start"]
+                payload[f"charge{i}EndTime"] = w["end"]
+        payload["opt"] = 1
+
+        logger.info(
+            "set_generator_charge_schedule: %d enabled window(s)",
+            sum(1 for i in range(1, self.GENERATOR_CHARGE_WINDOWS + 1)
+                if payload[f"charge{i}En"]),
+        )
+        url = self.url_base + "hes-gateway/terminal/updateIotGenerator"
+        params = {"gatewayId": self.gateway}
+        data = await self._post(url, params=params, payload=payload)
+        return data.get("result", data)
+
     async def set_v2l_mode(self, enable: bool) -> dict:
         """Enable or disable V2L (Vehicle-to-Load) output via the CarSW port.
 
