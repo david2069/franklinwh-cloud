@@ -1,13 +1,26 @@
 {
   "catalog_version": "1.1.0",
   "last_updated": "2026-03-25",
-
   "countries": {
-    "1": {"name": "China", "code": "CN", "voltage": "220V", "supported": false},
-    "2": {"name": "United States", "code": "US", "voltage": "240V split-phase", "supported": true},
-    "3": {"name": "Australia", "code": "AU", "voltage": "230V single/415V 3-phase", "supported": true}
+    "1": {
+      "name": "China",
+      "code": "CN",
+      "voltage": "220V",
+      "supported": false
+    },
+    "2": {
+      "name": "United States",
+      "code": "US",
+      "voltage": "240V split-phase",
+      "supported": true
+    },
+    "3": {
+      "name": "Australia",
+      "code": "AU",
+      "voltage": "230V single/415V 3-phase",
+      "supported": true
+    }
   },
-
   "region_quirks": {
     "2": {
       "country": "US",
@@ -15,7 +28,13 @@
       "v2l_available": true,
       "nem_applicable": true,
       "max_export_kw": null,
-      "programmes_applicable": ["sgipEntrance", "bbEntrance", "ja12Entrance", "isJoinJA12", "sdcpFlag"],
+      "programmes_applicable": [
+        "sgipEntrance",
+        "bbEntrance",
+        "ja12Entrance",
+        "isJoinJA12",
+        "sdcpFlag"
+      ],
       "api_null_fields": [],
       "notes": "Split-phase 120/240V. NEM 2.0/3.0 applicable in CA/HI. SGIP/BB incentive programmes CA/HI-only."
     },
@@ -27,78 +46,311 @@
       "max_export_kw": 10.0,
       "programmes_applicable": [],
       "api_null_fields": [
-        "sgipEntrance", "bbEntrance", "ja12Entrance", "isJoinJA12", "sdcpFlag",
-        "nemType", "programmeList"
+        "sgipEntrance",
+        "bbEntrance",
+        "ja12Entrance",
+        "isJoinJA12",
+        "sdcpFlag",
+        "nemType",
+        "programmeList"
       ],
-      "notes": "Single-phase 230V nominal. No V2L on AU hardware. Export typically limited to 10kW (varies by DNSP/state). US programme flags return null — expected behaviour, not an error."
+      "notes": "Single-phase 230V nominal. No V2L on AU hardware. Export typically limited to 10kW (varies by DNSP/state). US programme flags return null \u2014 expected behaviour, not an error."
     }
   },
-
   "agate_models": {
-    "100": {"name": "aGate X", "sku": "AGT-R1V1-US", "model": "aGate X-10", "country_id": 2, "generation": 1},
-    "101": {"name": "aGate X", "sku": "AGT-R1V2-US", "model": "aGate X-20", "country_id": 2, "generation": 1},
-    "102": {"name": "aGate X", "sku": "AGT-R1V1-AU", "model": "aGate X-01-AU", "country_id": 3, "generation": 1},
-    "103": {"name": "aGate X", "sku": "AGT-R1V3-US", "model": "aGate X 20 (US)", "country_id": 2, "generation": 2},
-    "104": {"name": "aGate X", "sku": "AGT-R1V3-US", "model": "aGate X 20 (US)", "country_id": 2, "generation": 2}
+    "100": {
+      "name": "aGate X",
+      "sku": "AGT-R1V1-US",
+      "model": "aGate X-10",
+      "country_id": 2,
+      "generation": 1
+    },
+    "101": {
+      "name": "aGate X",
+      "sku": "AGT-R1V2-US",
+      "model": "aGate X-20",
+      "country_id": 2,
+      "generation": 1
+    },
+    "102": {
+      "name": "aGate X",
+      "sku": "AGT-R1V1-AU",
+      "model": "aGate X-01-AU",
+      "country_id": 3,
+      "generation": 1
+    },
+    "103": {
+      "name": "aGate X",
+      "sku": "AGT-R1V3-US",
+      "model": "aGate X 20 (US)",
+      "country_id": 2,
+      "generation": 2
+    },
+    "104": {
+      "name": "aGate X",
+      "sku": "AGT-R1V3-US",
+      "model": "aGate X 20 (US)",
+      "country_id": 2,
+      "generation": 2
+    }
   },
-
   "apower_models": {
-    "0": {"name": "aPower X", "sku": "APR-05K1V1-US", "model": "aPower X-10", "country_id": 2, "type": "standard", "has_mppt": false},
-    "1": {"name": "aPower X", "sku": "APR-05K11V1-US", "model": "aPower X-10", "country_id": 2, "type": "standard", "has_mppt": false},
-    "2": {"name": "aPower X", "sku": "APR-05K13V1-AU", "model": "aPower X-01-AU", "country_id": 3, "type": "standard", "has_mppt": false},
-    "3": {"name": "aPower 2", "sku": "APR-10K15V2-US", "model": "aPower X-20", "country_id": 2, "type": "high_capacity", "has_mppt": false},
-    "4": {"name": "aPower S", "sku": "APRS-10K15V1-US", "model": "aPower S-10", "country_id": 2, "type": "stackable", "has_mppt": true},
-    "5": {"name": "aPower S", "sku": "APRS-11K15V2-US", "model": "aPower S-10", "country_id": 2, "type": "stackable", "has_mppt": true},
-    "6": {"name": "aPower X", "sku": "APR-05K15V1-US", "model": "aPower X-10", "country_id": 2, "type": "standard", "has_mppt": false},
-    "7": {"name": "aPower X", "sku": "APR-05K13V2-AU", "model": "aPower X-02-AU", "country_id": 3, "type": "standard", "has_mppt": false}
+    "0": {
+      "name": "aPower X",
+      "sku": "APR-05K1V1-US",
+      "model": "aPower X-10",
+      "country_id": 2,
+      "type": "standard",
+      "has_mppt": false
+    },
+    "1": {
+      "name": "aPower X",
+      "sku": "APR-05K11V1-US",
+      "model": "aPower X-10",
+      "country_id": 2,
+      "type": "standard",
+      "has_mppt": false
+    },
+    "2": {
+      "name": "aPower X",
+      "sku": "APR-05K13V1-AU",
+      "model": "aPower X-01-AU",
+      "country_id": 3,
+      "type": "standard",
+      "has_mppt": false
+    },
+    "3": {
+      "name": "aPower 2",
+      "sku": "APR-10K15V2-US",
+      "model": "aPower X-20",
+      "country_id": 2,
+      "type": "high_capacity",
+      "has_mppt": false
+    },
+    "4": {
+      "name": "aPower S",
+      "sku": "APRS-10K15V1-US",
+      "model": "aPower S-10",
+      "country_id": 2,
+      "type": "stackable",
+      "has_mppt": true
+    },
+    "5": {
+      "name": "aPower S",
+      "sku": "APRS-11K15V2-US",
+      "model": "aPower S-10",
+      "country_id": 2,
+      "type": "stackable",
+      "has_mppt": true
+    },
+    "6": {
+      "name": "aPower X",
+      "sku": "APR-05K15V1-US",
+      "model": "aPower X-10",
+      "country_id": 2,
+      "type": "standard",
+      "has_mppt": false
+    },
+    "7": {
+      "name": "aPower X",
+      "sku": "APR-05K13V2-AU",
+      "model": "aPower X-02-AU",
+      "country_id": 3,
+      "type": "standard",
+      "has_mppt": false
+    }
   },
-
   "accessories": {
-    "201": {"name": "Generator Module V1", "sku": "ACCY-GENV1-US", "type": "generator", "version": 1, "country_id": 2, "compatible_agates": [100, 101], "v2l_enables": true},
-    "202": {"name": "Smart Circuits V1", "sku": "ACCY-SCV1-US", "type": "smart_circuits", "version": 1, "country_id": 2, "compatible_agates": [100, 101], "circuit_count": 2, "v2l_port": true, "v2l_requires_generator": true},
-    "203": {"name": "Generator Module V2", "sku": "ACCY-GENV2-US", "type": "generator", "version": 2, "country_id": 2, "compatible_agates": [103, 104], "v2l_enables": false},
-    "204": {"name": "Smart Circuits V2", "sku": "ACCY-SCV2-US", "type": "smart_circuits", "version": 2, "country_id": 2, "compatible_agates": [102, 103, 104], "circuit_count": 3, "v2l_port": true, "v2l_requires_generator": false},
-    "251": {"name": "aPBox", "sku": "ACCY-RCV1-US", "type": "apbox", "version": 1, "country_id": 2, "compatible_agates": "ALL"},
-    "252": {"name": "Split-CT", "sku": "ACCY-CT200V1-US", "type": "split_ct", "version": 1, "country_id": 2, "compatible_agates": "ALL"},
-    "253": {"name": "aHub", "sku": "ACCY-AHUBV1-US", "type": "ahub", "version": 1, "country_id": 2, "compatible_apower": [3, 4, 5], "notes": "aPower 2 and aPower S only"},
-    "254": {"name": "Meter Adapter Controller", "sku": "MAC-R1V1-US", "type": "mac1", "version": 1, "country_id": 2, "compatible_apower": [4, 5], "notes": "aPower S only, has RSD switch"},
-    "301": {"name": "Generator Module V1-AU", "sku": "ACCY-GENV1-AU", "type": "generator", "version": 1, "country_id": 3, "compatible_agates": [102], "v2l_enables": false},
-    "302": {"name": "Smart Circuits V1-AU", "sku": "ACCY-SCV1-AU", "type": "smart_circuits", "version": 1, "country_id": 3, "compatible_agates": [102], "circuit_count": 2, "v2l_port": false, "v2l_requires_generator": false, "notes": "No V2L capability on AU models"}
+    "201": {
+      "name": "Generator Module V1",
+      "sku": "ACCY-GENV1-US",
+      "type": "generator",
+      "version": 1,
+      "country_id": 2,
+      "compatible_agates": [
+        100,
+        101
+      ],
+      "v2l_enables": true
+    },
+    "202": {
+      "name": "Smart Circuits V1",
+      "sku": "ACCY-SCV1-US",
+      "type": "smart_circuits",
+      "version": 1,
+      "country_id": 2,
+      "compatible_agates": [
+        100,
+        101
+      ],
+      "circuit_count": 2,
+      "v2l_port": true,
+      "v2l_requires_generator": true
+    },
+    "203": {
+      "name": "Generator Module V2",
+      "sku": "ACCY-GENV2-US",
+      "type": "generator",
+      "version": 2,
+      "country_id": 2,
+      "compatible_agates": [
+        103,
+        104
+      ],
+      "v2l_enables": false
+    },
+    "204": {
+      "name": "Smart Circuits V2",
+      "sku": "ACCY-SCV2-US",
+      "type": "smart_circuits",
+      "version": 2,
+      "country_id": 2,
+      "compatible_agates": [
+        102,
+        103,
+        104
+      ],
+      "circuit_count": 3,
+      "v2l_port": true,
+      "v2l_requires_generator": false
+    },
+    "251": {
+      "name": "aPBox",
+      "sku": "ACCY-RCV1-US",
+      "type": "apbox",
+      "version": 1,
+      "country_id": 2,
+      "compatible_agates": "ALL"
+    },
+    "252": {
+      "name": "Split-CT",
+      "sku": "ACCY-CT200V1-US",
+      "type": "split_ct",
+      "version": 1,
+      "country_id": 2,
+      "compatible_agates": "ALL"
+    },
+    "253": {
+      "name": "aHub",
+      "sku": "ACCY-AHUBV1-US",
+      "type": "ahub",
+      "version": 1,
+      "country_id": 2,
+      "compatible_apower": [
+        3,
+        4,
+        5
+      ],
+      "notes": "aPower 2 and aPower S only. CONFIRMED smart-circuit controller: aHub Installation and Operations Manual p.10 \u2014 'Smart Circuits Management: Configurable circuit architecture supports up to 4x240 V or 8x120 V circuits with programmable scheduling and remote control via the FranklinWH App' \u2014 and p.28. Typed 'ahub' rather than 'smart_circuits' because it is a distinct accessory, but it DOES control circuits, and more of them than SC V1 (2) or SC V2 (3). Electrical spec is 120/240 Vac split at 60 Hz, i.e. North America. The cmdType 311 payload is hardcoded to Sw1/Sw2/Sw3 and cannot represent 4-8 circuits; see FEAT-SC-CMDTYPE-387-389.",
+      "provides_smart_circuits": true,
+      "circuit_count_max_240v": 4,
+      "circuit_count_max_120v": 8,
+      "programmable_scheduling": true
+    },
+    "254": {
+      "name": "Meter Adapter Controller",
+      "sku": "MAC-R1V1-US",
+      "type": "mac1",
+      "version": 1,
+      "country_id": 2,
+      "compatible_apower": [
+        4,
+        5
+      ],
+      "notes": "aPower S only, has RSD switch"
+    },
+    "301": {
+      "name": "Generator Module V1-AU",
+      "sku": "ACCY-GENV1-AU",
+      "type": "generator",
+      "version": 1,
+      "country_id": 3,
+      "compatible_agates": [
+        102
+      ],
+      "v2l_enables": false
+    },
+    "302": {
+      "name": "Smart Circuits V1-AU",
+      "sku": "ACCY-SCV1-AU",
+      "type": "smart_circuits",
+      "version": 1,
+      "country_id": 3,
+      "compatible_agates": [
+        102
+      ],
+      "circuit_count": 2,
+      "v2l_port": false,
+      "v2l_requires_generator": false,
+      "notes": "No V2L capability on AU models"
+    }
   },
-
   "accessory_quirks": {
     "ahub": {
       "display_name": "aHub",
       "detected_via": "ahubAddressingFlag (feature flag) + accessoryList entry type 253",
-      "api_exposes": ["count", "presence"],
-      "api_opaque": ["firmware_version", "serial_number", "model_variant", "individual_port_status"],
-      "known_firmware_versions": ["1.0.3", "1.1.0"],
+      "api_exposes": [
+        "count",
+        "presence"
+      ],
+      "api_opaque": [
+        "firmware_version",
+        "serial_number",
+        "model_variant",
+        "individual_port_status"
+      ],
+      "known_firmware_versions": [
+        "1.0.3",
+        "1.1.0"
+      ],
       "workaround": "aHub firmware accessible via Modbus register 15xxx range if on local network",
       "notes": "Cloud API only confirms presence and count. Serial/firmware not returned by any endpoint."
     },
     "apbox": {
       "display_name": "aPBox Digital I/O",
       "detected_via": "accessoryList entry type 251 + getApBoxStatus MQTT",
-      "api_exposes": ["presence", "digital_input_states", "digital_output_states"],
-      "api_opaque": ["firmware_version", "serial_number", "model_variant"],
+      "api_exposes": [
+        "presence",
+        "digital_input_states",
+        "digital_output_states"
+      ],
+      "api_opaque": [
+        "firmware_version",
+        "serial_number",
+        "model_variant"
+      ],
       "known_firmware_versions": [],
-      "workaround": "No known workaround for firmware version — use installer tools",
+      "workaround": "No known workaround for firmware version \u2014 use installer tools",
       "notes": "DI/DO states exposed via getApBoxStatus MQTT command. Firmware not returned by Cloud API."
     },
     "mac1": {
       "display_name": "Meter Adapter Controller (MAC-1 / MSA)",
       "detected_via": "get_site_software_info msa_model / msa_serial fields",
-      "api_exposes": ["model", "serial_number"],
-      "api_opaque": ["firmware_version", "rsd_switch_state", "meter_readings"],
+      "api_exposes": [
+        "model",
+        "serial_number"
+      ],
+      "api_opaque": [
+        "firmware_version",
+        "rsd_switch_state",
+        "meter_readings"
+      ],
       "known_firmware_versions": [],
-      "workaround": "RSD state not exposed — physical inspection required",
+      "workaround": "RSD state not exposed \u2014 physical inspection required",
       "notes": "aPower S only. MAC-1 model/serial returned via site software info. Firmware and RSD state not in Cloud API."
     },
     "split_ct": {
       "display_name": "Split-CT (200A)",
       "detected_via": "feature flags ct_split_grid / ct_split_pv",
-      "api_exposes": ["presence_grid", "presence_pv"],
-      "api_opaque": ["firmware_version", "calibration_status", "serial_number"],
+      "api_exposes": [
+        "presence_grid",
+        "presence_pv"
+      ],
+      "api_opaque": [
+        "firmware_version",
+        "calibration_status",
+        "serial_number"
+      ],
       "known_firmware_versions": [],
       "workaround": "CT calibration test available via needCtTest flag in discover flags",
       "notes": "API only confirms CT presence via boolean flags. No firmware or calibration data exposed."
@@ -106,81 +358,136 @@
     "generator": {
       "display_name": "Generator Module",
       "detected_via": "accessoryList entry type 3 (gen V1) or accessory flags",
-      "api_exposes": ["presence", "version"],
-      "api_opaque": ["firmware_version", "generator_brand", "kw_rating", "runtime_hours"],
+      "api_exposes": [
+        "presence",
+        "version"
+      ],
+      "api_opaque": [
+        "firmware_version",
+        "generator_brand",
+        "kw_rating",
+        "runtime_hours"
+      ],
       "known_firmware_versions": [],
       "workaround": "Generator runtime/state available via getGeneratorStatus if generator is running",
-      "notes": "Brand, kW rating, and runtime hours not in Cloud API — configured at installation time only."
+      "notes": "Brand, kW rating, and runtime hours not in Cloud API \u2014 configured at installation time only."
     },
     "smart_circuits": {
       "display_name": "Smart Circuits",
       "detected_via": "accessoryList entry type 4 + scVersion + scCount fields",
-      "api_exposes": ["version", "count", "circuit_names", "v2l_port", "merged_mode"],
-      "api_opaque": ["firmware_version", "individual_circuit_current", "thermal_status"],
+      "api_exposes": [
+        "version",
+        "count",
+        "circuit_names",
+        "v2l_port",
+        "merged_mode"
+      ],
+      "api_opaque": [
+        "firmware_version",
+        "individual_circuit_current",
+        "thermal_status"
+      ],
       "known_firmware_versions": [],
-      "workaround": "Live circuit current not in Cloud API — use local Modbus or FranklinWH Smart Circuits app",
+      "workaround": "Live circuit current not in Cloud API \u2014 use local Modbus or FranklinWH Smart Circuits app",
       "notes": "V1 requires Generator Module for V2L. V2 has built-in V2L. AU V1 has no V2L port at all."
     }
   },
-
   "accessory_api_types": {
     "3": "generator",
     "4": "smart_circuits"
   },
-
   "programmes": {
-    "sgipEntrance": {"name": "SGIP", "market": "California", "description": "Self-Generation Incentive Program"},
-    "bbEntrance": {"name": "Battery Bonus", "market": "Hawaii", "description": "Hawaii Battery Bonus programme"},
-    "ja12Entrance": {"name": "JA12", "market": "California", "description": "Joint Appendix 12 code compliance"},
-    "isJoinJA12": {"name": "JA12 Enrolled", "market": "California", "description": "JA12 programme participation at gateway level"},
-    "sdcpFlag": {"name": "SDCP", "market": "California", "description": "Sustainable development compliance"},
-    "tariffSettingFlag": {"name": "TOU/Tariff", "market": "All", "description": "TOU tariff schedule configured"},
-    "pcsEntrance": {"name": "PCS Power Control", "market": "All", "description": "Grid import/export controls enabled"},
-    "slSettingFlag": {"name": "SL Settings", "market": "Unknown", "description": "SL settings flag (purpose TBD)"},
-    "needCtTest": {"name": "CT Calibration", "market": "All", "description": "CT calibration test required"},
-    "ahubAddressingFlag": {"name": "aHub", "market": "All", "description": "aHub (253) detected in system"},
-    "chargingPowerLimited": {"name": "Charging Limited", "market": "All", "description": "Charging power currently limited"}
+    "sgipEntrance": {
+      "name": "SGIP",
+      "market": "California",
+      "description": "Self-Generation Incentive Program"
+    },
+    "bbEntrance": {
+      "name": "Battery Bonus",
+      "market": "Hawaii",
+      "description": "Hawaii Battery Bonus programme"
+    },
+    "ja12Entrance": {
+      "name": "JA12",
+      "market": "California",
+      "description": "Joint Appendix 12 code compliance"
+    },
+    "isJoinJA12": {
+      "name": "JA12 Enrolled",
+      "market": "California",
+      "description": "JA12 programme participation at gateway level"
+    },
+    "sdcpFlag": {
+      "name": "SDCP",
+      "market": "California",
+      "description": "Sustainable development compliance"
+    },
+    "tariffSettingFlag": {
+      "name": "TOU/Tariff",
+      "market": "All",
+      "description": "TOU tariff schedule configured"
+    },
+    "pcsEntrance": {
+      "name": "PCS Power Control",
+      "market": "All",
+      "description": "Grid import/export controls enabled"
+    },
+    "slSettingFlag": {
+      "name": "SL Settings",
+      "market": "Unknown",
+      "description": "SL settings flag (purpose TBD)"
+    },
+    "needCtTest": {
+      "name": "CT Calibration",
+      "market": "All",
+      "description": "CT calibration test required"
+    },
+    "ahubAddressingFlag": {
+      "name": "aHub",
+      "market": "All",
+      "description": "aHub (253) detected in system"
+    },
+    "chargingPowerLimited": {
+      "name": "Charging Limited",
+      "market": "All",
+      "description": "Charging power currently limited"
+    }
   },
-
   "nem_types": {
     "0": "NEM 2.0",
     "1": "NEM 3.0 (Net Billing)",
     "2": "No NEM"
   },
-
   "network_types": {
     "1": "Ethernet 1",
     "2": "Ethernet 2",
     "3": "WiFi",
     "4": "4G Mobile"
   },
-
   "sim_status": {
     "0": "Not Installed",
     "1": "Installed (Inactive)",
     "2": "Active",
     "3": "Error"
   },
-
   "agate_state": {
     "0": "Fault",
     "1": "Normal"
   },
-
   "generation_features": {
     "1": {
       "smart_circuits_version": 1,
       "v2l_requires_generator": true,
       "v2l_builtin": false,
       "ahub_support": false,
-      "notes": "Gen 1 — V2L via CarSW port requires Generator Module"
+      "notes": "Gen 1 \u2014 V2L via CarSW port requires Generator Module"
     },
     "2": {
       "smart_circuits_version": 2,
       "v2l_requires_generator": false,
       "v2l_builtin": true,
       "ahub_support": false,
-      "notes": "Gen 2 — V2L built-in, no Generator Module needed"
+      "notes": "Gen 2 \u2014 V2L built-in, no Generator Module needed"
     }
   }
 }
