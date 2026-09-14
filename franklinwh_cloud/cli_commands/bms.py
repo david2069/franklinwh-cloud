@@ -10,6 +10,7 @@ Usage:
     franklinwh-cli bms --json         # machine-readable
 """
 
+from franklinwh_cloud.ac_topology import leg_caveat, legs_are_real
 from franklinwh_cloud.cli_output import (
     print_header, print_section, print_kv, print_json_output,
     print_warning, print_error, c,
@@ -23,6 +24,11 @@ async def run(client, *, json_output: bool = False):
     try:
         dev_res = await client.get_device_info()
         dev_result = (dev_res.get("result") or {})
+        # getDeviceInfoV2 carries countryId, so topology costs no extra call.
+        # isThreePhaseInstall is not in this response; legs_are_real() treats
+        # AU as not-split regardless, and returns None elsewhere so the values
+        # are shown with a caveat rather than hidden. DEF-AC-TOPOLOGY-INCONSISTENT.
+        _legs_real = legs_are_real(country_id=dev_result.get("countryId"))
         apower_list = (dev_result.get("apowerList") or [])
         total_cap = dev_result.get("totalCap", 0)
     except Exception as e:
@@ -180,12 +186,16 @@ async def run(client, *, json_output: bool = False):
         grid_line = bms.get("gridLineVol", 0)
         inv_line = bms.get("invLineVol", 0)
 
-        print_kv("Grid Feed (L1/L2)", f"{gv1} V  |  {gv2} V")
-        print_kv("Inv Bus (L1/L2)", f"{iv1} V  |  {iv2} V")
+        _leg = "L1/L2" if _legs_real is not False else "reported L1/L2"
+        print_kv(f"Grid Feed ({_leg})", f"{gv1} V  |  {gv2} V")
+        print_kv(f"Inv Bus ({_leg})", f"{iv1} V  |  {iv2} V")
         print_kv("DC Bus (+/−)", f"{pos_bus} V  |  {neg_bus} V")
         print_kv("PE Bat / Mid Bus", f"{pe_bat} V  |  {mid_bus} V")
         print_kv("Grid Line Voltage", f"{grid_line} V")
         print_kv("Inv Line Voltage", f"{inv_line} V")
+        _cav = leg_caveat(_legs_real)
+        if _cav:
+            print_kv("", c("dim", _cav))
 
         # Full grid voltages (AN/BN)
         gv_an = bms.get("gridVoltAN", 0)
