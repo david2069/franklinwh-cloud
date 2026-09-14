@@ -115,6 +115,51 @@ are the meaningful grid-quality signals.
 two-leg fields is **not established** — no three-phase capture exists in the
 corpus. Do not assume L1/L2 carry two of the three phases.
 
+## The pattern: a split-phase-first data model
+
+Added 2026-09-15. **INFERRED** — this is a reading of accumulated evidence, not
+a vendor statement. It is recorded because it explains, in one shape, a set of
+defects filed separately.
+
+The API appears to model a **North American split-phase installation as the
+baseline**, with other markets expressed as that model constrained. Evidence,
+each item filed as its own ticket:
+
+| Observation | Ticket |
+|---|---|
+| Every AC reading is an L1/L2 pair, including where no second conductor exists | `DEF-AC-TOPOLOGY-INCONSISTENT` |
+| `isThreePhaseInstall` is a **boolean**, so single-phase and split-phase are indistinguishable | `DEF-PHASE-FLAG-AMBIGUOUS` |
+| `nemType: 0` maps to a **Californian** tariff scheme on an Australian gateway | `DEF-NEM-TYPE-ZERO-UNRESOLVED` |
+| US-utility programme flags (`sgipEntrance`, `bbEntrance`, `ja12Entrance`, `sdcpFlag`) are present on non-US gateways | `DEF-SDCP-MEANING-UNSOURCED` |
+| The CarSW/V2L channel reports live telemetry on AU hardware while the feature flag stays off | `DEF-AU-V2L-HARDCODED-FALSE` |
+| aHub is `120/240 Vac 60 Hz` — North America only — yet is the accessory carrying 4-8 circuits | `DEF-CATALOG-AHUB-CIRCUIT-COUNT` |
+| Vendor port naming differs by hardware revision, with the AU line on the oldest | `DEF-ETH-PORT-IDENTITY-UNCONFIRMED` |
+
+Documentation is localised per market — the AU guides speak in `230/240 VAC
+L/N/PE` at 50 Hz and never mention split-phase, while the US ones use
+`120/240`, `60 Hz`, `L1/L2` and `208 V`. **The wire protocol is not localised in
+the same way.** An AU gateway is handed the US field set and leaves the
+inapplicable parts null, zero, or — in the CarSW case — quietly populated.
+
+### Why this matters for callers
+
+1. **Prefer what the device reports over what the market implies.** The reverse
+   produced `DEF-AU-V2L-HARDCODED-FALSE`, where a regional assumption discarded
+   the gateway's own answer.
+2. **A field being present says nothing about it applying.** `sdcpFlag` exists
+   on gateways thousands of kilometres from San Diego.
+3. **A US-shaped default is not a neutral default.** `nemType: 0` → "NEM 2.0"
+   is confidently wrong outside California, and being non-empty made it harder
+   to notice than a blank would have been.
+
+### What would change this reading
+
+A vendor statement about the data model, or a US capture showing the same
+fields behaving differently there. **ASSUMED** until then: this is a pattern
+across observations, and a pattern is not a specification. Every individual
+ticket above stands on its own evidence and does not depend on this section
+being right.
+
 ## Not established
 
 - Whether single-phase L1/L2 are a halved measurement or the same value
