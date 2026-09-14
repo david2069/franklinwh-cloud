@@ -212,7 +212,8 @@
       ],
       "circuit_count": 3,
       "v2l_port": true,
-      "v2l_requires_generator": false
+      "v2l_requires_generator": false,
+      "_note": "CONTRADICTORY DATA \u2014 do not rely on compatible_agates here. This entry has country_id 2 (US) yet lists agate 102 (AGT-R1V1-AU) as compatible. Because discover.py filters accessories on country_id == site.country_id, the 102 entry is unreachable for an AU site regardless. Three lines of evidence say AU is two circuits, not three: (1) System Datasheet aGate X-01-AU & aPower X-02-AU \u2014 'Smart circuits module are optional with two circuits supported per aGate'; (2) this entry's own country_id; (3) accessory 302 'Smart Circuits V1-AU' already exists with circuit_count 2 and compatible_agates [102]. Left in place rather than deleted because SKUs have been revised over time and a future AU SC V2 cannot be ruled out. See DEF-CATALOG-SCV2-AU-COMPAT."
     },
     "251": {
       "name": "aPBox",
@@ -245,7 +246,8 @@
       "provides_smart_circuits": true,
       "circuit_count_max_240v": 4,
       "circuit_count_max_120v": 8,
-      "programmable_scheduling": true
+      "programmable_scheduling": true,
+      "_note": "Region: US only (country_id 2), consistent with the 120/240 Vac 60 Hz electrical spec and confirmed by the user \u2014 there is no AU aHub. discover.py already filters on country_id, so an AU site will not match this."
     },
     "254": {
       "name": "Meter Adapter Controller",
