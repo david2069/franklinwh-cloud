@@ -200,3 +200,72 @@ def test_no_write_path_is_exposed_by_gen():
 
     with pytest.raises(SystemExit):
         build_parser().parse_args(["gen", "--mode", "1"])
+
+
+# ── generator config fields are the ones the gateway actually sends ──
+
+GEN_CFG_REAL = {
+    "genEn": 0, "genStat": 0, "mode": 0, "manuSw": 0,
+    "genStartElec": 20, "genCloseElec": 80,
+    "charge1En": 1, "charge1StartTime": "11:00", "charge1EndTime": "23:59",
+    "charge2En": 0, "charge2StartTime": "00:00", "charge2EndTime": "00:00",
+    "charge3En": 0, "charge3StartTime": "00:00", "charge3EndTime": "00:00",
+    "genRatedPower": 0, "startDelTime": 1800, "generatorAlarmFlag": 0,
+    "freq": 500, "power": 0, "curr": 0, "volt": 2,
+}
+
+
+async def test_gen_labels_the_real_soc_threshold_fields():
+    """They are genStartElec / genCloseElec — genStartSoc/genStopSoc do not exist."""
+    from franklinwh_cloud.cli_commands import gen
+
+    out = await _cli(gen, _Client(gen_cfg=GEN_CFG_REAL), json_output=False)
+    assert "Start below SoC" in out and "20" in out
+    assert "Stop above SoC" in out and "80" in out
+
+
+async def test_gen_renders_the_charge_schedule():
+    """charge1/2/3 windows are plainly structured, unlike SC schedules."""
+    from franklinwh_cloud.cli_commands import gen
+
+    out = await _cli(gen, _Client(gen_cfg=GEN_CFG_REAL), json_output=False)
+    assert "Charge schedule" in out
+    assert "11:00-23:59" in out
+    assert "(on)" in out and "(off)" in out
+
+
+async def test_gen_flags_an_entirely_disabled_schedule():
+    from franklinwh_cloud.cli_commands import gen
+
+    cfg = {**GEN_CFG_REAL, "charge1En": 0}
+    out = await _cli(gen, _Client(gen_cfg=cfg), json_output=False)
+    assert "schedule inactive" in out
+
+
+async def test_gen_still_surfaces_unlabelled_fields():
+    """Nothing the gateway sends should be silently dropped."""
+    from franklinwh_cloud.cli_commands import gen
+
+    out = await _cli(gen, _Client(gen_cfg=GEN_CFG_REAL), json_output=False)
+    assert "manuSw" in out or "mode" in out
+
+
+def test_gen_remains_read_only():
+    """Step D is not implemented; no write may be CALLED here.
+
+    Checks call nodes rather than a substring: the module docstring names
+    set_generator_mode() to explain why it is absent, and a naive substring
+    test would trip on its own explanation.
+    """
+    import ast
+    import inspect
+
+    from franklinwh_cloud.cli_commands import gen
+
+    tree = ast.parse(inspect.getsource(gen))
+    called = {
+        n.func.attr for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+    }
+    writes = {c for c in called if c.startswith("set_") or c.startswith("update_")}
+    assert writes == set(), f"a write call appeared in a read-only command: {writes}"
