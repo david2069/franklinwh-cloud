@@ -5,7 +5,20 @@
 > AU/NZ system, `L1` and `L2` are not two independent legs — treat
 > `gridLineVol` as the real measurement.
 
-Evidence tiers per [AP-14](../.agents/policies/evidence_standard.md).
+Evidence tiers per [AP-14](../.agents/policies/evidence_standard.md). Vendor
+citations carry a version and date — see
+[VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md). A claim sourced to "the datasheet"
+without a revision ages silently, and FranklinWH revises these: the Ethernet
+port naming already reversed meaning between two of them.
+
+**Sources used on this page**
+
+| Claim | Source | Version / date |
+|---|---|---|
+| AU/NZ is `230/240 VAC L/N/PE`, 50 Hz | System Datasheet aGate X-01-AU & aPower X-02-AU | **V1.7, 2026-05-30** |
+| AU three-phase is 415 V | same | **V1.7, 2026-05-30** |
+| Observed `L1 119.7 / L2 119.7 / Line 239.4` at 49.93 Hz | live AU gateway, user report | **2026-09** |
+| US split-phase 120/240 V | market standard + US datasheets — **not observed**, see `DEF-AC-TOPOLOGY-NO-US-SAMPLE` | — |
 
 ---
 
@@ -35,9 +48,11 @@ GRID VOLTAGES      INVERTER LINES      Frequency
   Line 239.4 V       Line 239.4 V
 ```
 
-**CONFIRMED** from the vendor datasheet (*System Datasheet aGate X-01-AU &
-aPower X-02-AU*): the AU/NZ system is **`230/240 VAC L/N/PE`, 50 Hz** — line,
-neutral and protective earth. There is no second active conductor.
+**CONFIRMED** — *System Datasheet aGate X-01-AU & aPower X-02-AU*,
+**V1.7, issued 2026-05-30** (`DS-AGATE-AU-V1.7` in
+[VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md)): the AU/NZ system is
+**`230/240 VAC L/N/PE`, 50 Hz** — line, neutral and protective earth. There is
+no second active conductor.
 
 So the two "legs" are the API halving a single L-N measurement, or reporting
 the same measurement twice. `49.93 Hz` confirms this is a 50 Hz installation,

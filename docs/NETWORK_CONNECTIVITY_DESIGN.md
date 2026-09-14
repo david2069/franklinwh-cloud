@@ -124,7 +124,9 @@ Consequences for the design:
 
 ### 2.3c Vendor documentation — constraints the wire does not express
 
-**Source:** *FranklinWH System Installation Guide*, p.59. Added 2026-08-31.
+**Source:** *FranklinWH System Installation Guide* **v1.2.07, issued May 09,
+2026** (`INST-1.2.07`), p.59. Added 2026-08-31. See
+[VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md).
 This is the first vendor-documentary evidence in this design; everything above
 it was derived from captures. Where the two disagree, say so explicitly rather
 than silently preferring one.
@@ -141,8 +143,11 @@ than silently preferring one.
 
 ### 2.3d Vendor port naming is revision-dependent and reverses meaning
 
-**Source:** *Commissioning Guide (AU & NZ)* p.6-7 and *Commissioning Guide* p.7.
-Added 2026-09-01. This directly contradicts §2.3c, and the contradiction is the
+**Source:** *Commissioning Guide – AU & NZ* **v2.15.0, issued June 12, 2026**
+(`COMM-AU-2.15.0`) pp.6-7, and *Commissioning Guide* **issued Dec 30, 2025**
+(`COMM-2.8.0`) p.7. Added 2026-09-01. See
+[VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md) — the two disagree, and the
+revisions are what make that resolvable. This directly contradicts §2.3c, and the contradiction is the
 finding.
 
 | Document | Hardware | Household cable goes to | Other port |
