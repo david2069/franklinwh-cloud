@@ -242,7 +242,7 @@
         4,
         5
       ],
-      "notes": "aPower 2 and aPower S only. CONFIRMED smart-circuit controller: aHub Installation and Operations Manual p.10 \u2014 'Smart Circuits Management: Configurable circuit architecture supports up to 4x240 V or 8x120 V circuits with programmable scheduling and remote control via the FranklinWH App' \u2014 and p.28. Typed 'ahub' rather than 'smart_circuits' because it is a distinct accessory, but it DOES control circuits, and more of them than SC V1 (2) or SC V2 (3). Electrical spec is 120/240 Vac split at 60 Hz, i.e. North America. The cmdType 311 payload is hardcoded to Sw1/Sw2/Sw3 and cannot represent 4-8 circuits; see FEAT-SC-CMDTYPE-387-389.",
+      "notes": "aPower 2 and aPower S only. CONFIRMED smart-circuit controller: aHub Installation and Operations Manual V1.0 (2026-01-22) p.10 \u2014 'Smart Circuits Management: Configurable circuit architecture supports up to 4x240 V or 8x120 V circuits with programmable scheduling and remote control via the FranklinWH App' \u2014 and p.28. Typed 'ahub' rather than 'smart_circuits' because it is a distinct accessory, but it DOES control circuits, and more of them than SC V1 (2) or SC V2 (3). Electrical spec is 120/240 Vac split at 60 Hz, i.e. North America. The cmdType 311 payload is hardcoded to Sw1/Sw2/Sw3 and cannot represent 4-8 circuits; see FEAT-SC-CMDTYPE-387-389.",
       "provides_smart_circuits": true,
       "circuit_count_max_240v": 4,
       "circuit_count_max_120v": 8,

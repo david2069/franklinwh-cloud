@@ -124,3 +124,51 @@ def test_the_modbus_lead_is_recorded():
     from franklinwh_cloud import ac_topology
 
     assert "Modbus" in _src(ac_topology)
+
+
+# ── citations carry a version and a date ─────────────────────────────
+
+def _doc(name):
+    import pathlib
+
+    return pathlib.Path(f"docs/{name}").read_text()
+
+
+def test_ac_topology_cites_the_datasheet_version_and_date():
+    """A claim sourced to "the datasheet" ages silently; FranklinWH revises."""
+    d = _doc("AC_TOPOLOGY.md")
+    assert "V1.7" in d
+    assert "2026-05-30" in d
+
+
+def test_ac_topology_links_the_citation_register():
+    assert "VENDOR_DOCUMENTS.md" in _doc("AC_TOPOLOGY.md")
+
+
+def test_ac_topology_marks_the_us_claim_as_unobserved():
+    """The one claim on that page with no observation behind it."""
+    d = _doc("AC_TOPOLOGY.md")
+    assert "not observed" in d
+    assert "DEF-AC-TOPOLOGY-NO-US-SAMPLE" in d
+
+
+@pytest.mark.parametrize("token", [
+    "1.2.07", "May 09, 2026",        # Installation Guide
+    "2.15.0", "June 12, 2026",       # Commissioning Guide AU/NZ
+    "V1.7", "2026-05-30",            # AU system datasheet
+    "V1.0", "2026-01-22",            # aHub manual
+])
+def test_vendor_register_records_versions_and_dates(token):
+    assert token in _doc("VENDOR_DOCUMENTS.md")
+
+
+def test_vendor_register_shows_no_version_as_a_dash_not_a_guess():
+    """Two documents print no version; the register must not invent one."""
+    assert "| — |" in _doc("VENDOR_DOCUMENTS.md")
+
+
+def test_vendor_register_warns_against_overwriting_revisions():
+    """Overwriting would have made the Eth1/Eth2 contradiction unresolvable."""
+    d = _doc("VENDOR_DOCUMENTS.md")
+    assert "add a row" in d
+    assert "do not overwrite" in d.lower()
