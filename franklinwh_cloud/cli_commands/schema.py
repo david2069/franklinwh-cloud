@@ -171,6 +171,9 @@ CURRENT_SCHEMA = {
     "load_solar_relay1":        ("loadSolarRelay1Stat","211/result",       "relay", "Load & V2L Relays (211)"),
     "load_solar_relay2":        ("loadSolarRelay2Stat","211/result",       "relay", "Load & V2L Relays (211)"),
     # Electrical measurements (cmdType 211 — opt-in) — matches --filter power
+    # L1/L2 are reported for every install. On a non-split-phase site they are
+    # an API artifact, not two conductors — use grid_line_voltage instead.
+    # See docs/AC_TOPOLOGY.md and DEF-AC-TOPOLOGY-INCONSISTENT.
     "grid_voltage1":            ("gridVol1",           "211/result",       "V",     "Power Measurements (211)"),
     "grid_voltage2":            ("gridVol2",           "211/result",       "V",     "Power Measurements (211)"),
     "grid_current1":            ("gridCurr1",          "211/result",       "A",     "Power Measurements (211)"),
@@ -688,6 +691,9 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
             print(row)
 
     print()
+    print("  L1/L2 voltages and currents are reported for EVERY install. On a")
+    print("  single-phase site (e.g. AU/NZ 230/240 VAC L/N/PE) they are an API")
+    print("  artifact, not two conductors — use the Line value. docs/AC_TOPOLOGY.md")
     print("  Relay encoding: 1=OPEN (connected), 0=CLOSED (disconnected)  — all relays")
     print("  cmdType 211 fields only populated when get_stats(include_electrical=True)")
     print("  cmdType 311 fields require Smart Circuit accessory installed")

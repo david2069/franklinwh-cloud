@@ -23,6 +23,7 @@ import socket
 import sys
 from datetime import datetime, timezone
 
+from franklinwh_cloud.ac_topology import leg_caveat, legs_are_real
 from franklinwh_cloud.cli_output import (
     print_header, print_section, print_kv, print_json_output,
     print_warning, print_success, print_error, c,
@@ -523,8 +524,18 @@ async def collect_snapshot(client) -> dict:
     try:
         pwr = await client.get_power_info()
         snapshot["electrical"] = {
+            # Keys retained unchanged — downstream consumers read them.
+            # ac_legs_are_real says whether they are two conductors or an API
+            # artifact on a non-split-phase site. DEF-AC-TOPOLOGY-INCONSISTENT.
             "grid_voltage_l1_v":   pwr.get("gridVol1"),
             "grid_voltage_l2_v":   pwr.get("gridVol2"),
+            # identity carries countryId but not isThreePhaseInstall, so only
+            # country is passed. That is sufficient for AU (never split-phase
+            # either way) and yields None elsewhere, which callers must treat
+            # as "undetermined" rather than "split".
+            "ac_legs_are_real":    legs_are_real(
+                country_id=(snapshot.get("identity") or {}).get("countryId"),
+            ),
             "grid_current_l1_a":   pwr.get("gridCurr1"),
             "grid_current_l2_a":   pwr.get("gridCurr2"),
             "load_current_l1_a":   pwr.get("loadCurr1"),
