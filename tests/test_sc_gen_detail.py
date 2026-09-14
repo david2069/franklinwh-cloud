@@ -269,3 +269,53 @@ def test_gen_remains_read_only():
     }
     writes = {c for c in called if c.startswith("set_") or c.startswith("update_")}
     assert writes == set(), f"a write call appeared in a read-only command: {writes}"
+
+
+# ── DEF-GEN-MODE-WRITES-MANUSW — evidence recorded at the call site ──
+
+def _gen_mode_src():
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    return inspect.getsource(DevicesMixin.set_generator_mode)
+
+
+def test_set_generator_mode_still_sends_manusw():
+    """Behaviour deliberately unchanged — correcting it needs sign-off."""
+    src = _gen_mode_src()
+    assert '"manuSw"' in src
+
+
+def test_the_misnaming_is_documented_not_silent():
+    """A caller must not read the name and assume it sets the mode."""
+    src = _gen_mode_src()
+    assert "MISNAMED" in src
+    assert "DEF-GEN-MODE-WRITES-MANUSW" in src
+
+
+def test_the_old_mapping_is_quoted_as_history_not_asserted():
+    """"1 = Auto-schedule, 2 = Manual" described `mode`, not `manuSw`.
+
+    It still appears — quoted inside the warning to explain what was wrong —
+    so a naive "not in src" check fails on the correction itself. What matters
+    is that the Parameters section no longer states it as the contract.
+    """
+    src = _gen_mode_src()
+    params = src[src.index("Parameters"):]
+    assert "1 = Auto-schedule, 2 = Manual" not in params
+    assert "old docstring" in src, "the phrase must be framed as superseded"
+
+
+def test_the_evidence_is_cited_with_sample_counts():
+    """AP-14 — a citation is a number, not an adjective."""
+    src = _gen_mode_src()
+    assert "genStat 1→2" in src
+    assert "4 samples" in src
+
+
+def test_the_single_sample_limit_is_stated():
+    """The manuSw value→effect mapping rests on one observation."""
+    src = _gen_mode_src()
+    assert "ASSUMED" in src
+    assert "one clean" in src

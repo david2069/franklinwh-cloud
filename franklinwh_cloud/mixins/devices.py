@@ -764,12 +764,37 @@ class DevicesMixin:
         return data["result"]
 
     async def set_generator_mode(self, mode):
-        """Set generator operating mode.
+        """Issue a generator **manual switch** command.
+
+        .. warning::
+            **MISNAMED — this does not set the operating mode.**
+            DEF-GEN-MODE-WRITES-MANUSW.
+
+            It posts ``manuSw``, and correlating all 35 captured
+            ``updateIotGenerator`` writes against the surrounding reads shows
+            ``manuSw`` and ``mode`` are different controls:
+
+            * ``{"mode": N}`` writes moved the **mode** field and nothing else
+              (4 samples, 3-7 s to the confirming read). That is the mode
+              setter.
+            * A ``{"manuSw": 2}`` write left ``manuSw`` **unchanged at 0** and
+              moved **genStat 1→2** (Running → Cooldown). So ``manuSw`` is a
+              manual start/stop command acting on generator state.
+
+            The name and the old docstring ("1 = Auto-schedule, 2 = Manual")
+            describe ``mode``; the payload sends ``manuSw``. Behaviour is left
+            unchanged because correcting it alters what an existing public
+            method does, which needs sign-off (CLAUDE.md rule 6).
+
+            **ASSUMED:** the value→effect mapping below. Only one clean
+            ``manuSw`` sample exists.
 
         Parameters
         ----------
         mode : int
-            1 = Auto-schedule, 2 = Manual
+            Sent as ``manuSw``. Observed: ``2`` while running preceded a
+            transition to Cooldown; ``1`` was also sent once. What each value
+            commands is **not established**.
         """
         payload = {"gatewayId": self.gateway, "manuSw": mode, "opt": 1}
         url = self.url_base + "hes-gateway/terminal/updateIotGenerator"
