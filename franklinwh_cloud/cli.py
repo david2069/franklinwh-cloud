@@ -226,8 +226,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")
     sub_sc.add_argument("--load-limit", type=int, metavar="CIRCUIT",
                         help="Configure the continuous Load Limit in amps for a specific circuit")
+    sub_sc.add_argument("--detail", action="store_true",
+                        help="Show configuration, schedule AND live metrics per circuit")
+    sub_sc.add_argument("--circuit", type=int, metavar="N",
+                        help="With --detail: restrict to one circuit")
     sub_sc.add_argument("--amps", type=int, metavar="A",
                         help="The maximum amperage limit for --load-limit (0 to reset)")
+
+    subs.add_parser("gen", aliases=["generator"],
+                    help="Generator module configuration and live metrics")
 
     # network
     from franklinwh_cloud.cli_commands import network as _network_cmd
@@ -511,7 +518,13 @@ async def async_main():
                              disable_cutoff=getattr(args, 'disable_cutoff', None),
                              soc=getattr(args, 'soc', None),
                              load_limit=getattr(args, 'load_limit', None),
-                             amps=getattr(args, 'amps', None))
+                             amps=getattr(args, 'amps', None),
+                             detail=getattr(args, 'detail', False),
+                             detail_circuit=getattr(args, 'circuit', None))
+
+            case "gen" | "generator":
+                from franklinwh_cloud.cli_commands import gen
+                await gen.run(client, json_output=args.json)
 
             case "network" | "net":
                 from franklinwh_cloud.cli_commands import network
