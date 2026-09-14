@@ -233,8 +233,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub_sc.add_argument("--amps", type=int, metavar="A",
                         help="The maximum amperage limit for --load-limit (0 to reset)")
 
-    subs.add_parser("gen", aliases=["generator"],
-                    help="Generator module configuration and live metrics")
+    sub_gen = subs.add_parser("gen", aliases=["generator"],
+                              help="Generator module configuration and live metrics")
+    sub_gen.add_argument("--schedule", action="append", metavar="START-END",
+                         help="Set a generator charge window in GATEWAY-local "
+                              "time, e.g. 11:00-23:59. Repeat for up to three. "
+                              "Use 'off' to disable all.")
+    sub_gen.add_argument("--yes", "-y", action="store_true",
+                         help="Skip the confirmation prompt")
 
     # network
     from franklinwh_cloud.cli_commands import network as _network_cmd
@@ -524,7 +530,11 @@ async def async_main():
 
             case "gen" | "generator":
                 from franklinwh_cloud.cli_commands import gen
-                await gen.run(client, json_output=args.json)
+                code = await gen.run(client, json_output=args.json,
+                                     schedule=getattr(args, "schedule", None),
+                                     assume_yes=getattr(args, "yes", False))
+                if code:
+                    sys.exit(code)
 
             case "network" | "net":
                 from franklinwh_cloud.cli_commands import network

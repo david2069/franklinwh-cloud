@@ -250,12 +250,17 @@ async def test_gen_still_surfaces_unlabelled_fields():
     assert "manuSw" in out or "mode" in out
 
 
-def test_gen_remains_read_only():
-    """Step D is not implemented; no write may be CALLED here.
+def test_gen_calls_only_the_approved_write():
+    """`gen` gained --schedule, so it is no longer read-only.
 
-    Checks call nodes rather than a substring: the module docstring names
-    set_generator_mode() to explain why it is absent, and a naive substring
-    test would trip on its own explanation.
+    The guard narrows rather than disappears: set_generator_charge_schedule is
+    approved and evidence-backed; set_generator_mode is NOT — it posts manuSw,
+    a manual start/stop command, while being named as a mode setter
+    (DEF-GEN-MODE-WRITES-MANUSW). Wiring that into the CLI would expose an
+    engine control whose effect is unverified.
+
+    Checks call nodes, not substrings: the module docstring names the excluded
+    method to explain its absence.
     """
     import ast
     import inspect
@@ -267,8 +272,11 @@ def test_gen_remains_read_only():
         n.func.attr for n in ast.walk(tree)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
     }
-    writes = {c for c in called if c.startswith("set_") or c.startswith("update_")}
-    assert writes == set(), f"a write call appeared in a read-only command: {writes}"
+    writes = {c for c in called if c.startswith(("set_", "update_"))}
+    assert writes == {"set_generator_charge_schedule"}, (
+        f"unexpected write call(s) in gen: {writes}"
+    )
+    assert "set_generator_mode" not in writes
 
 
 # ── DEF-GEN-MODE-WRITES-MANUSW — evidence recorded at the call site ──
