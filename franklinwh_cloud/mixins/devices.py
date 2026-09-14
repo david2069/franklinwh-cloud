@@ -578,6 +578,149 @@ class DevicesMixin:
             return result
         return raw_data
 
+    async def get_smart_circuit_detail(self, circuit=None):
+        """Per-circuit configuration, schedule **and** live metrics in one view.
+
+        Step B of ``docs/SMART_CIRCUITS_GENERATOR_DESIGN.md``. Composes two
+        commands that have always had to be called separately:
+
+        * **cmdType 311** — mode, on/off, SoC cutoff, load limit, schedule
+        * **cmdType 353/354** — current, voltage, power, energy
+
+        Parameters
+        ----------
+        circuit : int | None
+            Restrict to one circuit (1-3). ``None`` returns every circuit the
+            gateway reports.
+
+        Returns
+        -------
+        dict
+            ``{"circuits": [...], "source": {...}}``. Each circuit carries
+            ``config``, ``schedule`` and ``metrics`` blocks.
+
+        Note
+        ----
+        **Metrics are raw.** Only ``freq`` has an established divisor; voltage
+        and current scales are not established, so nothing is divided and
+        ``metrics.scale`` says so (AP-14).
+
+        The schedule's four ``SwNTime`` entries are returned as a positional
+        list, not as start/end pairs: whether they are two windows or four
+        independent slots is **not established** — every captured sample is the
+        unconfigured default. ``raw_time_set`` is passed through undeciphered
+        (DEF-SC-TIMESET-UNDECIPHERED).
+
+        A circuit present in config but absent from the metrics payload gets
+        ``metrics: None`` rather than zeros, so "not reported" stays
+        distinguishable from "reading zero".
+        """
+        import asyncio as _asyncio
+
+        # Sequential, not gathered: get_bms_info documents that the MQTT layer
+        # cannot multiplex simultaneous requests.
+        config = await self.get_smart_circuits()
+        try:
+            power = await self.get_accessories_power_info(1)
+            metrics_by_id = {m["id"]: m
+                             for m in (power.get("smart_circuits") or [])}
+            metrics_ok = True
+        except Exception as e:
+            logger.warning(f"get_smart_circuit_detail: metrics unavailable: {e}")
+            metrics_by_id, metrics_ok = {}, False
+
+        wanted = [circuit] if circuit is not None else sorted(config)
+        circuits = []
+        for cid in wanted:
+            detail = config.get(cid)
+            if detail is None:
+                continue
+            m = metrics_by_id.get(cid)
+            circuits.append({
+                "id": cid,
+                "name": detail.name,
+                "config": {
+                    "mode": detail.mode,
+                    "is_on": detail.is_on,
+                    "soc_cutoff_enabled": detail.soc_cutoff_enabled,
+                    "soc_cutoff_limit": detail.soc_cutoff_limit,
+                    "load_limit": detail.load_limit,
+                    "pro_load_type": detail.pro_load_type,
+                },
+                "schedule": {
+                    "slots": detail.time_schedules,
+                    "enabled": detail.time_enabled,
+                    "raw_time_set": detail.time_set,
+                    "pairing": "unverified",
+                },
+                "metrics": None if m is None else {
+                    "current": m["current"],
+                    "voltage": m["voltage"],
+                    "power": m["power"],
+                    "energy": m["energy"],
+                    "scale": "raw — only freq has an established divisor",
+                },
+            })
+
+        return {
+            "circuits": circuits,
+            "source": {"config_cmd": 311, "metrics_cmd": 353,
+                       "metrics_available": metrics_ok},
+        }
+
+    async def get_generator_detail(self):
+        """Generator configuration and live metrics in one view.
+
+        Step C of ``docs/SMART_CIRCUITS_GENERATOR_DESIGN.md``.
+
+        Returns
+        -------
+        dict
+            ``{"config": {...}, "metrics": {...} | None, "source": {...}}``
+
+        Warning
+        -------
+        The generator fields in the cmdType 353/354 payload are **unprefixed**
+        — ``power``, ``curr``, ``volt``, ``freq`` — where circuits use
+        ``SW``/``Sw`` and V2L uses ``CarSW``. They can only be attributed to
+        the generator **by position in the payload**, not by name. That
+        attribution is INFERRED, not confirmed, and ``metrics.attribution``
+        records it so a reader is not misled.
+
+        ``freq`` is tenths (500 = 50.0 Hz, CONFIRMED across 177 samples); the
+        other scales are not established and are passed through raw.
+        """
+        try:
+            config = await self.get_generator_info()
+        except Exception as e:
+            logger.warning(f"get_generator_detail: config unavailable: {e}")
+            config = {}
+
+        try:
+            power = await self.get_accessories_power_info(3)
+            metrics = (power.get("generator") or {}) or None
+        except Exception as e:
+            logger.warning(f"get_generator_detail: metrics unavailable: {e}")
+            metrics = None
+
+        if metrics is not None:
+            metrics = {
+                **metrics,
+                "frequency_hz": (round(metrics["frequency"] / 10, 1)
+                                 if isinstance(metrics.get("frequency"), (int, float))
+                                 else None),
+                "scale": "raw except frequency_hz; voltage/current scales unestablished",
+                "attribution": ("INFERRED — these fields are unprefixed in the "
+                                "353/354 payload and attributed to the generator "
+                                "by position, not by name"),
+            }
+
+        return {
+            "config": config,
+            "metrics": metrics,
+            "source": {"config_cmd": 311, "metrics_cmd": 353},
+        }
+
     async def get_span_settings(self, requestType):
         """Get SPAN Panel settings associated with this aGate.
 

@@ -10,13 +10,64 @@ Usage:
 
 from franklinwh_cloud.cli_output import (
     print_header, print_section, print_kv, print_json_output, c,
+    print_warning,
 )
+
+async def _render_detail(client, json_output, circuit=None):
+    """config + schedule + live metrics, per circuit. Step B."""
+    data = await client.get_smart_circuit_detail(circuit)
+    if json_output:
+        print_json_output(data)
+        return
+
+    print_header("Smart Circuits — Detail")
+    if not data["source"].get("metrics_available", True):
+        print_warning("Live metrics unavailable — showing configuration only.")
+
+    for c_ in data["circuits"]:
+        cfg, sch, met = c_["config"], c_["schedule"], c_["metrics"]
+        print_section("🔌", f'{c_["name"]}  (circuit {c_["id"]})')
+        print_kv("State", c("green", "ON") if cfg["is_on"] else c("dim", "OFF"))
+        print_kv("Mode", str(cfg["mode"]))
+        if cfg["soc_cutoff_enabled"]:
+            print_kv("SoC Cutoff", f'{cfg["soc_cutoff_limit"]}%')
+        if cfg["load_limit"] is not None:
+            print_kv("Load Limit", f'{cfg["load_limit"]} A')
+
+        if met is None:
+            # Not reported is not the same as reading zero.
+            print_kv("Metrics", c("dim", "not reported for this circuit"))
+        else:
+            print_kv("Current", f'{met["current"]}')
+            print_kv("Voltage", f'{met["voltage"]}')
+            print_kv("Power", f'{met["power"]}')
+            print_kv("Energy", f'{met["energy"]}')
+            print_kv("", c("dim", met["scale"]))
+
+        if sch["slots"]:
+            slots = []
+            enabled = sch["enabled"] or []
+            for idx, raw in enumerate(sch["slots"]):
+                hhmm = str(raw).split(" ")[-1] if raw else "—"
+                on = enabled[idx] if idx < len(enabled) else None
+                slots.append(f'[{idx}] {hhmm} ({"on" if on else "off"})')
+            print_kv("Schedule slots", "  ".join(slots))
+            if not any(enabled):
+                print_kv("", c("dim", "no slot enabled — schedule inactive"))
+            print_kv("", c("dim", "slot pairing unverified; --json for raw values"))
+    print()
+
 
 async def run(client, *, json_output: bool = False, 
               turn_on: int = None, turn_off: int = None, schedule: int = None,
               cutoff: int = None, disable_cutoff: int = None, soc: int = None,
-              load_limit: int = None, amps: int = None):
+              load_limit: int = None, amps: int = None,
+              detail: bool = False, detail_circuit: int = None):
     """Execute the Smart Circuits command."""
+
+    if detail:
+        await _render_detail(client, json_output, detail_circuit)
+        return
 
     # Handle Setters
     if turn_on is not None:
