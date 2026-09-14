@@ -101,12 +101,41 @@ async def run(client, *, json_output: bool = False,
         if c_detail.load_limit is not None:
             print_kv("Load Constraint", f"{c_detail.load_limit}A limit")
             
-        # Parse legacy V1 recurring schedules
+        # Legacy V1 recurring schedules — minutes-past-midnight integers.
+        # Absent on the firmware in the capture corpus, which sends the V2
+        # SwNTime arrays below instead.
         if c_detail.open_time is not None and c_detail.open_time != -1:
             o1, c1 = f"{c_detail.open_time//60:02d}:{c_detail.open_time%60:02d}", f"{c_detail.close_time//60:02d}:{c_detail.close_time%60:02d}"
             print_kv("Schedule 1", f"{o1} → {c1}")
         if c_detail.open_time_2 is not None and c_detail.open_time_2 != -1:
             o2, c2 = f"{c_detail.open_time_2//60:02d}:{c_detail.open_time_2%60:02d}", f"{c_detail.close_time_2//60:02d}:{c_detail.close_time_2%60:02d}"
             print_kv("Schedule 2", f"{o2} → {c2}")
+
+        # V2 schedules. Parsed into the model and emitted by --json, but never
+        # rendered here — so on firmware that sends these instead of the V1
+        # integers, `sc` showed no schedule at all.
+        # DEF-SC-SCHEDULE-NOT-RENDERED.
+        #
+        # AP-14: the ARRAY PAIRING IS NOT ESTABLISHED. SwNTime holds four
+        # datetime strings and SwNTimeEn four flags, but whether those are two
+        # start/end windows or four independent entries has never been
+        # confirmed — every captured sample is the unconfigured default
+        # (00:00 / 23:59, all flags 0). So the entries are listed positionally
+        # rather than presented as windows we cannot prove they are.
+        if c_detail.time_schedules:
+            times = c_detail.time_schedules
+            enabled = c_detail.time_enabled or []
+            # Date part is a placeholder ('2000-01-01') in every sample; the
+            # meaningful component is the wall-clock time.
+            shown = []
+            for idx, raw in enumerate(times):
+                hhmm = str(raw).split(" ")[-1] if raw else "—"
+                flag = enabled[idx] if idx < len(enabled) else None
+                mark = "on" if flag else "off"
+                shown.append(f"[{idx}] {hhmm} ({mark})")
+            print_kv("Schedule slots", "  ".join(shown))
+            if not any(enabled):
+                print_kv("", c("dim", "no slot enabled — schedule inactive"))
+            print_kv("", c("dim", "slot pairing unverified; see --json for raw values"))
 
     print()
