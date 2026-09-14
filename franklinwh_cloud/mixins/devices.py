@@ -503,13 +503,37 @@ class DevicesMixin:
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
+    #: Highest Smart Circuit index the cmdType 353/354 payload could carry.
+    #: cmdType 311 has three hardcoded slots, so three is the ceiling for THIS
+    #: command. aHub supports 4-8 circuits and needs a different command
+    #: entirely — see FEAT-SC-V2-CLOUD-CAPABILITY.
+    _MAX_SC_INDEX = 3
+
     async def get_accessories_power_info(self, option=1):
         """Get accessories power and energy information.
 
         Parameters
         ----------
-        option : str
-            0 = raw, 1 = Smart Circuits, 2 = V2L, 3 = Generator
+        option : int | str
+            0 = raw, 1 = Smart Circuits, 2 = V2L, 3 = Generator.
+            Accepted as either type — the default was an ``int`` while every
+            branch compared against a ``str``, so the default call matched
+            nothing and silently returned the raw payload
+            (DEF-ACCESSORY-POWER-OPTION-TYPE).
+
+        Note
+        ----
+        Circuits are discovered from the keys the gateway actually returned,
+        not from a fixed range. The reference gateway is an AU two-circuit
+        system and sends only ``SW1*``/``SW2*``; a US three-circuit system
+        should send ``SW3*`` as well. **That is untested** — no three-circuit
+        capture exists — so absence of ``SW3Curr`` here is not evidence the
+        field does not exist elsewhere.
+
+        Values are returned **raw**. Scaling is established for frequency only
+        (``freq`` is tenths: 500 = 50.0 Hz, observed 493-500 across 177
+        samples); the voltage and current scales are not established, so no
+        divisor is applied. See docs/SMART_CIRCUITS_GENERATOR_DESIGN.md.
         """
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(MqttCmd.ACCESSORY_LOADS, dataArea)  # cmdType 353
@@ -517,23 +541,36 @@ class DevicesMixin:
         raw_data = json.loads(data)
         result = {}
 
-        if option == "0":
+        # Normalise so 1 and "1" behave identically.
+        opt = str(option) if option is not None else "1"
+
+        if opt == "0":
             return raw_data
-        if option == "1":
-            result["smart_circuits"] = [
-                {"id": 1, "current": raw_data.get("SW1Curr", 0), "voltage": raw_data.get("Sw1Volt", 0),
-                 "power": raw_data.get("SW1ExpPower", 0), "energy": raw_data.get("SW1ExpEnergy", 0)},
-                {"id": 2, "current": raw_data.get("SW2Curr", 0), "voltage": raw_data.get("Sw2Volt", 0),
-                 "power": raw_data.get("SW2ExpPower", 0), "energy": raw_data.get("SW2ExpEnergy", 0)},
-            ]
+        if opt == "1":
+            circuits = []
+            for i in range(1, self._MAX_SC_INDEX + 1):
+                # Note the inconsistent vendor casing: SW1Curr but Sw1Volt.
+                present = any(k in raw_data for k in
+                              (f"SW{i}Curr", f"Sw{i}Volt", f"SW{i}ExpPower",
+                               f"SW{i}ExpEnergy"))
+                if not present:
+                    continue
+                circuits.append({
+                    "id": i,
+                    "current": raw_data.get(f"SW{i}Curr", 0),
+                    "voltage": raw_data.get(f"Sw{i}Volt", 0),
+                    "power": raw_data.get(f"SW{i}ExpPower", 0),
+                    "energy": raw_data.get(f"SW{i}ExpEnergy", 0),
+                })
+            result["smart_circuits"] = circuits
             return result
-        if option == "2":
+        if opt == "2":
             result["v2l"] = {
                 "current": raw_data.get("CarSWCurr", 0), "power": raw_data.get("CarSWPower", 0),
                 "imp_energy": raw_data.get("CarSWImpEnergy", 0), "exp_energy": raw_data.get("CarSWExpEnergy", 0),
             }
             return result
-        if option == "3":
+        if opt == "3":
             result["generator"] = {
                 "power": raw_data.get("genpowerGen", 0), "voltage": raw_data.get("volt", 0),
                 "current": raw_data.get("curr", 0), "frequency": raw_data.get("freq", 0),
