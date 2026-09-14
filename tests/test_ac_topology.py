@@ -172,3 +172,33 @@ def test_vendor_register_warns_against_overwriting_revisions():
     d = _doc("VENDOR_DOCUMENTS.md")
     assert "add a row" in d
     assert "do not overwrite" in d.lower()
+
+
+# ── the split-phase-first synthesis ──────────────────────────────────
+
+def test_the_pattern_is_recorded_with_its_tickets():
+    """A synthesis is only useful if each claim is traceable to evidence."""
+    d = _doc("AC_TOPOLOGY.md")
+    assert "split-phase-first data model" in d
+    for ticket in ("DEF-AC-TOPOLOGY-INCONSISTENT", "DEF-PHASE-FLAG-AMBIGUOUS",
+                   "DEF-NEM-TYPE-ZERO-UNRESOLVED", "DEF-AU-V2L-HARDCODED-FALSE"):
+        assert ticket in d, f"{ticket} not cited in the pattern table"
+
+
+def test_the_pattern_is_marked_inferred_not_confirmed():
+    """It reads accumulated evidence; it is not a vendor statement."""
+    d = _doc("AC_TOPOLOGY.md")
+    i = d.index("split-phase-first data model")
+    assert "INFERRED" in d[i:i + 400]
+
+
+def test_the_tickets_are_declared_independent_of_the_pattern():
+    """If the synthesis is wrong, the individual findings must still stand."""
+    d = _doc("AC_TOPOLOGY.md")
+    assert "does not depend on this section" in d
+
+
+def test_the_caller_guidance_leads_with_device_over_market():
+    """The rule that would have prevented DEF-AU-V2L-HARDCODED-FALSE."""
+    d = _doc("AC_TOPOLOGY.md")
+    assert "Prefer what the device reports over what the market implies" in d
