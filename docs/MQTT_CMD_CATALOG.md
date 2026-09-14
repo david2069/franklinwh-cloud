@@ -77,3 +77,31 @@ analysis, safety preflight and phasing.
 
 - **API V2 Fallacies**: Previous hypotheses assumed modern V2 endpoints (like `getHotSpotInfo/v2`) replaced `sendMqtt` analogs. Our local matrix fuzzing verified this is false for integration developers requiring hardware physics arrays. The `MqttCmd` payloads listed above must be retained.
 - **M713 Limitations**: The LocRemCtl mode logic natively attempts to bypass these cloud relays altogether using Modbus TCP when users invoke local operations, which is why cataloging the `sendMqtt` trace is strictly tied to Remote-Only operations.
+
+
+---
+
+## Unconfirmed: cmdType 387 / 389 (smart circuits)
+
+Added 2026-09-14. **Not implemented, and not observed here.**
+
+The third-party fork [`jkt628/franklinwh-python`](https://github.com/jkt628/franklinwh-python)
+drives smart circuits with **cmdType 387** (configuration) and **389** (status),
+where the 387 response carries a structured
+`data["smartSwitch"][i]["schedule"]` object. This library uses **cmdType 311**,
+whose schedule arrives as the flat parallel arrays `SwNTime` / `SwNTimeEn` /
+`SwNTimeSet`.
+
+**Evidence status — ASSUMED.** Neither `387`, `389` nor `smartSwitch` occurs
+anywhere in the 44-capture corpus (2025-02 → 2026-03, app 2.3.1 → 2.11.0), in
+which the highest observed cmdType is 354. A higher block with a richer schema
+is *consistent with* a later addition, but different hardware, a different
+market, or an error in the fork are equally consistent. Third-party code is a
+hypothesis, not a citation — see
+[AP-14](../.agents/policies/evidence_standard.md).
+
+**What would settle it:** a capture from a current app session that touches
+Smart Circuits. If 387/389 are real and carry a structured schedule, they
+probably supersede 311 for this purpose and would resolve
+`FEAT-SC-SCHEDULE-SETTER` and `DEF-SC-TIMESET-UNDECIPHERED` without any
+guesswork about array layouts.
