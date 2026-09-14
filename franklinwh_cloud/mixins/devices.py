@@ -922,6 +922,15 @@ class DevicesMixin:
             Based on analysis of the cmdType 311 Smart Circuit payload structure:
 
             - On US V1 Smart Circuits + Generator Module, Sw3 is the CarSW (V2L) port.
+
+            **Topology, per user report 2026-09-15 (not vendor-confirmed):** a US
+            unit has three circuits; circuits 1 and 2 are 110/120 V and can be
+            **merged into a single 240 V circuit** (``SwMerge``). Where a
+            Generator Module is fitted, that merged pair can serve as the **V2L
+            input in place of the normal generator port**. That makes V2L partly
+            an input-side topology choice, not only an output toggle — so the
+            assumption above, that V2L maps to a single ``Sw3Mode`` write, may
+            describe just one arrangement. See DEF-V2L-MERGE-TOPOLOGY.
             - The hypothesis is that toggling V2L maps to ``Sw3Mode = 1 (ON) / 0 (OFF)``
               via the same cmdType 311 write path used for Smart Circuit control.
             - A separate dedicated V2L endpoint (e.g. ``updateV2l``) may exist but has

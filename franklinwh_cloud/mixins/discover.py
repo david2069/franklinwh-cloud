@@ -534,8 +534,14 @@ class DiscoverMixin:
                     sw_merged = sc_info.get("SwMerge", 0) == 1
 
                     if sw_merged:
-                        # US V2 V2L merge topology: physical SC1+SC2 → logical SC1 (240V),
-                        # physical SC3 → logical SC2. The firmware always returns all 3 Sw
+                        # US V2L merge topology: physical SC1+SC2 → logical SC1 (240V),
+                        # physical SC3 → logical SC2. Circuits 1 and 2 are
+                        # 110/120 V individually; merged they form one 240 V
+                        # circuit, and with a Generator Module fitted that pair
+                        # can act as the V2L INPUT instead of the normal
+                        # generator port (user report 2026-09-15,
+                        # DEF-V2L-MERGE-TOPOLOGY). AU is unaffected — accessory
+                        # 302 Smart Circuits V1-AU has v2l_port false. The firmware always returns all 3 Sw
                         # slots; only Sw1 and Sw3 are meaningful to consumers when merged.
                         # We preserve user-set names (Sw1Name, Sw3Name) — renaming is not
                         # supported and would discard user intent. The merged=True flag on
