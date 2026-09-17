@@ -279,6 +279,26 @@ class ProgrammeInfo:
 
 
 @dataclass
+class LocalReachability:
+    """Can the gateway be reached on the LAN, and on which port?
+
+    Populated only when ``discover(probe_local=True)``. Opt-in because it is
+    **local** I/O: it only means anything from the gateway's own network, and
+    every other field on the snapshot comes from the cloud.
+
+    ``reachable`` is None when no probe was attempted or no address was
+    available — "could not check" is not "not listening". See
+    ``docs/AC_TOPOLOGY.md`` for the same principle applied to AC readings.
+    """
+    probed: bool = False
+    reachable: bool | None = None
+    port: int | None = None          # 9000 (local API) or 22 (fallback)
+    host: str | None = None
+    modbus_502_open: bool | None = None   # informational; only listens if enabled
+    note: str = ""
+
+
+@dataclass
 class DeviceSnapshot:
     """Complete device discovery snapshot.
 
@@ -297,6 +317,7 @@ class DeviceSnapshot:
     warranty: WarrantyInfo = field(default_factory=WarrantyInfo)
     electrical: ElectricalInfo = field(default_factory=ElectricalInfo)
     programmes: ProgrammeInfo = field(default_factory=ProgrammeInfo)
+    local: LocalReachability = field(default_factory=LocalReachability)
     region_quirks: dict = field(default_factory=dict)
     accessory_quirks: dict = field(default_factory=dict)
 
