@@ -634,6 +634,23 @@ class NetworkMixin:
         ValueError
             If ``confirm`` is not True, or ``password`` is None for an SSID
             other than the one currently stored.
+
+        .. warning::
+            **A SPAN panel integration depends on Ethernet and will stop
+            working if the gateway moves to WiFi.** SPAN requires the aGate's
+            Ethernet port to be on the same network as the panel; the aGate's
+            WiFi is not supported for it (user report 2026-09-18, not
+            vendor-confirmed).
+
+            This preflight does **not** check for SPAN. It protects the
+            gateway's own reachability — that a transport survives the write —
+            and knows nothing about what else depends on the current one. On a
+            SPAN site the write can succeed, the verify loop can report
+            ``connected``, and the panel integration can go quiet with no
+            error anywhere.
+
+            Check ``get_span_setting()`` before switching a gateway that is
+            currently on Ethernet. See DEF-WIFI-SWITCH-BREAKS-SPAN.
         """
         if not confirm:
             raise ValueError(
