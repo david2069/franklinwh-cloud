@@ -887,3 +887,41 @@ def test_network_state_tags_the_shared_ethernet_link_flag():
     src = inspect.getsource(devices.DevicesMixin.get_network_state)
     assert "link_shared" in src
     assert "SHARED_LINK_IDS" in src
+
+
+# ── DEF-WIFI-SWITCH-BREAKS-SPAN ──────────────────────────────────────
+
+def _switch_src():
+    import inspect
+
+    from franklinwh_cloud.mixins.network import NetworkMixin
+
+    return inspect.getsource(NetworkMixin.switch_to_wifi)
+
+
+def test_the_span_hazard_is_documented():
+    """SPAN needs Ethernet; moving to WiFi kills it with no error anywhere."""
+    src = _switch_src()
+    assert "SPAN" in src
+    assert "DEF-WIFI-SWITCH-BREAKS-SPAN" in src
+
+
+def test_the_docstring_admits_the_preflight_does_not_check():
+    """Claiming protection it does not provide would be worse than the gap."""
+    src = _switch_src()
+    assert "does **not** check for SPAN" in src
+
+
+def test_the_preflight_still_does_not_consult_span():
+    """Guard: if a SPAN check is added, this test must be updated deliberately.
+
+    Enforcement needs sign-off — it adds a call to a write path — so the
+    current state is documented-but-unenforced, and that should not change by
+    accident.
+    """
+    import inspect
+
+    from franklinwh_cloud.mixins import network
+
+    src = inspect.getsource(network.network_write_preflight)
+    assert "span" not in src.lower()
