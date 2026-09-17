@@ -358,8 +358,13 @@ class SmartCircuitDetail:
     name: str
     mode: int
     is_on: bool
-    soc_cutoff_enabled: bool
-    soc_cutoff_limit: int
+    # SOC Auto Cut-off is OFF-GRID ONLY: it sheds circuits in sequence as the
+    # battery falls during a grid outage. CONFIRMED — franklinwh.com support,
+    # Smart Circuits overview: "automatically disconnects circuits in sequence
+    # based on battery SOC during a grid outage". It does not act while
+    # grid-tied, so a configured threshold can look inert on a healthy grid.
+    soc_cutoff_enabled: bool     # Sw{n}AtuoEn
+    soc_cutoff_limit: int        # Sw{n}SocLowSet
     pro_load_type: int
     
     # Optional V1 scheduling formats (Legacy)

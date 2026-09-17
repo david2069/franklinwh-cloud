@@ -30,7 +30,7 @@ async def _render_detail(client, json_output, circuit=None):
         print_kv("State", c("green", "ON") if cfg["is_on"] else c("dim", "OFF"))
         print_kv("Mode", str(cfg["mode"]))
         if cfg["soc_cutoff_enabled"]:
-            print_kv("SoC Cutoff", f'{cfg["soc_cutoff_limit"]}%')
+            print_kv("SoC Cutoff", f'{cfg["soc_cutoff_limit"]}%  (off-grid only)')
         if cfg["load_limit"] is not None:
             print_kv("Load Limit", f'{cfg["load_limit"]} A')
 
@@ -140,7 +140,11 @@ async def run(client, *, json_output: bool = False,
         print_kv("Status", status_str)
         
         if c_detail.soc_cutoff_enabled:
-            print_kv("SOC Auto Cut-off", f"{c('green', 'Enabled')} at {c_detail.soc_cutoff_limit}%")
+            # Off-grid only — it does nothing while grid-tied, so saying only
+            # "Enabled" invites the reader to expect action on a healthy grid.
+            print_kv("SOC Auto Cut-off",
+                     f"{c('green', 'Enabled')} at {c_detail.soc_cutoff_limit}%"
+                     f"  {c('dim', '(off-grid only)')}")
         else:
             print_kv("SOC Auto Cut-off", c("dim", "Disabled"))
 

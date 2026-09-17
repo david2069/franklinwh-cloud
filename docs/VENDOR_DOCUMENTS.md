@@ -18,6 +18,7 @@ below), so "the manual says" is not a durable citation on its own.
 | `COMM-2.8.0` | FranklinWH Commissioning Guide (MAC 1 & aPower 2 & aPower S) | — | **Dec 30, 2025** | 82 |
 | `DS-AGATE-AU-V1.7` | System Datasheet aGate X-01-AU & aPower X-02-AU | **V1.7** | **2026-05-30** | 2 |
 | `AHUB-V1.0` | aHub Installation and Operations Manual | **V1.0** (initial release) | **2026-01-22** | 37 |
+| `FWH-SUPPORT-SC` | franklinwh.com — Support → Overview → Smart Circuits | — | retrieved 2026-09-18 | web |
 | `SPAN-APPNOTE-FWH` | SPAN Tech Portal — *App Note: Integration with FranklinWH* | — | retrieved 2026-09-18 | — |
 | `DS-SC-AU` | Smart Circuits Module Datasheet (AU & NZ) | — | **2026-03-25** | 2 |
 
@@ -57,6 +58,10 @@ answer — which is how `DEF-ETH-PORT-IDENTITY-UNCONFIRMED` arose.
 | Phone may drop the aGate connection after a successful Wi-Fi change | `COMM-AU-2.15.0` p.12 |
 | aHub: 4×240 V or 8×120 V circuits, programmable scheduling | `AHUB-V1.0` p.10, p.28 |
 | SPAN link is SunSpec Modbus TCP 502, aGate as client; SPAN Aux Comms/ETH-1 to aGate Ethernet; SPAN supplies the aGate's internet | `SPAN-APPNOTE-FWH` |
+| Three Smart Circuits; SC1+SC2 merge when sharing a 2-pole switch | `FWH-SUPPORT-SC` |
+| SOC Auto Cut-off sheds circuits **during a grid outage** — off-grid only | `FWH-SUPPORT-SC` |
+| Overload cut-off disconnects circuits if load exceeds panel capacity | `FWH-SUPPORT-SC` |
+| Schedules set a "cycle interval and execution time" | `FWH-SUPPORT-SC` |
 
 > **Note on `SPAN-APPNOTE-FWH`:** the SPAN Tech Portal is a JavaScript-rendered
 > Salesforce site and cannot be fetched programmatically; this entry was
