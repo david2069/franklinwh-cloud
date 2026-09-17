@@ -138,6 +138,39 @@ class SmartCircuitConfig:
     modes: List[str] = field(default_factory=list)
     v2l_port: bool = False       # V2L available on this SC
     v2l_enabled: bool = False    # V2L currently active
+    # Per-circuit schedule, straight from the cmdType 311 payload discover
+    # already fetches. Previously parsed past and discarded — the same shape as
+    # DEF-SC-SCHEDULE-NOT-RENDERED. Costs no extra call.
+    #
+    # Slots are POSITIONAL, not start/end pairs: whether the four SwNTime
+    # entries are two windows or four independent slots is unestablished, and
+    # `time_set` is passed through undeciphered (DEF-SC-TIMESET-UNDECIPHERED).
+    schedules: List[dict] = field(default_factory=list)
+
+
+@dataclass
+class GeneratorConfig:
+    """Generator settings from selectIotGenerator. Tier 3 only — one REST call.
+
+    Field names are the gateway's. The SoC thresholds are ``genStartElec`` /
+    ``genCloseElec``; there is no ``genStartSoc``/``genStopSoc``
+    (DEF-GEN-SOC-FIELD-NAMES).
+
+    ``charge_windows`` are the three generator charge windows, in **gateway-local
+    wall clock** — see ``docs/TIME_AND_TIMEZONES.md``. Unlike Smart Circuit
+    schedules these are plainly named and writable via
+    ``set_generator_charge_schedule()``.
+    """
+    present: bool = False
+    enabled: int | None = None        # genEn
+    state: int | None = None          # genStat
+    mode: int | None = None           # `mode` — NOT manuSw (DEF-GEN-MODE-WRITES-MANUSW)
+    manual_switch: int | None = None  # manuSw — a manual start/stop command
+    start_below_soc: int | None = None   # genStartElec
+    stop_above_soc: int | None = None    # genCloseElec
+    rated_power: int | None = None
+    model: str = ""
+    charge_windows: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -154,6 +187,7 @@ class AccessoriesInfo:
     apbox_di: List[str] = field(default_factory=list)
     apbox_do_status: List[str] = field(default_factory=list)
     generator_state: str = ""
+    generator: "GeneratorConfig" = field(default_factory=lambda: GeneratorConfig())
     v2l_state: str = ""
 
 

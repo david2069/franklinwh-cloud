@@ -21,6 +21,7 @@ from franklinwh_cloud.discovery import (
     DeviceSnapshot, SiteInfo, AgateInfo, APowerUnit, BatteryInfo,
     AccessoryItem, SmartCircuitConfig, AccessoriesInfo, FeatureFlags,
     GridInfo, WarrantyDevice, WarrantyInfo, ElectricalInfo, ProgrammeInfo,
+    GeneratorConfig,
 )
 from franklinwh_cloud.const.states import (
     APBOX_IO_STATE, SMART_CIRCUIT_MODE, GENERATOR_STATE, V2L_RUN_STATE, PCS_STATE, BMS_STATE
@@ -120,6 +121,40 @@ class DiscoverMixin:
         return snapshot
 
     # ── Tier 1 ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _sc_schedules(sc_info, count):
+        """Per-circuit schedule from the cmdType 311 payload already fetched.
+
+        Slots are listed POSITIONALLY. Whether the four SwNTime entries are two
+        start/end windows or four independent slots is unestablished — every
+        captured sample is the unconfigured default — and SwNTimeSet is passed
+        through undeciphered. DEF-SC-TIMESET-UNDECIPHERED.
+        """
+        out = []
+        for cid in range(1, max(count, 0) + 1):
+            times = sc_info.get(f"Sw{cid}Time") or []
+            if not times:
+                continue
+            enabled = sc_info.get(f"Sw{cid}TimeEn") or []
+            slots = []
+            for i, raw in enumerate(times):
+                # The date part is a placeholder ('2000-01-01') in every
+                # observed sample; only the wall clock carries meaning.
+                hhmm = str(raw).split(" ")[-1] if raw else None
+                slots.append({
+                    "index": i,
+                    "at": hhmm,
+                    "enabled": bool(enabled[i]) if i < len(enabled) else False,
+                })
+            out.append({
+                "circuit": cid,
+                "slots": slots,
+                "any_enabled": any(s["enabled"] for s in slots),
+                "raw_time_set": sc_info.get(f"Sw{cid}TimeSet"),
+                "pairing": "unverified",
+            })
+        return out
 
     async def _discover_local(self, snap, local_host, timeout_s):
         """LAN reachability. Never raises — this is supplementary to a cloud call."""
@@ -487,6 +522,7 @@ class DiscoverMixin:
                     modes=modes,
                     v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
                     v2l_enabled=snap.flags.v2l_enabled,
+                    schedules=self._sc_schedules(sc_info, count),
                 )
         except Exception as e:
             logger.warning(f"discover: get_smart_circuits_info (Tier 1) failed: {e}")
@@ -654,6 +690,7 @@ class DiscoverMixin:
                         modes=modes,
                         v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
                         v2l_enabled=snap.flags.v2l_enabled,
+                        schedules=self._sc_schedules(sc_info, count),
                     )
             except Exception as e:
                 logger.warning(f"discover: get_smart_circuits_info failed: {e}")
@@ -774,6 +811,38 @@ class DiscoverMixin:
 
     async def _discover_tier3(self, snap, catalog):
         """Tier 3: Network, full firmware, TOU, site detail, programmes deep."""
+
+        # 12b. Generator settings and charge windows — tier 3 only, because it
+        # is one REST call discover() does not otherwise make. Skipped entirely
+        # when no generator was detected, so a site without one pays nothing.
+        if snap.accessories.has_generator:
+            try:
+                g = await self.get_generator_info() or {}
+                snap.accessories.generator = GeneratorConfig(
+                    present=True,
+                    enabled=g.get("genEn"),
+                    state=g.get("genStat"),
+                    # `mode` is the mode field; manuSw is a manual start/stop
+                    # command. Recorded separately — DEF-GEN-MODE-WRITES-MANUSW.
+                    mode=g.get("mode"),
+                    manual_switch=g.get("manuSw"),
+                    # NOT genStartSoc/genStopSoc — those do not exist.
+                    start_below_soc=g.get("genStartElec"),
+                    stop_above_soc=g.get("genCloseElec"),
+                    rated_power=g.get("genRatedPower"),
+                    model=g.get("genModel", "") or "",
+                    charge_windows=[
+                        {
+                            "window": i,
+                            "enabled": bool(g.get(f"charge{i}En")),
+                            "start": g.get(f"charge{i}StartTime"),
+                            "end": g.get(f"charge{i}EndTime"),
+                        }
+                        for i in (1, 2, 3) if f"charge{i}En" in g
+                    ],
+                )
+            except Exception as e:
+                logger.warning(f"discover: get_generator_info failed: {e}")
 
         # 13. Site and device info — skip if already populated from Tier 1
         try:
