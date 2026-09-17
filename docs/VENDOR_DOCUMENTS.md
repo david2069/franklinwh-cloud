@@ -18,6 +18,7 @@ below), so "the manual says" is not a durable citation on its own.
 | `COMM-2.8.0` | FranklinWH Commissioning Guide (MAC 1 & aPower 2 & aPower S) | — | **Dec 30, 2025** | 82 |
 | `DS-AGATE-AU-V1.7` | System Datasheet aGate X-01-AU & aPower X-02-AU | **V1.7** | **2026-05-30** | 2 |
 | `AHUB-V1.0` | aHub Installation and Operations Manual | **V1.0** (initial release) | **2026-01-22** | 37 |
+| `SPAN-APPNOTE-FWH` | SPAN Tech Portal — *App Note: Integration with FranklinWH* | — | retrieved 2026-09-18 | — |
 | `DS-SC-AU` | Smart Circuits Module Datasheet (AU & NZ) | — | **2026-03-25** | 2 |
 
 Versions above are quoted from the documents' own title pages or revision
@@ -55,6 +56,13 @@ answer — which is how `DEF-ETH-PORT-IDENTITY-UNCONFIRMED` arose.
 | 4G connected by default; app offers Skip | `COMM-AU-2.15.0` p.12 |
 | Phone may drop the aGate connection after a successful Wi-Fi change | `COMM-AU-2.15.0` p.12 |
 | aHub: 4×240 V or 8×120 V circuits, programmable scheduling | `AHUB-V1.0` p.10, p.28 |
+| SPAN link is SunSpec Modbus TCP 502, aGate as client; SPAN Aux Comms/ETH-1 to aGate Ethernet; SPAN supplies the aGate's internet | `SPAN-APPNOTE-FWH` |
+
+> **Note on `SPAN-APPNOTE-FWH`:** the SPAN Tech Portal is a JavaScript-rendered
+> Salesforce site and cannot be fetched programmatically; this entry was
+> recorded from screenshots. It prints no version or date, so the register
+> records only the retrieval date — an honest `—` rather than an invented
+> revision.
 
 ## Keeping this current
 

@@ -925,3 +925,41 @@ def test_the_preflight_still_does_not_consult_span():
 
     src = inspect.getsource(network.network_write_preflight)
     assert "span" not in src.lower()
+
+
+# ── SPAN integration facts the docs must keep straight ───────────────
+
+def _span_doc():
+    import pathlib
+
+    return pathlib.Path("docs/SPAN_INTEGRATION.md").read_text()
+
+
+def test_span_doc_records_the_agate_as_modbus_client():
+    """Direction matters: our 502 probe tests the aGate, SPAN runs on the panel."""
+    d = _span_doc()
+    assert "aGate is the Modbus client" in d
+    assert "502" in d
+
+
+def test_span_doc_records_that_span_supplies_the_internet():
+    """Changes the hazard: that cable may carry the gateway's only uplink."""
+    assert "provides the aGate's internet connection" in _span_doc()
+
+
+def test_span_doc_warns_about_the_eth1_name_collision():
+    """SPAN's ETH-1 is a SPAN port. Matching numbers would hit the Debug port."""
+    d = _span_doc()
+    assert "not the aGate's Eth1" in d
+    assert "Debug" in d
+
+
+def test_span_doc_marks_wifi_reachability_as_unresolved():
+    """Whether SPAN survives a WiFi switch depends on topology — unestablished."""
+    d = _span_doc()
+    assert "INFERRED" in d
+    assert "point-to-point" in d
+
+
+def test_span_doc_distinguishes_our_502_probe_from_spans():
+    assert "not the same service" in _span_doc()
