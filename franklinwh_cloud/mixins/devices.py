@@ -742,12 +742,28 @@ class DevicesMixin:
         return data["result"]
 
     async def get_span_setting(self):
-        """Check if this aGate has a SPAN panel detected/configured.
+        """Has a SPAN panel integration been **configured** on this aGate?
 
         Returns
         -------
         dict
-            {"spanFlag": 0|1} — 0 = no SPAN panel, 1 = SPAN panel detected
+            ``{"spanFlag": 0|1}``
+
+            * ``1`` — the SPAN integration has been configured.
+            * ``0`` — **not configured.** This is *not* evidence that no SPAN
+              panel is present.
+
+        Note
+        ----
+        The flag reflects a deliberate installer action, **not autodetection**.
+        Per SPAN's app note the integration is enabled on an *installer*
+        account via Settings → Modbus → SPAN Panel, entering the panel's IP and
+        port 502. A panel can therefore be physically cabled and wired while
+        this reads 0.
+
+        The earlier wording here said "detected", which asserted a discovery
+        mechanism the evidence does not show. See ``docs/SPAN_INTEGRATION.md``
+        and DEF-SPAN-FLAG-IS-CONFIG-NOT-DETECTION.
         """
         url = self.url_base + "hes-gateway/terminal/span/getSpanSetting"
         data = await self._get(url)
@@ -1791,7 +1807,11 @@ class DevicesMixin:
             # Check SPAN flag
             try:
                 span = await self.get_span_setting()
+                # Key name retained — downstream consumers read it. It means
+                # CONFIGURED, not reachable: the flag is set by an installer in
+                # the app, and says nothing about whether the panel answers.
                 overview["span_connected"] = bool(span.get("spanFlag"))
+                overview["span_configured"] = bool(span.get("spanFlag"))
             except Exception:
                 overview["span_connected"] = False
                 
