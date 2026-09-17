@@ -206,3 +206,29 @@ def test_merge_matches_the_vendor_description():
 
     src = inspect.getsource(discover)
     assert "SC1+SC2" in src
+
+
+# ── DEF-SC-MODE-ENUM-CONTRADICTS-SETTER ──────────────────────────────
+
+def test_the_two_mode_mappings_are_known_to_disagree():
+    """Guard, not an assertion of which is right.
+
+    set_smart_switch_state() writes 0=OFF, 1=ON, 2=SCHEDULE.
+    SMART_CIRCUIT_MODE reads 0=Manual, 1=Schedule, 2=Smart/Auto.
+
+    They disagree on every value and cannot both be correct. This test fails
+    once either is changed, forcing whoever resolves it to do so deliberately
+    and to update the other.
+    """
+    import inspect
+
+    from franklinwh_cloud.const.states import SMART_CIRCUIT_MODE
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    assert SMART_CIRCUIT_MODE == {0: "Manual", 1: "Schedule", 2: "Smart / Auto"}
+
+    src = inspect.getsource(DevicesMixin.set_smart_switch_state)
+    assert 'state_up == "SCHEDULE"' in src and "mode_val = 2" in src, (
+        "the setter still maps SCHEDULE to 2, which the constant calls "
+        "Smart / Auto — see DEF-SC-MODE-ENUM-CONTRADICTS-SETTER"
+    )
