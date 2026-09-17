@@ -73,6 +73,7 @@ nav:
     - API Cookbook: API_COOKBOOK.md
     - Time & Time Zones: TIME_AND_TIMEZONES.md
     - AC Topology: AC_TOPOLOGY.md
+    - SPAN Integration: SPAN_INTEGRATION.md
     - Capture Requests: CAPTURE_REQUESTS.md
     - Vendor Documents: VENDOR_DOCUMENTS.md
     - Smart Circuits & Generator Design: SMART_CIRCUITS_GENERATOR_DESIGN.md
