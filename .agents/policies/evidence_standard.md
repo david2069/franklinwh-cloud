@@ -111,6 +111,32 @@ citations. If the number is not to hand, the tier is INFERRED or ASSUMED.
    `NETWORK_CONNECTIVITY_DESIGN.md` §2.3c and §2.3d, where two vendor documents
    contradict each other on port naming.
 
+## An ack is not a confirmation
+
+**The gateway accepts writes it does not store.** A rejected or invalid value
+returns success and is silently discarded (user report 2026-09-18, and the same
+shape as gotcha G7, where a wrong WiFi password also returns `result: 0`).
+
+So a write is not evidence that anything changed. **Read back.**
+
+| Signal | Means |
+|---|---|
+| HTTP 200 / `result: 0` | the request was accepted |
+| a read-back matching what was sent | the value is in effect |
+| a read-back that fails | **unknown** — not success |
+
+This is the same rule as the rest of this policy, applied to writes: prefer the
+observation over the inference. "It returned OK" is an inference about state;
+reading the state is the observation.
+
+Two corollaries worth stating, because both have already been got wrong here:
+
+- **Never report the ack as the result.** If a method returns the ack, callers
+  will treat it as confirmation — it is the only thing they are given.
+- **"Could not verify" is not "verified".** Use a third value, not `False` and
+  not `True`. `switch_to_wifi()` uses `state: "timeout"`;
+  `set_generator_charge_schedule()` uses `verified: None`.
+
 ## Applying this to defect tickets
 
 A ticket asserting an API defect must distinguish **our** defect from

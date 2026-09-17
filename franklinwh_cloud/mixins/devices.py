@@ -834,7 +834,8 @@ class DevicesMixin:
             raise ValueError(f"{label} out of range: {value!r}")
         return h * 60 + m
 
-    async def set_generator_charge_schedule(self, windows, *, confirm=False):
+    async def set_generator_charge_schedule(self, windows, *, confirm=False,
+                                            verify=True):
         """Set the generator charge schedule — up to three daily windows.
 
         The generator runs to charge the batteries inside these windows.
@@ -853,10 +854,21 @@ class DevicesMixin:
         confirm : bool
             Must be True — this determines when an engine runs.
 
+        verify : bool
+            Read the schedule back and compare (default True).
+
         Returns
         -------
         dict
-            The gateway's response to the write.
+            ``{ack, verified, mismatches, note}``. **``verified`` is the field
+            that matters** — ``ack`` only means the request was accepted.
+
+        .. warning::
+            **The gateway accepts a schedule it will not store.** An ack is not
+            a confirmation: an invalid or rejected write returns success and is
+            silently discarded. Only a read-back establishes what is actually in
+            effect. ``verified=None`` means the check could not run, which is
+            not the same as passing. DEF-WRITES-NOT-VERIFIED.
 
         Note
         ----
@@ -927,7 +939,42 @@ class DevicesMixin:
         url = self.url_base + "hes-gateway/terminal/updateIotGenerator"
         params = {"gatewayId": self.gateway}
         data = await self._post(url, params=params, payload=payload)
-        return data.get("result", data)
+        ack = data.get("result", data)
+
+        if not verify:
+            return {"ack": ack, "verified": None,
+                    "note": "verify=False — the ack alone does not mean stored"}
+
+        # The gateway ACCEPTS a rejected schedule and simply does not store it,
+        # so the ack proves nothing. Read back and compare.
+        try:
+            stored = await self.get_generator_info() or {}
+        except Exception as e:
+            logger.warning(f"set_generator_charge_schedule: read-back failed: {e}")
+            return {"ack": ack, "verified": None,
+                    "note": f"read-back failed: {e}"}
+
+        mismatches = []
+        for i in range(1, self.GENERATOR_CHARGE_WINDOWS + 1):
+            for key in (f"charge{i}En", f"charge{i}StartTime", f"charge{i}EndTime"):
+                if key not in payload:
+                    continue      # disabled windows carry no times, by design
+                want, got = payload[key], stored.get(key)
+                # En is 0/1 on the wire and may read back as bool or int.
+                if key.endswith("En"):
+                    if bool(want) != bool(got):
+                        mismatches.append({"field": key, "sent": want, "stored": got})
+                elif str(want) != str(got):
+                    mismatches.append({"field": key, "sent": want, "stored": got})
+
+        return {
+            "ack": ack,
+            "verified": not mismatches,
+            "mismatches": mismatches,
+            "note": ("stored as sent" if not mismatches else
+                     "the gateway accepted the write but did not store these "
+                     "values — the schedule is NOT in effect"),
+        }
 
     async def set_v2l_mode(self, enable: bool) -> dict:
         """Enable or disable V2L (Vehicle-to-Load) output via the CarSW port.
