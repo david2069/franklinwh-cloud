@@ -66,6 +66,14 @@ NETWORK_SCHEMA = {
     # Cloud reachability
     "cloud.aws_connected":    ("awsStatus == 1",          "339",             "bool", "Network Cloud"),
     "cloud.internet":         ("netStatus == 1",          "339",             "bool", "Network Cloud"),
+    # Local reachability — NOT from the wire. Every other entry here is a field
+    # the gateway sent; these four are the result of a TCP connect from
+    # wherever the caller runs. Populated only by
+    # get_network_state(probe_local=True) or discover(probe_local=True).
+    "local.probed":           ("—",  "TCP probe",  "bool",    "Network Local"),
+    "local.reachable":        ("—",  "TCP probe",  "bool",    "Network Local"),
+    "local.port":             ("—",  "TCP probe",  "9000|22", "Network Local"),
+    "local.host":             ("—",  "TCP probe",  "ipv4",    "Network Local"),
     "cloud.router_status_raw":("routerStatus",            "339",             "code", "Network Cloud"),
 
     # Derived roll-ups used for write safety
@@ -84,6 +92,9 @@ NETWORK_NOTES = [
     "  4G       : enabled + SIM Active + reception (holds no IP while idle)",
     "  WiFi/Eth : enabled + linked + holding an address (static or DHCP)",
     "signal_pct (WiFi) is 0-100%; signal_raw (4G) is a 0-52 vendor scale.",
+    "local.* is a TCP probe from the CALLER, not a gateway field. 9000 is the",
+    "  local 'Direct Connection' API, 22 the fallback. reachable=None means",
+    "  'could not check' — meaningful only on the gateway's own LAN.",
     "routerStatus is NOT a boolean — 0, 1 and 4 all observed. Shown raw.",
 ]
 

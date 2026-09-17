@@ -60,18 +60,39 @@ def _ts_to_str(ts_ms):
 class DiscoverMixin:
     """Discovery methods for the Client class."""
 
-    async def discover(self, tier: int = 1) -> DeviceSnapshot:
+    async def discover(self, tier: int = 1, *, probe_local: bool = False,
+                       local_host: str | None = None,
+                       local_timeout_s: float = 1.5) -> DeviceSnapshot:
         """Full device discovery — returns structured DeviceSnapshot.
 
         Parameters
         ----------
         tier : int
             Verbosity level: 1 (quick), 2 (verbose), 3 (pedantic)
+        probe_local : bool
+            Also check whether the gateway answers on its LAN address —
+            TCP 9000 (the local "Direct Connection" API), falling back to 22,
+            plus an informational Modbus 502 check. Default False.
+        local_host : str | None
+            Address to probe. When omitted it is taken from the gateway's
+            active transport, which costs one extra cmdType 317 read.
+        local_timeout_s : float
+            Per-port connect timeout.
 
         Returns
         -------
         DeviceSnapshot
             Structured snapshot of all discovered device data.
+
+        Note
+        ----
+        ``probe_local`` is **opt-in** because every other field here comes from
+        the cloud and works from anywhere, whereas a port probe only means
+        something on the gateway's own network. Enabling it by default would
+        make ``discover()`` behave differently depending on where it runs.
+
+        A failed probe yields ``reachable=False``; **no address to probe yields
+        ``None``**, which is not the same thing.
         """
         snapshot = DeviceSnapshot(
             tier=tier,
@@ -81,6 +102,9 @@ class DiscoverMixin:
 
         # ── Tier 1: Core identity + flags + state ──────────────────
         await self._discover_tier1(snapshot, catalog)
+
+        if probe_local:
+            await self._discover_local(snapshot, local_host, local_timeout_s)
 
         if tier >= 2:
             # ── Tier 2: Full inventory + accessories + warranty ────
@@ -96,6 +120,48 @@ class DiscoverMixin:
         return snapshot
 
     # ── Tier 1 ────────────────────────────────────────────────────
+
+    async def _discover_local(self, snap, local_host, timeout_s):
+        """LAN reachability. Never raises — this is supplementary to a cloud call."""
+        from franklinwh_cloud.mixins.network import (
+            LOCAL_MODBUS_PORT, probe_local_reachability, probe_tcp,
+        )
+        from franklinwh_cloud.const.devices import NETWORK_TYPE_KEYS, UNASSIGNED_IPS
+
+        host = local_host
+        if not host:
+            # One extra cmdType 317 read, only when asked to probe and no
+            # address was supplied. discover() otherwise never reads 317.
+            try:
+                net = await self.get_network_info()
+                key = NETWORK_TYPE_KEYS.get(net.get("currentNetType"))
+                cfg = (net.get(key) or {}) if key else {}
+                ip = cfg.get("ip")
+                host = ip if ip not in UNASSIGNED_IPS else None
+            except Exception as e:
+                logger.warning(f"discover: could not resolve LAN address: {e}")
+                snap.local.note = f"address lookup failed: {e}"
+                return
+
+        if not host:
+            # Mid-reassociation, or on a transport with no address (4G holds
+            # none). Not a failure — there is simply nothing to probe.
+            snap.local.note = "no LAN address on the active transport"
+            return
+
+        try:
+            r = await probe_local_reachability(host, timeout_s=timeout_s)
+            snap.local.probed = r["probed"]
+            snap.local.reachable = r["reachable"]
+            snap.local.port = r["port"]
+            snap.local.host = r["host"]
+            # Informational only: Modbus listens solely when enabled, so a
+            # closed port is not evidence of anything.
+            snap.local.modbus_502_open = await probe_tcp(
+                host, LOCAL_MODBUS_PORT, timeout_s=timeout_s)
+        except Exception as e:
+            logger.warning(f"discover: local probe failed: {e}")
+            snap.local.note = f"probe failed: {e}"
 
     async def _discover_tier1(self, snap, catalog):
         """Tier 1: Site identity, aGate, battery count, feature flags, state."""
