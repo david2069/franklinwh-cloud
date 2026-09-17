@@ -499,8 +499,14 @@ async def run(client, *, json_output: bool = False):
             elif "mobile_signal" in sig:
                 print_kv("4G/Mobile Signal", f"{sig.get('mobile_signal')}%")
 
-            span = conn_overview.get("span_connected", False)
-            span_text = c("green", "● Active") if span else c("dim", "○ Inactive")
+            # "Configured", not "connected" — the flag is an installer setting,
+            # and a panel can be cabled while it reads 0.
+            span = conn_overview.get("span_configured",
+                                     conn_overview.get("span_connected", False))
+            # "Active"/"Inactive" overclaimed: the flag says an installer
+            # configured the integration, not that the panel is answering.
+            span_text = (c("green", "● Configured") if span
+                         else c("dim", "○ Not configured"))
             print_kv("SPAN Panel", span_text)
 
             modbus = conn_overview.get("modbus_tcp_502_open", False)

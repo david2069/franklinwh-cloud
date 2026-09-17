@@ -963,3 +963,53 @@ def test_span_doc_marks_wifi_reachability_as_unresolved():
 
 def test_span_doc_distinguishes_our_502_probe_from_spans():
     assert "not the same service" in _span_doc()
+
+
+# ── DEF-SPAN-FLAG-IS-CONFIG-NOT-DETECTION ────────────────────────────
+
+def test_span_docstring_no_longer_claims_detection():
+    """The flag is an installer setting; "detected" asserted a mechanism."""
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    src = inspect.getsource(DevicesMixin.get_span_setting)
+    assert "1 = SPAN panel detected" not in src
+    assert "not autodetection" in src.lower() or "not** autodetection" in src
+
+
+def test_span_docstring_says_zero_is_not_evidence_of_absence():
+    """A panel can be cabled and wired while the flag reads 0.
+
+    Whitespace is normalised first: the phrase wraps across lines in the
+    docstring, and asserting on the raw text would fail on formatting rather
+    than on meaning.
+    """
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    src = " ".join(inspect.getsource(DevicesMixin.get_span_setting).split())
+    assert "evidence that no SPAN panel is present" in src
+
+
+def test_overview_keeps_the_old_key_and_adds_an_honest_one():
+    """span_connected is read downstream; span_configured is what it means."""
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    src = inspect.getsource(DevicesMixin.get_connectivity_overview)
+    assert '"span_connected"' in src
+    assert '"span_configured"' in src
+
+
+def test_diag_does_not_render_span_as_active():
+    """"Active" implied the panel was answering. It implies no such thing."""
+    import inspect
+
+    from franklinwh_cloud.cli_commands import diag
+
+    src = inspect.getsource(diag)
+    assert "● Active" not in src
+    assert "● Configured" in src
