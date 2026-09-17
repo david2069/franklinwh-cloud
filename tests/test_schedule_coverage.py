@@ -144,3 +144,39 @@ def test_schema_records_that_sc_schedules_have_no_setter():
 
     src = inspect.getsource(schema)
     assert "there is no" in src and "DEF-SC-TIMESET-UNDECIPHERED" in src
+
+
+# ── vendor-confirmed semantics (franklinwh.com Smart Circuits overview) ──
+
+def test_soc_cutoff_is_documented_as_off_grid_only():
+    """It sheds circuits during a grid outage; it does nothing grid-tied.
+
+    A threshold configured on a healthy grid looks inert, so a reader seeing
+    only "Enabled" would reasonably expect action that will not come.
+    """
+    import inspect
+
+    from franklinwh_cloud import models
+
+    src = " ".join(inspect.getsource(models).split())
+    assert "OFF-GRID ONLY" in src
+    assert "during a grid outage" in src
+
+
+def test_the_cli_says_off_grid_only_where_it_renders_the_threshold():
+    import inspect
+
+    from franklinwh_cloud.cli_commands import sc
+
+    src = inspect.getsource(sc)
+    assert "off-grid only" in src
+
+
+def test_merge_matches_the_vendor_description():
+    """SC1+SC2 merge when they share a 2-pole switch — confirmed by vendor."""
+    import inspect
+
+    from franklinwh_cloud.mixins import discover
+
+    src = inspect.getsource(discover)
+    assert "SC1+SC2" in src
