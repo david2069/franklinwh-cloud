@@ -70,19 +70,22 @@ def test_the_pairing_is_now_confirmed_as_two_ranges():
     assert [s["range"] for s in out[0]["slots"]] == [1, 1, 2, 2]
 
 
-def test_the_execution_date_is_kept_not_stripped():
-    """'2000-01-01' is the UNSET sentinel; real dates appear in the corpus.
+def test_the_date_is_kept_but_not_called_the_execution_date():
+    """Verified live 2026-09-18 against a schedule set in the app.
 
-    An earlier version discarded the date as a placeholder, which threw away
-    the execution date of a "Once only" schedule. DEF-SC-DATE-DISCARDED.
+    The app showed "Execution time: 17 Oct 2026" while Sw1Time carried
+    2026-06-19 on range 1 and 2026-09-18 on range 2 — so the date in SwNTime
+    is NOT the execution date. It is surfaced as `date_raw` for that reason.
+    '2000-01-01' is the unset sentinel.
     """
     payload = {**SC_311, "Sw1Time": ["2026-06-19 16:02", "2026-06-19 17:03",
                                      "2000-01-01 00:00", "2000-01-01 23:59"]}
     out = DiscoverMixin._sc_schedules(payload, 1)
     slots = out[0]["slots"]
-    assert slots[0]["date"] == "2026-06-19"
+    assert slots[0]["date_raw"] == "2026-06-19"
     assert slots[0]["at"] == "16:02"
-    assert slots[2]["date"] is None, "the unset sentinel must read as None"
+    assert slots[2]["date_raw"] is None, "the unset sentinel must read as None"
+    assert "date" not in slots[0], "must not imply it is the execution date"
 
 
 def test_a_circuit_with_no_schedule_is_omitted():
