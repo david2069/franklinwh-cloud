@@ -236,6 +236,44 @@ TOTALS_SCHEMA = {
 # ── Grid Power Control Settings ─────────────────────────────────────────────
 # Source: get_power_control_settings()  (REST — not MQTT/cmdType)
 # Encoding: -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW power cap
+# Generator settings and charge schedule — selectIotGenerator (REST).
+# Settings, not runtime state: the runtime values live in CURRENT_SCHEMA.
+GENERATOR_SCHEMA = {
+    "genEn":            ("genEn",            "selectIotGenerator", "0/1",   "Generator Config"),
+    "genStat":          ("genStat",          "selectIotGenerator", "code",  "Generator Config"),
+    # `mode` and `manuSw` are DIFFERENT controls. A manuSw write moves genStat
+    # (a manual start/stop); a mode write moves mode. DEF-GEN-MODE-WRITES-MANUSW.
+    "mode":             ("mode",             "selectIotGenerator", "code",  "Generator Config"),
+    "manuSw":           ("manuSw",           "selectIotGenerator", "code",  "Generator Config"),
+    # SoC thresholds. NOT genStartSoc/genStopSoc — those do not exist.
+    "genStartElec":     ("genStartElec",     "selectIotGenerator", "%",     "Generator Config"),
+    "genCloseElec":     ("genCloseElec",     "selectIotGenerator", "%",     "Generator Config"),
+    "genRatedPower":    ("genRatedPower",    "selectIotGenerator", "W",     "Generator Config"),
+    "genModel":         ("genModel",         "selectIotGenerator", "str",   "Generator Config"),
+    "startDelTime":     ("startDelTime",     "selectIotGenerator", "s",     "Generator Config"),
+    "generatorAlarmFlag": ("generatorAlarmFlag", "selectIotGenerator", "0/1", "Generator Config"),
+    # Three charge windows, in GATEWAY-LOCAL wall clock. Writable via
+    # set_generator_charge_schedule(). See docs/TIME_AND_TIMEZONES.md.
+    "charge1En":        ("charge1En",        "selectIotGenerator", "0/1",   "Generator Schedule"),
+    "charge1StartTime": ("charge1StartTime", "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge1EndTime":   ("charge1EndTime",   "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge2En":        ("charge2En",        "selectIotGenerator", "0/1",   "Generator Schedule"),
+    "charge2StartTime": ("charge2StartTime", "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge2EndTime":   ("charge2EndTime",   "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge3En":        ("charge3En",        "selectIotGenerator", "0/1",   "Generator Schedule"),
+    "charge3StartTime": ("charge3StartTime", "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge3EndTime":   ("charge3EndTime",   "selectIotGenerator", "HH:MM", "Generator Schedule"),
+}
+
+# Smart Circuit schedule — cmdType 311. Read-only in this library: the array
+# layout is unestablished, so there is no setter. DEF-SC-TIMESET-UNDECIPHERED.
+SMART_CIRCUIT_SCHEDULE_SCHEMA = {
+    "SwNTime":    ("Sw{1-3}Time",    "311", "list[str]", "Smart Circuit Schedule"),
+    "SwNTimeEn":  ("Sw{1-3}TimeEn",  "311", "list[0/1]", "Smart Circuit Schedule"),
+    "SwNTimeSet": ("Sw{1-3}TimeSet", "311", "list[?]",   "Smart Circuit Schedule"),
+    "SwMerge":    ("SwMerge",        "311", "0/1",       "Smart Circuit Schedule"),
+}
+
 GRID_LIMITS_SCHEMA = {
     "globalGridChargeMax":      ("globalGridChargeMax",      "get_power_control_settings", "kW / -1", "Global Limits"),
     "globalGridDischargeMax":   ("globalGridDischargeMax",   "get_power_control_settings", "kW / -1", "Global Limits"),
@@ -559,6 +597,15 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group,
 
     # Passed through verbatim: the response shape has never been captured, so
     # there is nothing to map it onto. AP-14.
+    result["generator"] = {
+        f: {"api_key": a, "source": s, "units": u, "group": g}
+        for f, (a, s, u, g) in GENERATOR_SCHEMA.items()
+    }
+    result["smart_circuit_schedule"] = {
+        f: {"api_key": a, "source": s, "units": u, "group": g}
+        for f, (a, s, u, g) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items()
+    }
+
     if live_ja12 is not None:
         result["ja12_compliance_capacity"] = live_ja12
 
@@ -825,6 +872,36 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
                   "selectDeviceRunLogList\n        is a static alarm-code dictionary, not an "
                   "event log. For continuous\n        history, poll with "
                   "`tools/network_probe.py observe`.")
+
+    gen_filtered = (not filter_group
+                    or filter_group.lower() in "generator"
+                    or filter_group.lower() in "schedule")
+    if gen_filtered:
+        print()
+        print_section("🔌", "Generator Config & Schedule  (selectIotGenerator)")
+        print("  Charge windows are GATEWAY-LOCAL wall clock — docs/TIME_AND_TIMEZONES.md")
+        print("  `mode` and `manuSw` are different controls — DEF-GEN-MODE-WRITES-MANUSW")
+        print()
+        print(_header_row())
+        print(_divider())
+        g_group = None
+        for field, (api_key, source, units, group) in GENERATOR_SCHEMA.items():
+            if group != g_group:
+                print(f"\n  ── {group}")
+                g_group = group
+            print(f"  {field:<{col_field}}  {api_key:<{col_key}}  "
+                  f"{source:<{col_src}}  {units:<{col_units}}")
+
+        print()
+        print_section("🕑", "Smart Circuit Schedule  (cmdType 311)")
+        print("  Read-only: the slot layout is unestablished, so there is no")
+        print("  setter. DEF-SC-TIMESET-UNDECIPHERED.")
+        print()
+        print(_header_row())
+        print(_divider())
+        for field, (api_key, source, units, group) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items():
+            print(f"  {field:<{col_field}}  {api_key:<{col_key}}  "
+                  f"{source:<{col_src}}  {units:<{col_units}}")
 
     ja12_filtered = (not filter_group
                      or filter_group.lower() in "ja12"
