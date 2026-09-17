@@ -139,17 +139,19 @@ class DiscoverMixin:
             enabled = sc_info.get(f"Sw{cid}TimeEn") or []
             slots = []
             for i, raw in enumerate(times):
-                # The date part is the EXECUTION DATE, not a placeholder.
-                # '2000-01-01' is the UNSET sentinel — the corpus also carries
-                # real dates (2025-10-04, -05, -17, -18), and the app's
-                # "Once only" mode shows an execution date. Stripping it
-                # discarded the most important field of a one-shot schedule.
-                # DEF-SC-DATE-DISCARDED.
+                # The date part is real but is NOT the app's "Execution time".
+                # Verified live 2026-09-18: with the app showing Execution time
+                # 17 Oct 2026, Sw1Time carried 2026-06-19 on range 1 and
+                # 2026-09-18 (that day) on range 2. So it reads as a per-range
+                # stamp, and the execution date is held somewhere else.
+                # '2000-01-01' is the unset sentinel. Surfaced as `date_raw`
+                # rather than `date` so nobody reads it as the execution date.
+                # DEF-SC-DATE-DISCARDED / DEF-SC-EXECUTION-DATE-UNLOCATED.
                 date, _, hhmm = str(raw or "").partition(" ")
                 slots.append({
                     "index": i,
                     "at": hhmm or None,
-                    "date": None if date in ("", "2000-01-01") else date,
+                    "date_raw": None if date in ("", "2000-01-01") else date,
                     # CONFIRMED by the app: "Only two time slots can be
                     # scheduled", each a start-end range. So the four entries
                     # are two ranges: (0,1) and (2,3).

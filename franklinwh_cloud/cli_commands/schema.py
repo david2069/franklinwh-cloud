@@ -272,6 +272,8 @@ SMART_CIRCUIT_SCHEDULE_SCHEMA = {
     "SwNTimeEn":  ("Sw{1-3}TimeEn",  "311", "list[0/1]", "Smart Circuit Schedule"),
     "SwNTimeSet": ("Sw{1-3}TimeSet", "311", "list[?]",   "Smart Circuit Schedule"),
     "SwMerge":    ("SwMerge",        "311", "0/1",       "Smart Circuit Schedule"),
+    # CONFIRMED live 2026-09-18: app "Cycle interval: 60 days" -> Sw1Freq = 60.
+    "SwNFreq":    ("Sw{1-3}Freq",    "311", "days",      "Smart Circuit Schedule"),
 }
 
 GRID_LIMITS_SCHEMA = {
