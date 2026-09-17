@@ -24,13 +24,25 @@ class _Client(DevicesMixin):
     gateway = "test-gw"
     url_base = "https://example.invalid/"
 
-    def __init__(self):
+    def __init__(self, stores=True, readback_error=None):
         self.sent = []
+        self._stores = stores            # does the gateway keep what it accepts?
+        self._readback_error = readback_error
         self._post = AsyncMock(side_effect=self._capture)
 
     async def _capture(self, url, params=None, payload=None):
         self.sent.append(payload)
         return {"result": {"ok": True}}
+
+    async def get_generator_info(self):
+        """Read-back. A rejecting gateway acks and stores nothing."""
+        if self._readback_error:
+            raise self._readback_error
+        if not self.sent:
+            return {}
+        if not self._stores:
+            return {"charge1En": 0, "charge2En": 0, "charge3En": 0}
+        return dict(self.sent[-1])
 
 
 # ── the guard ────────────────────────────────────────────────────────
@@ -205,3 +217,51 @@ def test_cli_flags_are_registered():
         ["gen", "--schedule", "06:00-09:00", "--schedule", "17:00-21:00", "-y"])
     assert ns.schedule == ["06:00-09:00", "17:00-21:00"]
     assert ns.yes is True
+
+
+# ── DEF-WRITES-NOT-VERIFIED: an ack is not a confirmation ────────────
+
+async def test_a_stored_schedule_verifies():
+    c = _Client(stores=True)
+    r = await c.set_generator_charge_schedule(W, confirm=True)
+    assert r["verified"] is True
+    assert r["mismatches"] == []
+
+
+async def test_a_silently_rejected_schedule_is_caught():
+    """The gateway accepts the write and keeps nothing — the whole point."""
+    c = _Client(stores=False)
+    r = await c.set_generator_charge_schedule(W, confirm=True)
+    assert r["verified"] is False
+    assert any(m["field"] == "charge1En" for m in r["mismatches"])
+    assert "NOT in effect" in r["note"]
+
+
+async def test_the_ack_alone_is_never_reported_as_success():
+    """Before this, the ack WAS the return value."""
+    c = _Client(stores=False)
+    r = await c.set_generator_charge_schedule(W, confirm=True)
+    assert r["ack"], "the ack is still reported"
+    assert r["verified"] is False, "but it is not what success means"
+
+
+async def test_a_failed_read_back_is_unknown_not_verified():
+    """"Could not check" must not read as "passed"."""
+    c = _Client(readback_error=RuntimeError("timeout"))
+    r = await c.set_generator_charge_schedule(W, confirm=True)
+    assert r["verified"] is None
+    assert "read-back failed" in r["note"]
+
+
+async def test_verification_can_be_skipped_but_says_so():
+    c = _Client(stores=True)
+    r = await c.set_generator_charge_schedule(W, confirm=True, verify=False)
+    assert r["verified"] is None
+    assert "does not mean stored" in r["note"]
+
+
+async def test_disabled_windows_are_not_compared_on_fields_never_sent():
+    """Only En is sent for a disabled window, so times must not be diffed."""
+    c = _Client(stores=True)
+    r = await c.set_generator_charge_schedule(W, confirm=True)
+    assert not any("charge2StartTime" in m["field"] for m in r["mismatches"])
