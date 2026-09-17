@@ -1013,3 +1013,44 @@ def test_diag_does_not_render_span_as_active():
     src = inspect.getsource(diag)
     assert "● Active" not in src
     assert "● Configured" in src
+
+
+# ── SPAN claims must stay consistent across every doc ────────────────
+
+def _read(path):
+    import pathlib
+
+    return pathlib.Path(path).read_text()
+
+
+def test_no_doc_still_says_span_panel_detected():
+    """"Detected" asserts autodetection; the flag is an installer setting."""
+    for path in ("docs/API_REFERENCE.md", "docs/API_COOKBOOK.md",
+                 "docs/SPAN_INTEGRATION.md"):
+        assert "SPAN panel detected" not in _read(path), path
+
+
+def test_api_reference_states_zero_is_not_absence():
+    d = " ".join(_read("docs/API_REFERENCE.md").split())
+    assert "not* evidence no panel is present" in d
+
+
+def test_cookbook_no_longer_conflates_the_two_modbus_services():
+    """502 on the aGate is not the SPAN link, which runs 502 on the panel."""
+    d = _read("docs/API_COOKBOOK.md")
+    assert "Modbus polling is available locally!" not in d
+    assert "ON THE AGATE" in d
+
+
+def test_the_modbus_gating_question_is_recorded_as_a_question():
+    """AP-14: speculation is welcome — labelled, with what would settle it."""
+    d = _read("docs/SPAN_INTEGRATION.md")
+    assert "ASSUMED" in d
+    assert "recorded as a question, not a finding" in d
+
+
+def test_the_strong_form_is_recorded_as_already_refuted():
+    """502 listens with spanFlag 0 on the reference gateway."""
+    d = _read("docs/SPAN_INTEGRATION.md")
+    assert "refutes the strong form" in d
+    assert "does **not** touch the narrower form" in d

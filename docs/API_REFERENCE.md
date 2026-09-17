@@ -265,7 +265,7 @@ These endpoints support the template-based tariff setup workflow used by the Fra
 | `get_power_info()` | — | `dict` | Grid/load voltages, currents, frequencies, relay states |
 | `get_accessories_power_info(option=1)` | `option: str` "0"=raw, "1"=Smart Circuits, "2"=V2L, "3"=Generator | `dict` | Accessory power and energy readings |
 | `get_span_settings(requestType)` | `requestType: int` | `dict` | SPAN panel settings |
-| `get_span_setting()` | — | `dict` | `{spanFlag: 0\|1}` — SPAN panel detected? |
+| `get_span_setting()` | — | `dict` | `{spanFlag: 0\|1}` — SPAN integration **configured**? `0` is *not* evidence no panel is present — it is an installer setting, not autodetection. See [SPAN Integration](SPAN_INTEGRATION.md). |
 | `get_generator_info()` | — | `dict` | Generator state info |
 | `set_generator_mode(mode)` | `mode: int` 1=Auto, 2=Manual | `dict` | Set generator operating mode |
 | `get_system_settings()` | — | `dict` | Get system setting parameters (PCS, RSD, grid limits) |

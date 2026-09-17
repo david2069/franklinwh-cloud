@@ -82,6 +82,37 @@ This narrows `DEF-ETH-PORT-IDENTITY-UNCONFIRMED` but does not close it: the
 photo is a US aGate, and which **API field** (`eth0` or `eth1`) corresponds to
 the physical port is still unestablished.
 
+## Open speculation: does `spanFlag` gate Modbus write access?
+
+**ASSUMED — recorded as a question, not a finding.** Raised by the user
+2026-09-18: enabling SPAN is the only documented way the aGate is told to speak
+Modbus at all, so the flag might act as an internal control on the aGate's own
+Modbus surface — plausibly gating **writes** while leaving reads open.
+
+It is worth recording because if true it would explain why FranklinWH exposes a
+Modbus capability with no obvious user-facing switch of its own.
+
+**Evidence that narrows it.** On the reference gateway `diag` reports, in the
+same run:
+
+```
+SPAN Panel          ○ Not configured      (spanFlag = 0)
+Local Modbus (502)  ● Open
+```
+
+So **502 listens with SPAN unconfigured.** That refutes the strong form —
+"the flag gates the Modbus listener" — outright.
+
+It does **not** touch the narrower form. Our probe is a bare TCP connect: it
+proves something accepts a connection, and nothing about whether a read
+succeeds, a write is accepted, or a register is writable. So "configured SPAN
+unlocks writes" remains untested in either direction.
+
+**To resolve:** attempt a Modbus register write against the aGate with
+`spanFlag = 0`, and compare with the same attempt once SPAN is configured.
+`franklinwh-local-bridge` already has a Modbus path and could run this. Choose a
+register whose value is harmless to change — this is a write to live hardware.
+
 ## Not established
 
 - Whether SPAN stays reachable if the aGate moves to WiFi.
