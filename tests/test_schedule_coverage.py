@@ -56,10 +56,33 @@ def test_time_set_is_passed_through_undeciphered():
     assert out[0]["raw_time_set"] == [1, 0, 1, 0]
 
 
-def test_the_pairing_is_declared_unverified():
-    """Four entries may be two windows or four slots — unestablished."""
+def test_the_pairing_is_now_confirmed_as_two_ranges():
+    """Settled 2026-09-18 by the app's own limit message.
+
+    The Timing Supply screen refuses a third range with "Only two time slots
+    can be scheduled", and shows each as a start-end pair. So the four SwNTime
+    entries are two ranges: (0,1) and (2,3).
+    """
     out = DiscoverMixin._sc_schedules(SC_311, 2)
-    assert out[0]["pairing"] == "unverified"
+    assert out[0]["pairing"] == "two ranges of start/end"
+    roles = [s["role"] for s in out[0]["slots"]]
+    assert roles == ["start", "end", "start", "end"]
+    assert [s["range"] for s in out[0]["slots"]] == [1, 1, 2, 2]
+
+
+def test_the_execution_date_is_kept_not_stripped():
+    """'2000-01-01' is the UNSET sentinel; real dates appear in the corpus.
+
+    An earlier version discarded the date as a placeholder, which threw away
+    the execution date of a "Once only" schedule. DEF-SC-DATE-DISCARDED.
+    """
+    payload = {**SC_311, "Sw1Time": ["2026-06-19 16:02", "2026-06-19 17:03",
+                                     "2000-01-01 00:00", "2000-01-01 23:59"]}
+    out = DiscoverMixin._sc_schedules(payload, 1)
+    slots = out[0]["slots"]
+    assert slots[0]["date"] == "2026-06-19"
+    assert slots[0]["at"] == "16:02"
+    assert slots[2]["date"] is None, "the unset sentinel must read as None"
 
 
 def test_a_circuit_with_no_schedule_is_omitted():

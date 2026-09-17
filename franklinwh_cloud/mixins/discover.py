@@ -139,12 +139,22 @@ class DiscoverMixin:
             enabled = sc_info.get(f"Sw{cid}TimeEn") or []
             slots = []
             for i, raw in enumerate(times):
-                # The date part is a placeholder ('2000-01-01') in every
-                # observed sample; only the wall clock carries meaning.
-                hhmm = str(raw).split(" ")[-1] if raw else None
+                # The date part is the EXECUTION DATE, not a placeholder.
+                # '2000-01-01' is the UNSET sentinel — the corpus also carries
+                # real dates (2025-10-04, -05, -17, -18), and the app's
+                # "Once only" mode shows an execution date. Stripping it
+                # discarded the most important field of a one-shot schedule.
+                # DEF-SC-DATE-DISCARDED.
+                date, _, hhmm = str(raw or "").partition(" ")
                 slots.append({
                     "index": i,
-                    "at": hhmm,
+                    "at": hhmm or None,
+                    "date": None if date in ("", "2000-01-01") else date,
+                    # CONFIRMED by the app: "Only two time slots can be
+                    # scheduled", each a start-end range. So the four entries
+                    # are two ranges: (0,1) and (2,3).
+                    "role": "start" if i % 2 == 0 else "end",
+                    "range": i // 2 + 1,
                     "enabled": bool(enabled[i]) if i < len(enabled) else False,
                 })
             out.append({
@@ -152,7 +162,8 @@ class DiscoverMixin:
                 "slots": slots,
                 "any_enabled": any(s["enabled"] for s in slots),
                 "raw_time_set": sc_info.get(f"Sw{cid}TimeSet"),
-                "pairing": "unverified",
+                # CONFIRMED 2026-09-18: two ranges of (start, end).
+                "pairing": "two ranges of start/end",
             })
         return out
 

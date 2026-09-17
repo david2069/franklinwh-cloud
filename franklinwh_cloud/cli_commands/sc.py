@@ -48,7 +48,10 @@ async def _render_detail(client, json_output, circuit=None):
             slots = []
             enabled = sch["enabled"] or []
             for idx, raw in enumerate(sch["slots"]):
-                hhmm = str(raw).split(" ")[-1] if raw else "—"
+                # Date retained: '2000-01-01' is the unset sentinel, but a
+                # "Once only" schedule carries a real execution date.
+                _d, _, _t = str(raw or "").partition(" ")
+                hhmm = (_t or "—") if _d in ("", "2000-01-01") else f"{_d} {_t}"
                 on = enabled[idx] if idx < len(enabled) else None
                 slots.append(f'[{idx}] {hhmm} ({"on" if on else "off"})')
             print_kv("Schedule slots", "  ".join(slots))
@@ -184,7 +187,10 @@ async def run(client, *, json_output: bool = False,
             # meaningful component is the wall-clock time.
             shown = []
             for idx, raw in enumerate(times):
-                hhmm = str(raw).split(" ")[-1] if raw else "—"
+                # Date retained: '2000-01-01' is the unset sentinel, but a
+                # "Once only" schedule carries a real execution date.
+                _d, _, _t = str(raw or "").partition(" ")
+                hhmm = (_t or "—") if _d in ("", "2000-01-01") else f"{_d} {_t}"
                 flag = enabled[idx] if idx < len(enabled) else None
                 mark = "on" if flag else "off"
                 shown.append(f"[{idx}] {hhmm} ({mark})")
