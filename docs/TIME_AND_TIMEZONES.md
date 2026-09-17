@@ -79,6 +79,14 @@ dates as approximate and derive from the raw epoch if the day matters.
 
 ### 2. TOU schedules are written in gateway local time
 
+**CONFIRMED by the app itself** (Smart Circuits → Timing Supply, 2026-09-18):
+
+> *"The system will be scheduled using the aGate time zone."*
+
+FranklinWH states this in the scheduling screen, which settles what this guide
+had inferred: schedule times are the gateway's wall clock, not the operator's.
+
+
 When you set a schedule, the `HH:MM` values you send are interpreted by the
 gateway in **its** zone. There is no conversion anywhere in this library — the
 strings pass through untouched. Building a schedule from your own local clock
