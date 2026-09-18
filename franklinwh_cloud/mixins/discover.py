@@ -159,9 +159,24 @@ class DiscoverMixin:
                     "range": i // 2 + 1,
                     "enabled": bool(enabled[i]) if i < len(enabled) else False,
                 })
+            # The date in SwNTime is the schedule's BASE date, and SwNFreq the
+            # cycle in days. The app's "Execution time" is the NEXT occurrence,
+            # derived rather than stored:
+            #     next = base + k * cycle_days,  smallest k giving next >= today
+            # CONFIRMED live 2026-09-18: base 2026-06-19 with a 60-day cycle
+            # gives 2026-06-19, 2026-08-18, 2026-10-17 — and the app showed
+            # "Execution time: 17 Oct 2026". DEF-SC-EXECUTION-DATE-UNLOCATED.
+            #
+            # Not computed here: it needs "today" in the GATEWAY's time zone,
+            # which this snapshot does not carry. Computing it from the
+            # caller's clock would be wrong by up to a day across zones — see
+            # docs/TIME_AND_TIMEZONES.md.
+            base = next((s["date_raw"] for s in slots if s["date_raw"]), None)
             out.append({
                 "circuit": cid,
                 "slots": slots,
+                "base_date": base,
+                "cycle_days": sc_info.get(f"Sw{cid}Freq"),
                 "any_enabled": any(s["enabled"] for s in slots),
                 "raw_time_set": sc_info.get(f"Sw{cid}TimeSet"),
                 # CONFIRMED 2026-09-18: two ranges of (start, end).
