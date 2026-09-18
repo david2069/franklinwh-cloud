@@ -220,7 +220,26 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Detailed Smart Circuit configuration and control")
     sub_sc.add_argument("--on", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 ON")
     sub_sc.add_argument("--off", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 OFF")
-    sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT", help="Set Circuit 1/2/3 to Schedule mode")
+    sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT",
+                        help="Write SwNMode=2 (\"Schedule mode\"). DOUBTFUL: a "
+                             "circuit with a schedule configured and armed reads "
+                             "Mode 0 or 1, never 2, so the firmware may not define "
+                             "it. Use --set-schedule to write an actual schedule.")
+    sub_sc.add_argument("--set-schedule", type=int, metavar="CIRCUIT",
+                        help="Write Circuit N's time schedule. Needs --window.")
+    sub_sc.add_argument("--window", action="append", metavar="START-END",
+                        help="A schedule window in GATEWAY-local time, e.g. "
+                             "12:00-13:30. Repeat for a second (max two). "
+                             "Use 'off' to disarm without discarding the times.")
+    sub_sc.add_argument("--cycle-days", type=int, metavar="N",
+                        help="Repeat interval in DAYS for --set-schedule. "
+                             "0 = once only. Left unchanged if omitted.")
+    sub_sc.add_argument("--base-date", metavar="YYYY-MM-DD",
+                        help="Date the schedule counts from (execution date = "
+                             "base + k x cycle). Defaults to each slot's existing "
+                             "date; required if a slot has never been written.")
+    sub_sc.add_argument("--yes", "-y", action="store_true",
+                        help="Skip the confirmation prompt for --set-schedule")
     sub_sc.add_argument("--cutoff", type=int, metavar="CIRCUIT", help="Enable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--disable-cutoff", type=int, metavar="CIRCUIT", help="Disable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")
@@ -526,6 +545,11 @@ async def async_main():
                              load_limit=getattr(args, 'load_limit', None),
                              amps=getattr(args, 'amps', None),
                              detail=getattr(args, 'detail', False),
+                             set_schedule=getattr(args, 'set_schedule', None),
+                             window=getattr(args, 'window', None),
+                             cycle_days=getattr(args, 'cycle_days', None),
+                             base_date=getattr(args, 'base_date', None),
+                             assume_yes=getattr(args, 'yes', False),
                              detail_circuit=getattr(args, 'circuit', None))
 
             case "gen" | "generator":

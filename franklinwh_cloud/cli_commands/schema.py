@@ -276,6 +276,27 @@ SMART_CIRCUIT_SCHEDULE_SCHEMA = {
     "SwNFreq":    ("Sw{1-3}Freq",    "311", "days",      "Smart Circuit Schedule"),
 }
 
+def _sc_live(sc_info, api_key):
+    """Resolve a Smart Circuit schema key against a live 311 payload.
+
+    Keys are written templated — ``Sw{1-3}Time`` — because one schema row
+    describes three circuits. Returns ``{1: value, 2: value, ...}`` for a
+    templated key, or the plain value for a fixed one like ``SwMerge``.
+    Circuits absent from the payload are omitted rather than reported as 0:
+    this gateway has two, and a missing third is not a third reading zero.
+    """
+    if not isinstance(sc_info, dict):
+        return None
+    if "{1-3}" not in api_key:
+        return sc_info.get(api_key)
+    out = {}
+    for i in (1, 2, 3):
+        key = api_key.replace("{1-3}", str(i))
+        if key in sc_info:
+            out[i] = sc_info[key]
+    return out or None
+
+
 GRID_LIMITS_SCHEMA = {
     "globalGridChargeMax":      ("globalGridChargeMax",      "get_power_control_settings", "kW / -1", "Global Limits"),
     "globalGridDischargeMax":   ("globalGridDischargeMax",   "get_power_control_settings", "kW / -1", "Global Limits"),
@@ -491,6 +512,27 @@ async def run(client, json_output: bool = False, show_live: bool = False,
     # declared schema — inventing field names for a payload nobody has observed
     # is exactly what the evidence standard forbids. Once a real response is
     # captured, a JA12_SCHEMA can replace this.
+    # Generator and Smart Circuit config. Both are ordinary reads; neither was
+    # ever wired up, so these two sections rendered an empty Live Value column
+    # on every --live run and looked broken rather than unimplemented.
+    live_generator = None
+    if show_live:
+        try:
+            live_generator = await client.get_generator_info()
+        except Exception as e:
+            # A gateway with no generator module is the common case, not a
+            # fault — say so rather than printing a scary failure.
+            if not json_output:
+                print(f"⚠ No generator data: {e}")
+
+    live_sc = None
+    if show_live:
+        try:
+            live_sc = await client.get_smart_circuits_info()
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ No smart circuit data: {e}")
+
     live_ja12 = None
     if show_live:
         try:
@@ -504,11 +546,11 @@ async def run(client, json_output: bool = False, show_live: bool = False,
 
     if json_output:
         _json_output(live_current, live_totals, live_grid_limits, filter_group,
-                     live_network, live_ja12)
+                     live_network, live_ja12, live_generator, live_sc)
         return
 
     _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
-                     live_network, live_ja12)
+                     live_network, live_ja12, live_generator, live_sc)
 
 
 def _totals_filtered_out(filter_group, group) -> bool:
@@ -533,7 +575,8 @@ def _totals_filtered_out(filter_group, group) -> bool:
 
 
 def _json_output(live_current, live_totals, live_grid_limits, filter_group,
-                 live_network=None, live_ja12=None):
+                 live_network=None, live_ja12=None, live_generator=None,
+                 live_sc=None):
     """Emit JSON schema output."""
     result = {"current": {}, "totals": {}, "grid_limits": {}}
 
@@ -599,14 +642,21 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group,
 
     # Passed through verbatim: the response shape has never been captured, so
     # there is nothing to map it onto. AP-14.
-    result["generator"] = {
-        f: {"api_key": a, "source": s, "units": u, "group": g}
-        for f, (a, s, u, g) in GENERATOR_SCHEMA.items()
-    }
-    result["smart_circuit_schedule"] = {
-        f: {"api_key": a, "source": s, "units": u, "group": g}
-        for f, (a, s, u, g) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items()
-    }
+    result["generator"] = {}
+    for f, (a, s, u, g) in GENERATOR_SCHEMA.items():
+        entry = {"api_key": a, "source": s, "units": u, "group": g}
+        if live_generator is not None:
+            entry["live_value"] = live_generator.get(a)
+        result["generator"][f] = entry
+
+    # SwN keys are templated across circuits, so the live value is per circuit
+    # rather than a single scalar.
+    result["smart_circuit_schedule"] = {}
+    for f, (a, s, u, g) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items():
+        entry = {"api_key": a, "source": s, "units": u, "group": g}
+        if live_sc is not None:
+            entry["live_value"] = _sc_live(live_sc, a)
+        result["smart_circuit_schedule"][f] = entry
 
     if live_ja12 is not None:
         result["ja12_compliance_capacity"] = live_ja12
@@ -615,7 +665,8 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group,
 
 
 def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
-                     live_network=None, live_ja12=None):
+                     live_network=None, live_ja12=None, live_generator=None,
+                     live_sc=None):
     """Emit human-readable schema table."""
     print_header("API Field Schema — Current & Totals")
 
@@ -891,19 +942,27 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
             if group != g_group:
                 print(f"\n  ── {group}")
                 g_group = group
-            print(f"  {field:<{col_field}}  {api_key:<{col_key}}  "
-                  f"{source:<{col_src}}  {units:<{col_units}}")
+            row = (f"  {field:<{col_field}}  {api_key:<{col_key}}  "
+                   f"{source:<{col_src}}  {units:<{col_units}}")
+            if live_generator is not None:
+                row += f" {_fmt_value(live_generator.get(api_key))}"
+            print(row)
 
         print()
         print_section("🕑", "Smart Circuit Schedule  (cmdType 311)")
-        print("  Read-only: the slot layout is unestablished, so there is no")
-        print("  setter. DEF-SC-TIMESET-UNDECIPHERED.")
+        print("  Four slots are TWO start/end pairs — TimeSet [1,0,1,0]; TimeEn arms")
+        print("  each slot; Freq is a cycle in DAYS and 0 means \"Once only\".")
+        print("  Times are GATEWAY-LOCAL wall clock — docs/TIME_AND_TIMEZONES.md")
+        print("  Write with set_smart_circuit_schedule() or `fwh sc --schedule`.")
         print()
         print(_header_row())
         print(_divider())
         for field, (api_key, source, units, group) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items():
-            print(f"  {field:<{col_field}}  {api_key:<{col_key}}  "
-                  f"{source:<{col_src}}  {units:<{col_units}}")
+            row = (f"  {field:<{col_field}}  {api_key:<{col_key}}  "
+                   f"{source:<{col_src}}  {units:<{col_units}}")
+            if live_sc is not None:
+                row += f" {_fmt_value(_sc_live(live_sc, api_key))}"
+            print(row)
 
     ja12_filtered = (not filter_group
                      or filter_group.lower() in "ja12"

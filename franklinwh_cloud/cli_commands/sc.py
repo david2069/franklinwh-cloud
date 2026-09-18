@@ -61,12 +61,83 @@ async def _render_detail(client, json_output, circuit=None):
     print()
 
 
+def _parse_sc_window(spec):
+    """``"12:00-12:01"`` -> ``{"start": "12:00", "end": "12:01"}``."""
+    text = str(spec).strip()
+    sep = "-" if "-" in text else ("–" if "–" in text else None)
+    if not sep:
+        raise ValueError(f"window must be START-END, e.g. 12:00-13:30 — got {spec!r}")
+    start, _, end = text.partition(sep)
+    return {"start": start.strip(), "end": end.strip()}
+
+
+async def _set_schedule(client, circuit, specs, *, cycle_days, base_date,
+                        json_output, assume_yes):
+    """Write a circuit's time schedule — up to two windows."""
+    disable_all = len(specs) == 1 and specs[0].strip().lower() in ("off", "none")
+    windows = [] if disable_all else [_parse_sc_window(s) for s in specs]
+
+    if not json_output:
+        print_header(f"Smart Circuit {circuit} — set time schedule")
+        if windows:
+            for i, w in enumerate(windows, 1):
+                print_kv(f"Window {i}", f'{w["start"]} - {w["end"]}')
+        else:
+            print_kv("Windows", "all disarmed (configured times are kept)")
+        if cycle_days is not None:
+            print_kv("Cycle", "once only" if cycle_days == 0 else f"every {cycle_days} days")
+        if base_date:
+            print_kv("Base date", base_date)
+        # The single most likely way to get this wrong from another timezone.
+        print_warning("Times are the GATEWAY's local wall clock, not yours. "
+                      "See docs/TIME_AND_TIMEZONES.md")
+        print_warning("This determines when the circuit energises.")
+        if not assume_yes:
+            if input("Proceed? [y/N] ").strip().lower() != "y":
+                print("Aborted.")
+                return 2
+
+    result = await client.set_smart_circuit_schedule(
+        circuit, windows, cycle_days=cycle_days, base_date=base_date,
+        confirm=True)
+
+    if json_output:
+        print_json_output({"circuit": circuit, "requested": windows,
+                           "result": result})
+    else:
+        # verified is the field that matters; ack only means "accepted".
+        verdict = {True: "stored and verified",
+                   False: "NOT STORED — the gateway accepted it and discarded it",
+                   None: "unverified — could not read back"}[result["verified"]]
+        print_kv("Result", verdict)
+        for m in result.get("mismatches") or []:
+            print_kv("  mismatch", f'{m["field"]}: sent {m["sent"]!r}, '
+                                   f'stored {m["stored"]!r}')
+    return 0 if result["verified"] is not False else 1
+
+
 async def run(client, *, json_output: bool = False, 
               turn_on: int = None, turn_off: int = None, schedule: int = None,
               cutoff: int = None, disable_cutoff: int = None, soc: int = None,
               load_limit: int = None, amps: int = None,
-              detail: bool = False, detail_circuit: int = None):
+              detail: bool = False, detail_circuit: int = None,
+              set_schedule: int = None, window=None, cycle_days: int = None,
+              base_date: str = None, assume_yes: bool = False):
     """Execute the Smart Circuits command."""
+
+    if set_schedule is not None:
+        if not window:
+            print_warning("--set-schedule needs at least one --window "
+                          "START-END, or --window off to disarm.")
+            return 2
+        try:
+            return await _set_schedule(client, set_schedule, window,
+                                       cycle_days=cycle_days, base_date=base_date,
+                                       json_output=json_output,
+                                       assume_yes=assume_yes)
+        except ValueError as e:
+            print_warning(str(e))
+            return 2
 
     if detail:
         await _render_detail(client, json_output, detail_circuit)

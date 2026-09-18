@@ -5,6 +5,11 @@ from franklinwh_cloud.cli_output import (
     c,
 )
 from franklinwh_cloud.models import GridConnectionState
+from franklinwh_cloud.const.states import GENERATOR_STATE
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -69,15 +74,89 @@ async def run(client, *, json_output: bool = False):
     if cur.generator_production:
         print_kv("Generator", f"{cur.generator_production:>8.1f} kW")
 
-    # Smart circuits
-    if cur.switch_1_load or cur.switch_2_load or cur.v2l_use:
+    # Smart circuits.
+    #
+    # This used to render only when a circuit was drawing power, so a circuit
+    # that was ON but idle did not appear at all — indistinguishable from one
+    # that was off, or from having no circuits. Zero watts is not zero state:
+    # a switched-on circuit with nothing plugged in reads 0.00 kW (observed
+    # 2026-09-18, Sw1Mode 1 with switch_1_load 0). State comes from 311 now,
+    # and the power reading sits alongside it.
+    sc_info = None
+    try:
+        sc_info = await client.get_smart_circuits_info()
+    except Exception as e:
+        logger.debug(f"status: smart circuit config unavailable: {e}")
+
+    if sc_info or cur.switch_1_load or cur.switch_2_load or cur.v2l_use:
         print_section("🔌", "Smart Circuits")
-        if cur.switch_1_load:
-            print_kv("Switch 1", f"{cur.switch_1_load:>8.1f} kW")
-        if cur.switch_2_load:
-            print_kv("Switch 2", f"{cur.switch_2_load:>8.1f} kW")
+        loads = {1: cur.switch_1_load, 2: cur.switch_2_load}
+        for i in (1, 2, 3):
+            mode = (sc_info or {}).get(f"Sw{i}Mode")
+            name = (sc_info or {}).get(f"Sw{i}Name") or f"Switch {i}"
+            load = loads.get(i)
+            if mode is None and not load:
+                continue          # no config and no load — nothing to report
+            bits = []
+            if mode is not None:
+                bits.append("on" if mode == 1 else "off")
+            if load is not None:
+                bits.append(f"{load:.1f} kW")
+            armed = [e for e in ((sc_info or {}).get(f"Sw{i}TimeEn") or []) if e]
+            if armed:
+                freq = (sc_info or {}).get(f"Sw{i}Freq")
+                when = "once only" if freq == 0 else (
+                    f"every {freq}d" if freq else "scheduled")
+                bits.append(f"schedule {when}")
+            elif (sc_info or {}).get(f"Sw{i}TimeEn"):
+                bits.append("schedule off")
+            # A circuit whose every slot still holds the firmware's
+            # never-written date is almost certainly not installed — this AU
+            # gateway has two and reports three. Labelled, not hidden: a real
+            # circuit nobody has scheduled looks identical from the payload,
+            # so absence of configuration is not proof of absent hardware.
+            slots = (sc_info or {}).get(f"Sw{i}Time") or []
+            if slots and all(isinstance(s, str) and s.startswith(("2000-01-01", "1970-01-01"))
+                             for s in slots) and not load:
+                print_kv(name, "never configured — may not be installed")
+                continue
+            cutoff = (sc_info or {}).get(f"Sw{i}SocLowSet")
+            if cutoff:
+                # AtuoEn does not track this value and may not be its enable —
+                # DEF-SC-ATUOEN-MAY-NOT-BE-THE-SOC-ENABLE. Report the threshold
+                # without claiming it is active.
+                bits.append(f"SoC cut-off {cutoff}%")
+            print_kv(name, "  ·  ".join(bits))
         if cur.v2l_use:
             print_kv("EV/V2L", f"{cur.v2l_use:>8.1f} kW")
+
+    # Generator. Only shown when one is actually configured — genEn 0 with no
+    # schedule means the module is absent, and an empty section reads as a
+    # fault rather than an absence.
+    gen_info = None
+    try:
+        gen_info = await client.get_generator_info()
+    except Exception as e:
+        logger.debug(f"status: generator config unavailable: {e}")
+
+    if gen_info and (gen_info.get("genEn") or gen_info.get("genStat")
+                     or any(gen_info.get(f"charge{i}En") for i in (1, 2, 3))):
+        print_section("⛽", "Generator")
+        print_kv("Enabled", "yes" if gen_info.get("genEn") else "no")
+        stat = gen_info.get("genStat")
+        if stat is not None:
+            print_kv("State", GENERATOR_STATE.get(stat, f"Unknown ({stat})"))
+        start, stop = gen_info.get("genStartElec"), gen_info.get("genCloseElec")
+        if start is not None and stop is not None:
+            print_kv("SoC window", f"start {start}%  ·  stop {stop}%")
+        windows = []
+        for i in (1, 2, 3):
+            if gen_info.get(f"charge{i}En"):
+                windows.append(f"{gen_info.get(f'charge{i}StartTime')}"
+                               f"–{gen_info.get(f'charge{i}EndTime')}")
+        # Gateway-local wall clock, not the caller's — TIME_AND_TIMEZONES.md.
+        print_kv("Charge windows",
+                 "  ·  ".join(windows) + "  (gateway-local)" if windows else "none")
 
     # Daily totals
     print_section("📅", "Daily Totals")
