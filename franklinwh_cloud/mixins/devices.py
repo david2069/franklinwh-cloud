@@ -834,6 +834,227 @@ class DevicesMixin:
             raise ValueError(f"{label} out of range: {value!r}")
         return h * 60 + m
 
+    SMART_CIRCUIT_WINDOWS = 2        # "Only two time slots can be scheduled" — app
+    SMART_CIRCUIT_SLOTS = 4          # two start/end pairs
+
+    #: A slot the firmware has never had written to it.
+    _SC_PLACEHOLDER_DATES = ("2000-01-01", "1970-01-01")
+
+    async def set_smart_circuit_schedule(self, circuit, windows, *,
+                                         cycle_days=None, base_date=None,
+                                         confirm=False, verify=True):
+        """Set a Smart Circuit's time schedule — up to two on/off windows.
+
+        The four ``SwNTime`` slots are **two start/end pairs**, paired by
+        ``SwNTimeSet = [1, 0, 1, 0]`` (slot 0 opens, slot 1 closes, slot 2
+        opens, slot 3 closes) and armed individually by ``SwNTimeEn``. The
+        app enforces the same limit: *"Only two time slots can be scheduled"*.
+
+        Parameters
+        ----------
+        circuit : int
+            1, 2 or 3.
+        windows : list[dict]
+            Up to two, each ``{"start": "HH:MM", "end": "HH:MM",
+            "enabled": bool}``. ``enabled`` defaults to True. Fewer than two
+            disarms the remainder; an empty list disarms the whole schedule
+            **without discarding the configured times**, which is what the app
+            appears to do when a schedule is switched off.
+        cycle_days : int, optional
+            ``SwNFreq`` — the repeat interval in **days**. ``0`` means
+            "Once only" (CONFIRMED: the app showed *Cycle interval: Once only*
+            with ``Sw1Freq = 0``, and *60 days* with ``Sw1Freq = 60``).
+            Left unchanged when omitted.
+        base_date : str, optional
+            ``"YYYY-MM-DD"`` for the date half of each slot. Execution date is
+            ``base_date + k x cycle_days`` (CONFIRMED: 2026-06-19 + 2x60 =
+            2026-10-17, matching the app exactly). When omitted, each slot
+            **keeps its existing date** and only the time is changed.
+        confirm : bool
+            Must be True — this determines when a circuit energises.
+        verify : bool
+            Read the schedule back and compare (default True).
+
+        Returns
+        -------
+        dict
+            ``{ack, verified, mismatches, note}``. **``verified`` is the field
+            that matters** — ``ack`` only means the request was accepted.
+
+        .. warning::
+            **The gateway accepts a schedule it will not store.** An ack is not
+            a confirmation. ``verified=None`` means the check could not run,
+            which is not the same as passing. DEF-WRITES-NOT-VERIFIED.
+
+        Note
+        ----
+        **Times are gateway-local wall clock**, not the caller's, and the date
+        halves are gateway-local dates. Nothing is converted — see
+        ``docs/TIME_AND_TIMEZONES.md``.
+
+        **No date is invented.** With ``cycle_days=0`` the base date *is* the
+        execution date, so a stale one means the schedule never fires. This
+        method will not guess "today": the gateway's own date is what matters
+        and the client's may differ. A slot whose existing date is a factory
+        placeholder therefore requires an explicit ``base_date`` rather than
+        being silently filled in.
+
+        **``Mode`` and ``ProLoad`` are not touched.** Arming a schedule is
+        separate from switching the circuit, and the setters that do write
+        those two disagree with the hardware — see
+        DEF-SC-PROLOAD-WRITTEN-INVERTED. Use :meth:`set_smart_circuit_state`
+        for the switch.
+
+        Overlapping enabled windows and windows spanning midnight are
+        **rejected**, matching :meth:`set_generator_charge_schedule`: neither
+        has been observed, and the app does not permit the former.
+        """
+        if circuit not in range(1, self._MAX_SC_INDEX + 1):
+            raise ValueError(f"Circuit must be 1..{self._MAX_SC_INDEX}")
+        if not confirm:
+            raise ValueError(
+                "set_smart_circuit_schedule() determines when a circuit "
+                "energises. Pass confirm=True."
+            )
+
+        windows = list(windows or [])
+        if len(windows) > self.SMART_CIRCUIT_WINDOWS:
+            raise ValueError(
+                f"a circuit supports at most {self.SMART_CIRCUIT_WINDOWS} "
+                f"windows, got {len(windows)}"
+            )
+        if cycle_days is not None:
+            if not isinstance(cycle_days, int) or isinstance(cycle_days, bool) or cycle_days < 0:
+                raise ValueError(f"cycle_days must be a non-negative int, got {cycle_days!r}")
+        if base_date is not None:
+            self._parse_ymd(base_date, "base_date")
+
+        spans = []
+        for i, w in enumerate(windows, start=1):
+            if not w.get("enabled", True):
+                continue
+            start = self._parse_hhmm(w.get("start"), f"window {i} start")
+            end = self._parse_hhmm(w.get("end"), f"window {i} end")
+            if start >= end:
+                raise ValueError(
+                    f"window {i}: start {w['start']} must be before end "
+                    f"{w['end']}. Windows spanning midnight have never been "
+                    f"observed and are not supported."
+                )
+            spans.append((start, end, i))
+
+        spans.sort()
+        for (s1, e1, i1), (s2, e2, i2) in zip(spans, spans[1:]):
+            if s2 < e1:
+                raise ValueError(
+                    f"windows {i1} and {i2} overlap; the official app does not "
+                    f"permit this"
+                )
+
+        # Read first: the date half of each slot is preserved unless the caller
+        # supplied one, and 311 is a whole-block write regardless.
+        current = await self.get_smart_circuits_info() or {}
+        existing = list(current.get(f"Sw{circuit}Time") or [])
+        existing += [""] * (self.SMART_CIRCUIT_SLOTS - len(existing))
+
+        times, enabled = [], []
+        for i in range(self.SMART_CIRCUIT_WINDOWS):
+            w = windows[i] if i < len(windows) else None
+            on = bool(w and w.get("enabled", True))
+            for half, key in ((0, "start"), (1, "end")):
+                slot = i * 2 + half
+                date = self._sc_slot_date(existing[slot], base_date, slot)
+                hhmm = w[key] if w else self._sc_slot_time(existing[slot])
+                times.append(f"{date} {hhmm}")
+                enabled.append(1 if on else 0)
+
+        updates = {
+            f"Sw{circuit}Time": times,
+            f"Sw{circuit}TimeEn": enabled,
+            # Pairing is fixed: open, close, open, close. Observed [1,0,1,0]
+            # on every capture and on live hardware.
+            f"Sw{circuit}TimeSet": [1, 0, 1, 0],
+        }
+        if cycle_days is not None:
+            updates[f"Sw{circuit}Freq"] = cycle_days
+
+        logger.info(
+            "set_smart_circuit_schedule: circuit %d, %d armed window(s)%s",
+            circuit, sum(1 for e in enabled[::2] if e),
+            f", cycle {cycle_days}d" if cycle_days is not None else "",
+        )
+        ack = await self._update_smart_circuit_config(circuit, updates)
+
+        if not verify:
+            return {"ack": ack, "verified": None, "mismatches": [],
+                    "note": "verify=False — the ack alone does not mean stored"}
+
+        try:
+            stored = await self.get_smart_circuits_info() or {}
+        except Exception as e:
+            logger.warning(f"set_smart_circuit_schedule: read-back failed: {e}")
+            return {"ack": ack, "verified": None, "mismatches": [],
+                    "note": f"read-back failed: {e}"}
+
+        mismatches = []
+        for key, want in updates.items():
+            got = stored.get(key)
+            if isinstance(want, list):
+                got_list = list(got or [])
+                if [str(x) for x in want] != [str(x) for x in got_list]:
+                    mismatches.append({"field": key, "sent": want, "stored": got})
+            elif str(want) != str(got):
+                mismatches.append({"field": key, "sent": want, "stored": got})
+
+        return {
+            "ack": ack,
+            "verified": not mismatches,
+            "mismatches": mismatches,
+            "note": ("stored as sent" if not mismatches else
+                     "the gateway accepted the write but did not store these "
+                     "values — the schedule is NOT in effect"),
+        }
+
+    @staticmethod
+    def _parse_ymd(value, label):
+        """Validate a ``"YYYY-MM-DD"`` string; return it unchanged."""
+        import datetime as _dt
+        if not isinstance(value, str):
+            raise ValueError(f"{label} must be 'YYYY-MM-DD', got {value!r}")
+        try:
+            _dt.date.fromisoformat(value)
+        except ValueError:
+            raise ValueError(f"{label} must be 'YYYY-MM-DD', got {value!r}") from None
+        return value
+
+    @classmethod
+    def _sc_slot_date(cls, existing, base_date, slot):
+        """The date half for one slot — the caller's, or the one already there.
+
+        Never invents one. A placeholder date is the firmware's "never written"
+        marker, and with ``cycle_days=0`` the base date *is* the execution date,
+        so guessing would produce a schedule that silently never fires.
+        """
+        if base_date:
+            return base_date
+        head = existing.split(" ", 1)[0] if isinstance(existing, str) and " " in existing else ""
+        if head and not head.startswith(cls._SC_PLACEHOLDER_DATES):
+            return head
+        raise ValueError(
+            f"slot {slot} has no usable date ({existing!r}); pass base_date="
+            f"'YYYY-MM-DD'. The gateway's own date is what schedules run "
+            f"against and it is not assumed here."
+        )
+
+    @staticmethod
+    def _sc_slot_time(existing):
+        """The time half of a slot being left alone, for a disarmed window."""
+        if isinstance(existing, str) and " " in existing:
+            tail = existing.split(" ", 1)[1][:5]
+            if len(tail) == 5 and tail[2] == ":":
+                return tail
+        return "00:00"
+
     async def set_generator_charge_schedule(self, windows, *, confirm=False,
                                             verify=True):
         """Set the generator charge schedule — up to three daily windows.
