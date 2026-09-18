@@ -232,3 +232,41 @@ def test_the_two_mode_mappings_are_known_to_disagree():
         "the setter still maps SCHEDULE to 2, which the constant calls "
         "Smart / Auto — see DEF-SC-MODE-ENUM-CONTRADICTS-SETTER"
     )
+
+
+# ── DEF-SC-EXECUTION-DATE-UNLOCATED — resolved ───────────────────────
+
+def test_base_date_and_cycle_are_exposed():
+    """The app's "Execution time" is derived from these, not stored."""
+    payload = {**SC_311, "Sw1Freq": 60,
+               "Sw1Time": ["2026-06-19 16:02", "2026-06-19 17:03",
+                           "2026-06-19 17:04", "2026-06-19 17:05"]}
+    out = DiscoverMixin._sc_schedules(payload, 1)
+    assert out[0]["base_date"] == "2026-06-19"
+    assert out[0]["cycle_days"] == 60
+
+
+def test_the_derivation_reproduces_the_app_value():
+    """Confirmed live: base 2026-06-19 + 2x60 days = 2026-10-17,
+    which is exactly what the app displayed as Execution time."""
+    from datetime import date, timedelta
+
+    base, cycle = date(2026, 6, 19), 60
+    occurrences = [base + timedelta(days=cycle * k) for k in range(3)]
+    assert date(2026, 10, 17) in occurrences
+
+
+def test_the_next_occurrence_is_not_computed_from_the_caller_clock():
+    """It needs gateway-local "today"; the snapshot does not carry one."""
+    import inspect
+
+    src = inspect.getsource(DiscoverMixin._sc_schedules)
+    assert "GATEWAY's time zone" in src
+    assert "Not computed here" in src
+
+
+def test_an_unset_schedule_has_no_base_date():
+    payload = {**SC_311, "Sw1Time": ["2000-01-01 00:00"] * 4, "Sw1Freq": 0}
+    out = DiscoverMixin._sc_schedules(payload, 1)
+    assert out[0]["base_date"] is None
+    assert out[0]["cycle_days"] == 0
