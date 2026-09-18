@@ -135,6 +135,34 @@ directly from the battery, through the CarSW port on the Smart Circuit module.
 | AU V1 Smart Circuits (302) | ❌ No | AU hardware has no V2L port |
 | US V1 Smart Circuits only (no Gen Module) | ❌ No | CarSW port not available without Gen Module |
 
+**The table above is hardware eligibility, not present availability.**
+
+User report, 2026-09-18 (owner/integrator, **not vendor-confirmed**): on a US unit
+where circuits 1 and 2 are 120 V and merged into one 240 V circuit via `SwMerge`,
+that merged pair can act as the **V2L input** in place of the generator port — but
+only when **all three** hold:
+
+| Condition | Field to check |
+|---|---|
+| the system is **off-grid** | `gridFlag` / `offGirdFlag`, `grid_connection_state` |
+| a generator is **configured** | `genEn`, or accessory type 3 present |
+| the generator is **turned off** | `genStat` (0 = Standby/OFF) |
+
+Two consequences worth keeping straight:
+
+* V2L over the merged pair and running the generator are **mutually exclusive** —
+  one input path, two possible sources.
+* Eligibility is therefore **runtime state**, not a static property.
+  `snap.flags.v2l_eligible` is derived from catalog entries alone, so it answers
+  *"could this hardware ever do V2L"*. It does **not** mean *"V2L is available
+  now"*, and it will read true while the system is grid-connected or the generator
+  is running. Check the three fields above for present availability.
+
+Labelled per AP-14: **REPORTED**, one owner, one market. The official support site
+documents neither the merge-as-V2L-input arrangement nor these conditions, and no
+capture in the corpus exercises them — the reference gateway is AU and has no V2L
+port. A US capture taken off-grid with a generator fitted would settle it.
+
 **Check eligibility in code:**
 ```python
 snap = await client.discover()
