@@ -173,11 +173,20 @@ class Current:
     generator_enabled: int           # runtimeData.genEn   (None if not installed)
     generator_status: int            # runtimeData.genStat
 
-    # ── Power flow breakdown (kW) ────────────────────────────────────────────
-    grid_charging_battery: float     # runtimeData.gridChBat
-    solar_export_to_grid: float      # runtimeData.soOutGrid
-    solar_charging_battery: float    # runtimeData.soChBat
-    battery_export_to_grid: float    # runtimeData.batOutGrid
+    # ── Power flow breakdown — TODAY'S ENERGY in kWh, despite the names ──────
+    #
+    # CONFIRMED 2026-09-18: with instantaneous solar at 0.00 kW, soOutGrid read
+    # 21.25 — not a power reading. Two sums confirm the unit:
+    #   soOutGrid + batOutGrid = 28.21  vs today's grid_export    28.45 kWh
+    #   soChBat   + gridChBat  =  4.19  vs today's battery_charge  4.17 kWh
+    #
+    # The attribute names carry no unit, so they are not themselves wrong; the
+    # comment that said kW was. Renaming to *_kwh would break consumers and
+    # needs sign-off — DEF-POWER-FLOW-KWH-LABELLED-KW.
+    grid_charging_battery: float     # runtimeData.gridChBat  (kWh today)
+    solar_export_to_grid: float      # runtimeData.soOutGrid  (kWh today)
+    solar_charging_battery: float    # runtimeData.soChBat    (kWh today)
+    battery_export_to_grid: float    # runtimeData.batOutGrid (kWh today)
 
     # ── APbox / Remote Solar (MPPT) ──────────────────────────────────────────
     apbox_remote_solar: float        # runtimeData.apbox20Pv  (APbox 20A PV input kW)

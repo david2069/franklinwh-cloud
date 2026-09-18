@@ -2770,10 +2770,18 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             # Power flow breakdown
             pf = (power.get("power_flow") or {})
             if pf and any(v for v in pf.values() if v):
-                print_kv("→ Grid→Bat", f'{pf.get("grid_charging_battery_kw", 0):.2f} kW')
-                print_kv("→ Sol→Grid", f'{pf.get("solar_export_to_grid_kw", 0):.2f} kW')
-                print_kv("→ Sol→Bat", f'{pf.get("solar_charging_battery_kw", 0):.2f} kW')
-                print_kv("→ Bat→Grid", f'{pf.get("battery_export_to_grid_kw", 0):.2f} kW')
+                # These are TODAY'S CUMULATIVE ENERGY, not instantaneous power.
+                # Measured 2026-09-18 with solar at 0.00 kW: soOutGrid read
+                # 21.25, which cannot be a power reading. Two independent sums
+                # settle it — soOutGrid + batOutGrid = 28.21 against today's
+                # grid_export of 28.45 kWh, and soChBat + gridChBat = 4.19
+                # against today's battery_charge of 4.17 kWh.
+                # The JSON keys still end _kw; renaming them breaks consumers,
+                # so that needs sign-off. DEF-POWER-FLOW-KWH-LABELLED-KW.
+                print_kv("→ Grid→Bat", f'{pf.get("grid_charging_battery_kw", 0):.2f} kWh today')
+                print_kv("→ Sol→Grid", f'{pf.get("solar_export_to_grid_kw", 0):.2f} kWh today')
+                print_kv("→ Sol→Bat", f'{pf.get("solar_charging_battery_kw", 0):.2f} kWh today')
+                print_kv("→ Bat→Grid", f'{pf.get("battery_export_to_grid_kw", 0):.2f} kWh today')
             # Signals
             wifi = power.get("wifi_signal_pct")
             # Read the correctly-named key. mobile_signal_dbm is a DEPRECATED
@@ -2844,6 +2852,13 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 vstr = f"{v1:.0f} V"
                 if v2 is not None and v2 != 0:
                     vstr += f" / {v2:.0f} V"
+                # Two "legs" on a single-phase supply are an API artefact,
+                # not two conductors — ac_topology.legs_are_real(). The JSON
+                # payload has carried ac_legs_are_real all along while the
+                # terminal printed 122 V / 122 V unqualified on an AU gateway.
+                caveat = leg_caveat(elec.get("ac_legs_are_real"))
+                if v2 is not None and v2 != 0 and caveat:
+                    vstr += f"  ({caveat})"
                 print_kv("Grid Voltage", vstr)
             lv = elec.get("grid_line_voltage_v")
             if lv is not None and lv != 0:
