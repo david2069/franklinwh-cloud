@@ -12,11 +12,23 @@ SMART_CIRCUIT_RELAY = {
     1: "ON"
 }
 
-# Smart Circuit Operational Mode (`SwXMode`)
+# Smart Circuit switch state (`SwXMode`)
+#
+# CONFIRMED live 2026-09-18: turning circuit 1 on moved Sw1Mode 0 -> 1, and
+# cmdType 203 runtimeData switch_1_state moved 0 -> 1 with it. So this is the
+# ON/OFF state, matching what set_smart_switch_state() has always written —
+# NOT an operating mode.
+#
+# It previously read {0: "Manual", 1: "Schedule", 2: "Smart / Auto"}, which
+# disagreed with that setter on every value and rendered an ON circuit as
+# "Schedule". Unsourced, and wrong. DEF-SC-MODE-ENUM-CONTRADICTS-SETTER.
+#
+# 2 is what set_smart_switch_state() sends for "SCHEDULE". It has never been
+# observed on the wire, so its meaning is ASSUMED.
 SMART_CIRCUIT_MODE = {
-    0: "Manual",
-    1: "Schedule",
-    2: "Smart / Auto"
+    0: "Off",
+    1: "On",
+    2: "Schedule (assumed — never observed)",
 }
 
 # Generator Module State (`genStat`)

@@ -210,28 +210,74 @@ def test_merge_matches_the_vendor_description():
 
 # ── DEF-SC-MODE-ENUM-CONTRADICTS-SETTER ──────────────────────────────
 
-def test_the_two_mode_mappings_are_known_to_disagree():
-    """Guard, not an assertion of which is right.
+def test_mode_is_on_off_not_an_operating_mode():
+    """DEF-SC-MODE-ENUM-CONTRADICTS-SETTER — RESOLVED on live hardware.
 
-    set_smart_switch_state() writes 0=OFF, 1=ON, 2=SCHEDULE.
-    SMART_CIRCUIT_MODE reads 0=Manual, 1=Schedule, 2=Smart/Auto.
+    2026-09-18, circuit 1, one gateway:
 
-    They disagree on every value and cannot both be correct. This test fails
-    once either is changed, forcing whoever resolves it to do so deliberately
-    and to update the other.
+        app "Turn On" off (11:57) -> Sw1Mode 0, switch_1_state 0
+        app "Turn On" on  (12:00) -> Sw1Mode 1, switch_1_state 1
+
+    SwXMode tracks the runtimeData switch state, so it is ON/OFF — which is what
+    set_smart_switch_state() always wrote. The constant's old reading
+    ({0: Manual, 1: Schedule, 2: Smart / Auto}) was unsourced and rendered an ON
+    circuit as "Schedule". 2 is never observed; its label says so.
+    """
+    from franklinwh_cloud.const.states import SMART_CIRCUIT_MODE
+
+    assert SMART_CIRCUIT_MODE[0] == "Off"
+    assert SMART_CIRCUIT_MODE[1] == "On"
+    assert "assumed" in SMART_CIRCUIT_MODE[2].lower(), (
+        "2 has never been seen on the wire — the label must keep saying so"
+    )
+
+
+def test_proload_is_written_as_the_inverse_of_mode_which_hardware_contradicts():
+    """DEF-SC-PROLOAD-WRITTEN-INVERTED — open, write-side, needs sign-off.
+
+    Both live observations hold Mode and ProLoad EQUAL:
+
+        off -> Sw1Mode 0, Sw1ProLoad 0
+        on  -> Sw1Mode 1, Sw1ProLoad 1
+
+    Every setter writes ``ProLoad = mode_val ^ 1``, a combination the gateway has
+    not been observed holding in either state. Whatever ProLoad means, the
+    inversion is contradicted.
+
+    n=2, one circuit, one gateway, one hour apart — enough to refute the XOR, not
+    enough to assert what ProLoad is for (AP-14). This test pins the CURRENT
+    behaviour so the fix is deliberate; it fails when the setters change, which
+    is the point.
     """
     import inspect
 
-    from franklinwh_cloud.const.states import SMART_CIRCUIT_MODE
     from franklinwh_cloud.mixins.devices import DevicesMixin
 
-    assert SMART_CIRCUIT_MODE == {0: "Manual", 1: "Schedule", 2: "Smart / Auto"}
+    for fn in (DevicesMixin.set_smart_switch_state,
+               DevicesMixin.set_smart_circuit_state):
+        assert "mode_val ^ 1" in inspect.getsource(fn), (
+            f"{fn.__name__} no longer inverts ProLoad — if that is the fix, update "
+            "DEF-SC-PROLOAD-WRITTEN-INVERTED and delete this guard"
+        )
 
-    src = inspect.getsource(DevicesMixin.set_smart_switch_state)
-    assert 'state_up == "SCHEDULE"' in src and "mode_val = 2" in src, (
-        "the setter still maps SCHEDULE to 2, which the constant calls "
-        "Smart / Auto — see DEF-SC-MODE-ENUM-CONTRADICTS-SETTER"
-    )
+
+def test_freq_zero_is_once_only():
+    """DEF-SC-FREQ-UNIT — cycle interval is in DAYS, and 0 means "Once only".
+
+    Live 2026-09-18: Sw1Freq 0 with the app showing "Cycle interval: Once only"
+    and "Execution time: 18 Sept 2026", while Sw1Time carried 2026-09-18 slots.
+    With zero cycles the base date IS the execution date, which is the degenerate
+    case of the base + k x cycle derivation confirmed at Freq 60.
+    """
+    from franklinwh_cloud.mixins.discover import DiscoverMixin
+
+    payload = {**SC_311, "Sw1Freq": 0,
+               "Sw1Time": ["2026-09-18 12:00", "2026-09-18 12:01",
+                           "2026-09-18 13:03", "2026-09-18 14:03"],
+               "Sw1TimeEn": [1, 1, 1, 1], "Sw1TimeSet": [1, 0, 1, 0]}
+    sched = DiscoverMixin._sc_schedules(payload, 1)[0]
+    assert sched["base_date"] == "2026-09-18"
+    assert sched["cycle_days"] == 0
 
 
 # ── DEF-SC-EXECUTION-DATE-UNLOCATED — resolved ───────────────────────
