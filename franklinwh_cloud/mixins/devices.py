@@ -322,7 +322,29 @@ class DevicesMixin:
         return circuits
 
     async def _update_smart_circuit_config(self, circuit: int, updates: dict):
-        """Helper to perform a read-modify-write 311 cycle for a specific circuit."""
+        """Read-modify-write 311 cycle for one circuit.
+
+        .. danger::
+            **This does not work. DEF-311-WRITES-NEVER-STORE.**
+
+            Field-tested 2026-09-19: the gateway returns ``result: 0`` and
+            discards the write. Confirmed on two independent callers — the new
+            schedule setter and ``set_smart_circuit_soc_cutoff()``, which has
+            been in the library for months. ``Sw2AtuoEn=1, Sw2SocLowSet=42``
+            acked successfully and the gateway still read ``0, 0`` minutes
+            later.
+
+            Ruled out by experiment: stale base dates, propagation delay,
+            payload shape (``opt:1`` and the ``SwNMsgType`` 1-for-target
+            pattern match the 52 app writes in the corpus), and the frame
+            envelope (an app-shaped frame without ``lang`` and with ``snno:0``
+            was discarded too). Nothing is clobbered — the full 51-key block
+            was byte-identical before and after four separate writes.
+
+            Root cause is unknown. Every caller of this method is affected.
+            Callers that verify will report it; callers that do not will
+            report success and change nothing.
+        """
         payload = await self.get_smart_circuits_info()
         payload["opt"] = 1
         payload.pop("modeChoose", None)
