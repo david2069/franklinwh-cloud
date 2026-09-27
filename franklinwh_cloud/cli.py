@@ -221,10 +221,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub_sc.add_argument("--on", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 ON")
     sub_sc.add_argument("--off", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 OFF")
     sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT",
-                        help="Write SwNMode=2 (\"Schedule mode\"). DOUBTFUL: a "
-                             "circuit with a schedule configured and armed reads "
-                             "Mode 0 or 1, never 2, so the firmware may not define "
-                             "it. Use --set-schedule to write an actual schedule.")
+                        help="Write SwNMode=2 (\"Schedule mode\"). The app does "
+                             "send this value when scheduling, though it has never "
+                             "been seen in a read — the firmware appears to "
+                             "normalise it. Use --set-schedule to write the "
+                             "schedule itself.")
     sub_sc.add_argument("--set-schedule", type=int, metavar="CIRCUIT",
                         help="Write Circuit N's time schedule. Needs --window.")
     sub_sc.add_argument("--window", action="append", metavar="START-END",

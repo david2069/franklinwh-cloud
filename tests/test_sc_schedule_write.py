@@ -42,6 +42,7 @@ class _Client(DevicesMixin):
 
     def __init__(self, stores=True, readback_error=None, payload=None):
         self.updates = []
+        self.msg_types = []
         self._stores = stores
         self._readback_error = readback_error
         self._payload = dict(payload if payload is not None else LIVE_311)
@@ -59,8 +60,9 @@ class _Client(DevicesMixin):
                 state.update(u)
         return state
 
-    async def _update_smart_circuit_config(self, circuit, updates):
+    async def _update_smart_circuit_config(self, circuit, updates, msg_type=1):
         self.updates.append(dict(updates))
+        self.msg_types.append(msg_type)
         return {"result": 0}
 
     @property
@@ -267,21 +269,78 @@ def test_window_spec_rejects_junk(bad):
         _parse_sc_window(bad)
 
 
-def test_the_doubtful_mode_flag_says_so():
-    """`sc --schedule` writes SwNMode=2, which may not be a real value.
+def test_both_schedule_flags_are_documented_and_distinct():
+    """`--schedule` and `--set-schedule` do different things and must say so.
 
-    A circuit with a schedule configured and armed reads Mode 0 or 1 and never
-    2 (live, 2026-09-18), so the help must not present it as the way to set a
-    schedule while --set-schedule exists.
+    An earlier version of this test read
+    ``cli.build_parser() if hasattr(cli, "build_parser") else None`` and then
+    asserted only in the ``None`` branch. ``build_parser`` exists, so the
+    branch never ran and the test passed while asserting nothing — including
+    after the help text it claimed to pin was rewritten. It reads the real
+    parser now.
     """
-    import argparse
     from franklinwh_cloud import cli
 
-    parser = cli.build_parser() if hasattr(cli, "build_parser") else None
-    if parser is None:
-        import inspect
-        src = inspect.getsource(cli)
-        i = src.index('"--schedule", type=int, metavar="CIRCUIT"')
-        block = src[i:i + 500]
-        assert "DOUBTFUL" in block
-        assert "--set-schedule" in block
+    parser = cli.build_parser()
+    sub = next(a for a in parser._actions if getattr(a, "choices", None)
+               and "sc" in getattr(a, "choices", {}))
+    sc = sub.choices["sc"]
+    opts = {s: a.help or "" for a in sc._actions for s in a.option_strings}
+
+    assert "--schedule" in opts and "--set-schedule" in opts
+    # --schedule writes the Mode value; --set-schedule writes the schedule.
+    assert "Mode" in opts["--schedule"], "--schedule must say it writes a Mode value"
+    assert "--set-schedule" in opts["--schedule"], \
+        "--schedule must point at the flag that writes an actual schedule"
+    assert "schedule" in opts["--set-schedule"].lower()
+    assert "--window" in opts["--set-schedule"], "--set-schedule requires --window"
+
+
+
+def test_a_schedule_is_sent_as_a_config_edit_not_a_switch_command():
+    """DEF-311-CONFIG-WRITES-WRONG-MSGTYPE — the bug that made every config
+    write vanish.
+
+    SwNMsgType tells the firmware what KIND of change a 311 write is, and a
+    write whose kind does not match its content is discarded silently with
+    result: 0. The corpus splits cleanly across 52 app writes:
+
+        MsgType 1  ->  Mode 0/1, schedule disarmed   — switch the circuit
+        MsgType 2  ->  Mode 2,   schedule armed      — edit the schedule
+
+    _update_smart_circuit_config() hardcoded 1, so schedules, SoC cut-offs and
+    load limits were all sent as switch commands and dropped. Switch writes
+    worked throughout, which is exactly why nobody noticed.
+    """
+    import asyncio
+
+    async def run():
+        c = _Client()
+        await c.set_smart_circuit_schedule(1, W, confirm=True)
+        return c.msg_types
+
+    assert asyncio.run(run()) == [2], "a schedule write must declare itself a config edit"
+
+
+def test_the_config_setters_do_not_send_a_switch_msgtype():
+    """SoC cut-off and load limit are configuration, not switching."""
+    import inspect
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    for fn in (DevicesMixin.set_smart_circuit_soc_cutoff,
+               DevicesMixin.set_smart_circuit_load_limit):
+        assert "msg_type=2" in inspect.getsource(fn), (
+            f"{fn.__name__} still writes as a switch command and will be discarded"
+        )
+
+
+def test_switch_setters_keep_the_switch_msgtype():
+    """The default must stay 1 — switch writes were never broken."""
+    import inspect
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    for fn in (DevicesMixin.set_smart_circuit_state,
+               DevicesMixin.set_smart_switch_state):
+        assert "msg_type" not in inspect.getsource(fn), (
+            f"{fn.__name__} changes the switch, which works with the default MsgType 1"
+        )

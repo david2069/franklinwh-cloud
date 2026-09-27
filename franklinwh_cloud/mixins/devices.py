@@ -321,29 +321,30 @@ class DevicesMixin:
             circuits[i] = SmartCircuitDetail.from_api_payload(raw_data, i)
         return circuits
 
-    async def _update_smart_circuit_config(self, circuit: int, updates: dict):
+    async def _update_smart_circuit_config(self, circuit: int, updates: dict,
+                                           msg_type: int = 1):
         """Read-modify-write 311 cycle for one circuit.
 
-        .. danger::
-            **This does not work. DEF-311-WRITES-NEVER-STORE.**
+        ``msg_type`` selects what KIND of change this is, and the firmware
+        silently discards a write whose kind does not match its content.
 
-            Field-tested 2026-09-19: the gateway returns ``result: 0`` and
-            discards the write. Confirmed on two independent callers — the new
-            schedule setter and ``set_smart_circuit_soc_cutoff()``, which has
-            been in the library for months. ``Sw2AtuoEn=1, Sw2SocLowSet=42``
-            acked successfully and the gateway still read ``0, 0`` minutes
-            later.
+        CONFIRMED from 52 app writes in the corpus plus live tests 2026-09-27:
 
-            Ruled out by experiment: stale base dates, propagation delay,
-            payload shape (``opt:1`` and the ``SwNMsgType`` 1-for-target
-            pattern match the 52 app writes in the corpus), and the frame
-            envelope (an app-shaped frame without ``lang`` and with ``snno:0``
-            was discarded too). Nothing is clobbered — the full 51-key block
-            was byte-identical before and after four separate writes.
+        ===========  ==========  =========  ==================================
+        MsgType      Mode        schedule   meaning
+        ===========  ==========  =========  ==================================
+        1            0 or 1      disarmed   switch the circuit on/off
+        2            2           armed      edit the schedule / config
+        ===========  ==========  =========  ==================================
 
-            Root cause is unknown. Every caller of this method is affected.
-            Callers that verify will report it; callers that do not will
-            report success and change nothing.
+        This method hardcoded ``1`` for every write, so **every config edit was
+        sent as a switch command and dropped** — silently, with ``result: 0``.
+        Switch writes always worked, which is why nothing noticed:
+        ``set_smart_switch_state(2, "ON")`` moves ``Sw2Mode`` 0->1 and
+        ``switch_2_state`` 0->1 live. DEF-311-CONFIG-WRITES-WRONG-MSGTYPE.
+
+        Callers changing ``Mode`` keep the default. Callers changing schedule
+        or SoC-cutoff fields must pass ``msg_type=2``.
         """
         payload = await self.get_smart_circuits_info()
         payload["opt"] = 1
@@ -354,7 +355,7 @@ class DevicesMixin:
             if f"Sw{i}MsgType" in payload:
                 payload[f"Sw{i}MsgType"] = 0
 
-        payload[f"Sw{circuit}MsgType"] = 1
+        payload[f"Sw{circuit}MsgType"] = msg_type
         for k, v in updates.items():
             payload[k] = v
 
@@ -442,7 +443,7 @@ class DevicesMixin:
             f"Sw{circuit}AtuoEn": 1 if enable else 0,
             f"Sw{circuit}SocLowSet": int(soc)
         }
-        return await self._update_smart_circuit_config(circuit, updates)
+        return await self._update_smart_circuit_config(circuit, updates, msg_type=2)
 
     async def set_smart_circuit_load_limit(self, circuit: int, max_amps: int):
         """Configure the maximum amperage draw for a Smart Circuit.
@@ -459,7 +460,7 @@ class DevicesMixin:
             raise ValueError("Circuit must be 1, 2, or 3")
             
         updates = {f"Sw{circuit}LoadLimit": int(max_amps)}
-        return await self._update_smart_circuit_config(circuit, updates)
+        return await self._update_smart_circuit_config(circuit, updates, msg_type=2)
 
     async def get_device_info(self):
         """Get detailed device info for the current gateway.
@@ -1005,7 +1006,7 @@ class DevicesMixin:
             circuit, sum(1 for e in enabled[::2] if e),
             f", cycle {cycle_days}d" if cycle_days is not None else "",
         )
-        ack = await self._update_smart_circuit_config(circuit, updates)
+        ack = await self._update_smart_circuit_config(circuit, updates, msg_type=2)
 
         if not verify:
             return {"ack": ack, "verified": None, "mismatches": [],
