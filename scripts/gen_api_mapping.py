@@ -3,8 +3,8 @@ import glob
 import os
 import re
 
-mixin_files = glob.glob('/Users/davidhona/dev/franklinwh-cloud/franklinwh_cloud/mixins/*.py')
-client_file = '/Users/davidhona/dev/franklinwh-cloud/franklinwh_cloud/client.py'
+mixin_files = glob.glob('~/dev/franklinwh-cloud/franklinwh_cloud/mixins/*.py')
+client_file = '~/dev/franklinwh-cloud/franklinwh_cloud/client.py'
 
 all_files = mixin_files + [client_file]
 
@@ -106,6 +106,6 @@ for filepath in sorted(all_files):
         markdown.pop()
         markdown.pop()
 
-with open('/Users/davidhona/dev/franklinwh-cloud/docs/API_ENDPOINTS_MAPPING.md', 'w') as f:
+with open('~/dev/franklinwh-cloud/docs/API_ENDPOINTS_MAPPING.md', 'w') as f:
     f.write("\n".join(markdown))
     f.write("\n")

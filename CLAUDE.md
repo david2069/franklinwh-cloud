@@ -35,7 +35,7 @@
 ## Key Commands
 
 ```bash
-cd /Users/davidhona/dev/franklinwh-cloud
+cd ~/dev/franklinwh-cloud
 python -m pytest tests/ -v --tb=short
 ```
 

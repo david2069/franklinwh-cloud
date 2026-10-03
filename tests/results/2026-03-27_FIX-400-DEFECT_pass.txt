@@ -20,7 +20,7 @@ tests/test_get_stats.py::TestGetStatsConditionalCalls::test_no_switch_call_when_
 tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
 tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
 tests/test_modes.py::TestDynamicModeName::test_lazy_loading_and_caching
-  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+  ~/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
     headers, stream = encode_request(
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

@@ -139,7 +139,7 @@ def is_v2l_eligible(country_id, sc_version, has_generator):
 
 ### Automated
 ```bash
-cd /Users/davidhona/dev/franklinwh-cloud
+cd ~/dev/franklinwh-cloud
 python -m pytest tests/ -v --tb=short
 ```
 

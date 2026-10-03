@@ -160,7 +160,7 @@ pip install "franklinwh-cloud[cli]"
 ### Develop (editable install)
 Clone the repo and install in editable (`-e`) mode with dev dependencies attached:
 ```bash
-git clone https://github.com/davidhona/franklinwh-cloud.git
+git clone https://github.com/david2069/franklinwh-cloud.git
 cd franklinwh-cloud
 python3 -m venv venv
 source venv/bin/activate       # Windows: venv\Scripts\Activate.ps1

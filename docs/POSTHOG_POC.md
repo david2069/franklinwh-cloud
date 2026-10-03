@@ -3,7 +3,7 @@
 To practically test and visualize the zero-latency daemon threading we just hardened, I have spun up a dedicated Proof of Concept (PoC) testing harness. This will allow you to instantly generate live events in your actual PostHog dashboard to visualize what a successful "long running test" looks like when the API keys are correct.
 
 > [!IMPORTANT]
-> **Prerequisite:** Before running this PoC, you must have your `[telemetry]` block configured inside `~/.franklinwh.ini` or `/Users/davidhona/dev/franklinwh-cloud-test/franklinwh.ini`.
+> **Prerequisite:** Before running this PoC, you must have your `[telemetry]` block configured inside `~/.franklinwh.ini` or `~/dev/franklinwh-cloud-test/franklinwh.ini`.
 > ```ini
 > [telemetry]
 > enabled = true
@@ -18,7 +18,7 @@ This script actively parses your `.ini` file, instantiates the background daemon
 
 Run the test yourself in your terminal:
 ```bash
-source /Users/davidhona/dev/franklinwh-cloud/venv/bin/activate
+source ~/dev/franklinwh-cloud/venv/bin/activate
 python /tmp/poc_posthog_telemetry.py
 ```
 

@@ -40,7 +40,7 @@ Once intercepted, you want to generate a rich, comprehensive API surface for our
 2. Filter the view by typing `franklinwh.com` to isolate the core APIs.
 3. Select **File -> Export -> Export HTTP Archive (HAR)**.
 4. Save the file locally to your repository under:
-  `/Users/davidhona/dev/franklinwh-cloud/hars/franklinwh_capture_YYYY-MM-DD.har`
+  `~/dev/franklinwh-cloud/hars/franklinwh_capture_YYYY-MM-DD.har`
 
 ### 4. Reconciling the Schema
 Finally, use the generator tool to integrate the new capture against our official specs.

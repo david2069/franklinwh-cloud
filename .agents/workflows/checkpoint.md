@@ -33,22 +33,22 @@ description: Mid-session crash-safe checkpoint — force-saves agent state and c
 
 4. Stage all modified source files:
 ```bash
-git -C /Users/davidhona/dev/franklinwh-cloud add -A
+git -C ~/dev/franklinwh-cloud add -A
 ```
 
 5. Commit with a checkpoint message:
 ```bash
-git -C /Users/davidhona/dev/franklinwh-cloud commit -m "checkpoint: mid-session state save $(date +%Y-%m-%dT%H:%M)" --allow-empty
+git -C ~/dev/franklinwh-cloud commit -m "checkpoint: mid-session state save $(date +%Y-%m-%dT%H:%M)" --allow-empty
 ```
 
 6. Push to origin:
 ```bash
-git -C /Users/davidhona/dev/franklinwh-cloud push
+git -C ~/dev/franklinwh-cloud push
 ```
 
 7. **Write the checkpoint ledger record** — this is how the next agent (or next onboard) knows a checkpoint was taken and when:
 ```bash
-echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ) conversation=$CONVERSATION_ID steps=estimated" > /Users/davidhona/dev/franklinwh-cloud/.agents/.last_checkpoint
+echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ) conversation=$CONVERSATION_ID steps=estimated" > ~/dev/franklinwh-cloud/.agents/.last_checkpoint
 ```
 > If `$CONVERSATION_ID` is not available as an env var, use the conversation ID from the artifact directory path or write `unknown`. The file format is a simple key=value flat file.
 

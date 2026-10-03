@@ -1,7 +1,7 @@
 ============================= test session starts ==============================
-platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- /Users/davidhona/dev/franklinwh-cloud-test/venv/bin/python3.14
+platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- ~/dev/franklinwh-cloud-test/venv/bin/python3.14
 cachedir: .pytest_cache
-rootdir: /Users/davidhona/dev/franklinwh-cloud
+rootdir: ~/dev/franklinwh-cloud
 configfile: pyproject.toml
 plugins: anyio-4.12.1, respx-0.22.0, asyncio-1.3.0, cov-7.0.0
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function

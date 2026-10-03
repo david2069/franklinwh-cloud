@@ -21,7 +21,7 @@
 |------|--------|
 | **Use workspace path** | `AGENT.md` lives at the root of **this** repository. Read `<workspace_root>/AGENT.md`, not a file that happens to be open in the editor from a different repo. |
 | **Ignore cross-project open files** | The editor may show files from multiple projects. Open files from other repos are **never** authoritative for this project's policies. |
-| **Verify the path** | Before reading `AGENT.md`, confirm the path starts with the active workspace URI (e.g. `/Users/davidhona/dev/franklinwh-cloud/`). |
+| **Verify the path** | Before reading `AGENT.md`, confirm the path starts with the active workspace URI (e.g. `~/dev/franklinwh-cloud/`). |
 
 > ⚠️ **Incident (2026-03-21):** An agent read `franklinwh-energy-manager/AGENT.md` (open in editor) instead of `franklinwh-cloud/AGENT.md` (workspace root), applying the wrong project's policies for an entire session. This rule prevents that.
 
@@ -110,7 +110,7 @@ All verification logic (Syntax checks, live testing limits, and offline logs) mu
 ## Quick Start
 
 ```bash
-cd /Users/davidhona/dev/franklinwh-cloud
+cd ~/dev/franklinwh-cloud
 ```
 
 - **Tests**: `python -m pytest tests/ -v --tb=short`

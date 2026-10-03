@@ -238,7 +238,7 @@ If the input is missing required/mandatory fields (such as `dispatchId` or `wave
 When integrating a client (such as Home Assistant, Node-RED, or custom scripts), you need to know exactly which enums, field names, and values are structurally valid. Rather than guessing, you can inspect the formal API specification interactively:
 
 1. **Local OpenAPI Specification**:
-   * The repository ships with a complete OpenAPI 3.0 specification file: **[franklinwh_openapi.json](file:///Users/davidhona/dev/franklinwh-cloud/docs/franklinwh_openapi.json)**. This file describes every endpoint, request body schema, and model representation in detail.
+   * The repository ships with a complete OpenAPI 3.0 specification file: **[franklinwh_openapi.json](file://~/dev/franklinwh-cloud/docs/franklinwh_openapi.json)**. This file describes every endpoint, request body schema, and model representation in detail.
 
 2. **FastAPI Emulator Docs Endpoint**:
    * When running the local **FastAPI Cloud API Emulator** (located in `emulator/main.py`), you can access the interactive Swagger/ReDoc documentation UI directly in your browser:

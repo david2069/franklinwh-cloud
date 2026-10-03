@@ -1,7 +1,7 @@
 ============================= test session starts ==============================
-platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- /Users/davidhona/dev/franklinwh-cloud/venv/bin/python
+platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- ~/dev/franklinwh-cloud/venv/bin/python
 cachedir: .pytest_cache
-rootdir: /Users/davidhona/dev/franklinwh-cloud
+rootdir: ~/dev/franklinwh-cloud
 configfile: pyproject.toml
 plugins: anyio-4.12.1, respx-0.22.0, asyncio-1.3.0
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
@@ -136,7 +136,7 @@ tests/test_token_fetcher.py::TestTokenFetcherGetToken::test_force_refresh_calls_
 =============================== warnings summary ===============================
 tests/test_get_stats.py::TestGetStatsResponseParsing::test_returns_stats_type
 tests/test_get_stats.py::TestGetStatsConditionalCalls::test_switch_call_when_active
-  /Users/davidhona/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+  ~/dev/franklinwh-cloud/venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
     headers, stream = encode_request(
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
