@@ -33,6 +33,8 @@ def main():
     ]
     # Skip software-version strings that look like emails: python@3.14, setuptools@68.0
     version_string_regex = re.compile(r'^[a-z][a-z0-9_-]+@\d+\.\d+', re.IGNORECASE)
+    # Skip pip/git URL refs that look like emails: franklinwh-cloud.git@v0.4.10, …git@vX.Y.Z
+    git_ref_regex = re.compile(r'\.git@v(\d+|x)\.', re.IGNORECASE)
 
     # ── File list: only scan git-tracked files ─────────────────────────────────
     # This exactly mirrors what GitHub Actions sees after actions/checkout@v4.
@@ -109,7 +111,7 @@ def main():
                     email = match.group(0).lower()
                     if email in ignore_emails or "example.com" in email:
                         continue
-                    if version_string_regex.match(email):
+                    if version_string_regex.match(email) or git_ref_regex.search(email):
                         continue
                     print(f"PII Leak [Email {email}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
                     found += 1
@@ -132,8 +134,50 @@ def main():
         except UnicodeDecodeError:
             pass
 
+    # ── Commit metadata ───────────────────────────────────────────────────────
+    # Added 2026-10-04. This scanner only ever read git-tracked FILE CONTENTS,
+    # so it could not see an author field — and 31 commits on public branches
+    # carry a real email, 4 of them a real full name, which it had passed over
+    # on every run since the repo went public.
+    #
+    # Only NEW commits are reported. Rewriting published history changes every
+    # downstream SHA and GitHub keeps the originals reachable anyway, so the
+    # already-public ones are a deliberate accepted exposure rather than a
+    # finding to re-raise each run. The job here is to stop the next one.
+    author_found = 0
+    try:
+        # Commits not yet on any remote — the ones still cheap to amend.
+        rev = subprocess.run(
+            # HEAD must be named explicitly: "--not --remotes" alone gives git
+            # no positive ref to walk from, so it silently returns nothing. The
+            # first version of this check did that and passed on a commit
+            # authored under a real name and personal email.
+            ["git", "log", "HEAD", "--format=%H%x1f%an%x1f%ae", "--not", "--remotes"],
+            cwd=repo_root, capture_output=True, text=True, timeout=30,
+        )
+        for line in rev.stdout.splitlines():
+            parts = line.split("\x1f")
+            if len(parts) != 3:
+                continue
+            sha, name, email = parts
+            ident = f"{name} <{email}>"
+            low = ident.lower()
+            if any(b in low for b in bad_strings if b != "2069"):
+                print(f"PII Leak [Commit author {ident}]: {sha[:12]} (unpushed)")
+                author_found += 1
+            elif email_regex.search(email) and not email.endswith("users.noreply.github.com"):
+                print(f"PII Leak [Commit email {email}]: {sha[:12]} (unpushed)")
+                author_found += 1
+        if author_found:
+            print("  Fix before pushing:  git commit --amend --reset-author")
+            print("  Prevent:  git config --local user.email "
+                  "<id>+<user>@users.noreply.github.com")
+    except Exception as e:
+        print(f"⚠ Could not check commit metadata: {e}")
+    found += author_found
+
     if args.scan:
-        print(f"\nScanned {count} files.")
+        print(f"\nScanned {count} files and the unpushed commit authors.")
         if found > 0:
             print(f"❌ FAILED: Found {found} PII leaks.")
             sys.exit(1)
