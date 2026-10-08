@@ -31,7 +31,7 @@
 
 ```bash
 cd ~/dev/franklinwh-cloud
-python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py
+python -m pytest tests/ -m "not live" -v --tb=short   # offline only; live tests change the real aGate
 ```
 
 > Credentials live in `~/dev/franklinwh-cloud-test/franklinwh.ini`
