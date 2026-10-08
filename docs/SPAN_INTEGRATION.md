@@ -44,19 +44,16 @@ autodetection.
 
 ## Consequences for this library
 
-### 1. Changing transport is riskier than the preflight assumes
+### 1. Open question: does switching to WiFi affect SPAN?
 
-`switch_to_wifi()` can move the active transport (observed 4G→WiFi in the
-corpus; confirmed live by U2). On a SPAN site the Ethernet link is carrying
-**both** the SPAN Modbus session **and**, per the app note, the gateway's
-internet. Moving to WiFi therefore risks losing the SPAN integration, and the
-write-safety preflight checks neither — it only asks whether *some* transport
-survives. See `DEF-WIFI-SWITCH-BREAKS-SPAN`.
-
-**INFERRED, not confirmed:** whether SPAN remains reachable over WiFi depends
-on the site's topology. The captured example address, `192.168.0.103`, sits on
-an ordinary household subnet, so a WiFi-attached aGate might still reach it —
-or might not, if the link is point-to-point. Nothing here establishes which.
+`switch_to_wifi()` can move the gateway's active internet transport (observed
+4G→WiFi in the corpus; confirmed live by U2). The SPAN link is a local Modbus TCP
+session over the aGate's Ethernet port, and nothing observed shows that the aGate
+drops or stops using Ethernet when its internet moves to WiFi. **INFERRED, not
+confirmed: unaffected.** That should hold whether the SPAN link is on the household LAN or a
+point-to-point cable, as long as the aGate keeps its Ethernet port up; it would
+matter only if the aGate shut that port down while on WiFi. Settle it by switching a SPAN site to WiFi and confirming the panel still
+reports. Tracked as `DEF-WIFI-SWITCH-BREAKS-SPAN` (open question, not a known fault).
 
 ### 2. Our Modbus 502 probe tests a different thing
 

@@ -642,15 +642,11 @@ class NetworkMixin:
             WiFi is not supported for it (user report 2026-09-18, not
             vendor-confirmed).
 
-            This preflight does **not** check for SPAN. It protects the
-            gateway's own reachability — that a transport survives the write —
-            and knows nothing about what else depends on the current one. On a
-            SPAN site the write can succeed, the verify loop can report
-            ``connected``, and the panel integration can go quiet with no
-            error anywhere.
-
-            Check ``get_span_setting()`` before switching a gateway that is
-            currently on Ethernet. See DEF-WIFI-SWITCH-BREAKS-SPAN.
+            This preflight protects the gateway's own reachability: it checks
+            that a transport survives the write. It does **not** check for SPAN. A SPAN link runs over the aGate's local Ethernet port and is
+            not expected to depend on the internet transport, but that hasn't
+            been verified on a SPAN site. Open question:
+            DEF-WIFI-SWITCH-BREAKS-SPAN.
         """
         if not confirm:
             raise ValueError(
