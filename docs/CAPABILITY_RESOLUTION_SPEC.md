@@ -132,7 +132,7 @@ Write Python test cases asserting resolution correctness:
 
 Added 2026-09-14. **Design recorded ahead of implementation** — the newer path
 has no captured evidence yet. See
-[AP-14](../.agents/policies/evidence_standard.md).
+[AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md).
 
 ### The situation
 

@@ -98,7 +98,7 @@ which the highest observed cmdType is 354. A higher block with a richer schema
 is *consistent with* a later addition, but different hardware, a different
 market, or an error in the fork are equally consistent. Third-party code is a
 hypothesis, not a citation — see
-[AP-14](../.agents/policies/evidence_standard.md).
+[AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md).
 
 **What would settle it:** a capture from a current app session that touches
 Smart Circuits. If 387/389 are real and carry a structured schedule, they

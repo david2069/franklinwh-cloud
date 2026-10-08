@@ -7,7 +7,7 @@
 *Solar + Storage Quickstart* — screenshots supplied by the user 2026-09-18.
 The pages are a JavaScript-rendered Salesforce portal and cannot be fetched
 directly. Evidence tiers per
-[AP-14](../.agents/policies/evidence_standard.md).
+[AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md).
 
 ---
 

@@ -5,7 +5,7 @@
 > AU/NZ system, `L1` and `L2` are not two independent legs — treat
 > `gridLineVol` as the real measurement.
 
-Evidence tiers per [AP-14](../.agents/policies/evidence_standard.md). Vendor
+Evidence tiers per [AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md). Vendor
 citations carry a version and date — see
 [VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md). A claim sourced to "the datasheet"
 without a revision ages silently, and FranklinWH revises these: the Ethernet

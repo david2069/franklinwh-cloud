@@ -4,7 +4,7 @@
 > the document itself**. Cite from here rather than by title alone: a title
 > without a version ages silently, and FranklinWH revises these.
 
-Per [AP-14](../.agents/policies/evidence_standard.md), a vendor statement is
+Per [AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md), a vendor statement is
 **CONFIRMED** evidence — but only against a stated revision. Behaviour has
 already been observed changing between revisions (see the Eth port naming
 below), so "the manual says" is not a durable citation on its own.
