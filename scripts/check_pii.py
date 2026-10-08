@@ -149,7 +149,8 @@ def main():
                 # ── Email check ───────────────────────────────────────────
                 for match in email_regex.finditer(line):
                     email = match.group(0).lower()
-                    if email in ignore_emails or "example.com" in email:
+                    domain = email.rpartition("@")[2]
+                    if email in ignore_emails or domain == "example.com" or domain.endswith(".example.com"):
                         continue
                     if version_string_regex.match(email) or git_ref_regex.search(email):
                         continue
