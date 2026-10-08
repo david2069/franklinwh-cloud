@@ -17,6 +17,11 @@ How to create an isolated sandbox for developing, testing, and validating the `f
     └── (scratch files)           ← Test JSON schedules, logs, etc.
 ```
 
+> ⚠️ **The sandbox is not a git repo.** Never clone `franklinwh-cloud` into it. A second
+> copy drifts out of date, and plain `python` started inside it imports that copy's
+> `franklinwh_cloud/` instead of the installed package. (This happened once and was
+> undone on 2026-10-08.) Branches, commits and tags happen only in `~/dev/franklinwh-cloud`.
+
 ---
 
 ## Step 1: Create the Sandbox Directory
@@ -205,6 +210,24 @@ git add -A && git commit -m "feat: description" && git push
 ```bash
 ./venv/bin/python -m pytest tests/ -v -k "dispatch"
 ```
+
+---
+
+## Checking a Release (optional second venv)
+
+`venv/` follows whatever branch is checked out in the source repo. To check exactly
+what downstream users get from a tag, use a separate venv that installs the tag:
+
+```bash
+cd ~/dev/franklinwh-cloud-test
+python3 -m venv venv-release
+venv-release/bin/pip install "franklinwh-cloud @ git+https://github.com/david2069/franklinwh-cloud.git@vX.Y.Z"
+venv-release/bin/python -c "import franklinwh_cloud; print(franklinwh_cloud.__file__, franklinwh_cloud.__version__)"
+venv-release/bin/franklinwh-cli status        # read-only smoke test
+```
+
+The printed path must be under `venv-release/…/site-packages`. This is step 7 of the
+release process in `.agents/policies/release_policy.md`.
 
 ---
 
