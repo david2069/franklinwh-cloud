@@ -64,6 +64,19 @@ include = ["franklinwh_cloud*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# Live tests are OPT-IN. They authenticate against the production FranklinWH
+# cloud, consume the 5000/day sendMqtt budget, and — in the case of
+# tests/test_live_mode.py::test_live_set_mode — issue real set_mode() writes
+# that change the operating mode of the physical aGate.
+#
+# Previously the `live` marker was declared but never deselected, so a plain
+# `pytest tests/` mutated production hardware. Command-line `-m` overrides this
+# default, so `pytest -m live` still runs them deliberately.
+#
+# See .agents/policies/live_test_protocol.md (AP-13).
+addopts = "-m 'not live'"
+
 markers = [
-    "live: requires real API credentials and aGate (deselect with '-m not live')",
+    "live: hits the real cloud API and aGate. Opt-in — deselected by default via addopts; run with `pytest -m live`.",
 ]

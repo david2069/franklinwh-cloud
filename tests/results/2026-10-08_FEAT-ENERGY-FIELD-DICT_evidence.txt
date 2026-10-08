@@ -1,0 +1,43 @@
+FEAT-ENERGY-FIELD-DICT — evidence for energy array meanings
+Generated 2026-10-08. Gateway 10060006AXXXXXXXXX (redacted).
+
+A. Energy balances — getFhpElectricData type=4 startDate=2025-01-01 (live, read-only, one site, 12 months)
+month   | solar = solarLoad+soChBat+soOutGrid | gridIn = gridLoad+gridChBat | fhpDi = fhpLoad+batOutGrid | load = sum(*LoadArray) | fhpChg = soChBat+gridChBat+genChBat | utiOut = soOutGrid+batOutGrid
+2025-01 | 759.9 = 753.0 | 53.9 = 54.1 | 163.7 = 163.4 | 381.3 = 373.7 | 206.1 = 207.7 | 390.1 = 389.1
+2025-02 | 757.8 = 750.2 | 10.4 = 11.1 | 163.7 = 163.4 | 334.1 = 327.5 | 206.4 = 207.6 | 391.5 = 389.5
+2025-03 | 599.3 = 593.8 | 50.4 = 50.7 | 226.6 = 227.6 | 356.6 = 350.2 | 275.2 = 276.9 | 244.5 = 244.9
+2025-04 | 539.1 = 529.1 | 39.3 = 39.0 | 303.3 = 263.0 | 257.9 = 250.6 | 357.4 = 359.7 | 266.6 = 220.8
+2025-05 | 382.0 = 376.5 | 139.8 = 139.0 | 302.0 = 302.2 | 341.0 = 333.3 | 367.4 = 369.2 | 115.4 = 115.2
+2025-06 | 489.1 = 482.3 | 101.2 = 94.9 | 340.7 = 326.9 | 430.3 = 421.4 | 398.1 = 394.3 | 102.7 = 88.4
+2025-07 | 464.0 = 452.2 | 118.2 = 121.4 | 317.3 = 310.5 | 486.7 = 477.8 | 383.4 = 385.3 | 29.4 = 21.0
+2025-08 | 440.4 = 436.3 | 194.5 = 196.0 | 342.5 = 342.8 | 513.3 = 503.3 | 407.2 = 410.5 | 56.9 = 61.3
+2025-09 | 514.9 = 510.3 | 41.6 = 42.7 | 293.7 = 294.9 | 398.6 = 389.7 | 352.0 = 355.7 | 99.6 = 102.5
+2025-10 | 550.7 = 545.8 | 60.3 = 63.9 | 320.3 = 322.1 | 397.1 = 391.2 | 376.5 = 380.5 | 157.8 = 160.0
+2025-11 | 562.3 = 557.3 | 63.6 = 68.3 | 350.1 = 352.2 | 386.2 = 379.7 | 415.6 = 421.2 | 174.2 = 176.9
+2025-12 | 613.0 = 607.5 | 55.5 = 60.2 | 318.6 = 320.3 | 451.2 = 444.0 | 383.3 = 388.6 | 152.6 = 155.5
+
+B. hars/ corpus, getFhpPowerByDay
+   runStatusArray vs battery flow, 60 days, 12,962 samples:
+     0: n=3077  charging 0%   discharging 0%
+     1: n=3320  charging 95%  discharging 3%
+     2: n=6565  charging 1%   discharging 98%
+   kwhTotalArray / socArray, 55,479 samples with SoC>5%:
+     0.136 x42342, 0.272 x7983, 0.408 x4484, 0.544 x670  = 1..4 x 13.6 kWh aPower
+     => kwhTotalArray = energy stored across the site's aPowers (kWh)
+
+C. hars/ corpus, getFhpElectricData — arrays never non-zero (meaning cannot be checked here)
+   proximalSolarWhArray, mpptWhArray, remoteSolarWhTotalArray, meterkitPvWhArray, secondaryPvWhArray,
+   mpanPv1Wh, mpanPv2Wh, apbox20PvWh: present in 3067 responses, non-zero in 0
+   kwhV2lArray, kwhV2lToFhpArray, kwhV2lToHomeArray: present in 1444, non-zero in 0
+   mpptEngyArryArray: absent from corpus; present in live 2026-10-08 response, always null
+   kwhGenArray: non-zero in 3 of 3067
+
+D. 5-minute power vs daily kWh (live, read-only)
+   2026-10-07: daily kWh total vs sum(5-min kW x 5/60 h), 288 samples
+     solar_kwh                  31.00 vs   30.49  (-1.6%)
+     home_kwh                    7.10 vs    6.91  (-2.7%)
+     grid_import_kwh             2.39 vs    2.39  (+0.0%)
+     grid_export_kwh            22.36 vs   22.17  (-0.8%)
+     battery_charge_kwh         12.12 vs   11.98  (-1.1%)
+     battery_discharge_kwh       8.20 vs    8.19  (-0.0%)
+   => the 7 solar/grid/battery kW flows CORROBORATED; generator flows stay INFERRED (always 0)

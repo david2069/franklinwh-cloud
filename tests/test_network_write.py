@@ -1,0 +1,1056 @@
+"""Tests for the Phase 2 network write path.
+
+Steps P2-1..P2-5 of docs/NETWORK_PHASE2_IMPLEMENTATION_PLAN.md.
+
+No test in this module contacts hardware. Every payload is derived from the HAR
+corpus with SSIDs and credentials redacted per .agents/policies/pii_policy.md.
+"""
+
+import pytest
+
+from franklinwh_cloud.cache import MethodCache
+from franklinwh_cloud.mixins.network import NETWORK_CACHED_READERS, NetworkMixin
+
+
+# ── P2-1 cache invalidation (design G6; defects 6 and 7) ─────────────
+
+class _CacheClient(NetworkMixin):
+    """Minimal stand-in wiring NetworkMixin to a real MethodCache."""
+
+    def __init__(self, cache: MethodCache | None):
+        self.method_cache = cache
+
+    def invalidate_cache(self, method=None):
+        if self.method_cache:
+            self.method_cache.invalidate(method)
+
+
+@pytest.fixture
+def cache():
+    return MethodCache({
+        "get_network_info": 120,
+        "get_wifi_config": 300,
+        "get_connectivity_overview": 120,
+        "get_smart_circuits_info": 300,
+    })
+
+
+def test_invalidate_network_cache_clears_the_verify_loop_sources(cache):
+    """317 and 337 reads must not survive a write — they feed the verifier."""
+    cache.set("get_network_info", 0, {"currentNetType": 4})
+    cache.set("get_wifi_config", 0, {"wifi_ssid": "old"})
+
+    _CacheClient(cache)._invalidate_network_cache()
+
+    assert cache.get("get_network_info", 0) is None
+    assert cache.get("get_wifi_config", 0) is None
+
+
+def test_invalidate_network_cache_clears_connectivity_overview(cache):
+    """Defect 7 — 120 s TTL made it unusable as a post-write view."""
+    cache.set("get_connectivity_overview", 0, {"stale": True})
+    _CacheClient(cache)._invalidate_network_cache()
+    assert cache.get("get_connectivity_overview", 0) is None
+
+
+def test_invalidate_network_cache_leaves_unrelated_entries_alone(cache):
+    """A network write says nothing about smart circuits."""
+    cache.set("get_smart_circuits_info", 0, {"circuits": []})
+    _CacheClient(cache)._invalidate_network_cache()
+    assert cache.get("get_smart_circuits_info", 0) == {"circuits": []}
+
+
+def test_invalidate_network_cache_clears_every_argument_slot(cache):
+    """MethodCache keys on (method, args_hash) — all slots must go."""
+    cache.set("get_network_info", 111, {"a": 1})
+    cache.set("get_network_info", 222, {"b": 2})
+
+    _CacheClient(cache)._invalidate_network_cache()
+
+    assert cache.get("get_network_info", 111) is None
+    assert cache.get("get_network_info", 222) is None
+
+
+def test_invalidate_network_cache_tolerates_caching_disabled():
+    """Clients may be built with cache=None; the write path must still run."""
+    _CacheClient(None)._invalidate_network_cache()  # must not raise
+
+
+def test_invalidate_network_cache_tolerates_a_bare_mixin():
+    """Mixin used in isolation has no invalidate_cache attribute."""
+    class Bare(NetworkMixin):
+        pass
+
+    Bare()._invalidate_network_cache()  # must not raise
+
+
+def test_cached_reader_list_matches_the_cache_defaults():
+    """Guard against a rename silently dropping an entry from invalidation."""
+    from franklinwh_cloud.cache import DEFAULT_CACHE
+
+    for name in NETWORK_CACHED_READERS:
+        assert name in DEFAULT_CACHE, f"{name} is not a cached method any more"
+
+
+def test_network_mixin_is_wired_into_client():
+    """P2-1 wiring — the write path must be reachable from Client."""
+    from franklinwh_cloud.client import Client
+
+    assert issubclass(Client, NetworkMixin)
+    assert hasattr(Client, "_invalidate_network_cache")
+
+
+# ── P2-2 preflight (design section 3) ────────────────────────────────
+
+from franklinwh_cloud.mixins.network import network_write_preflight
+
+
+def _state(available, linked=None):
+    """Minimal get_network_state() output — only the fields preflight reads."""
+    return {
+        "available_transports": list(available),
+        "linked_transports": list(linked if linked is not None else available[:1]),
+    }
+
+
+def _scan(*pairs):
+    return {"networks": [{"ssid": s, "signal_pct": p} for s, p in pairs]}
+
+
+def test_preflight_refuses_when_nothing_would_survive():
+    """The whole point: never strand the gateway."""
+    r = network_write_preflight(_state(["wifi"]), "wifi")
+    assert r["passed"] is False
+    assert r["fallback"] is None
+    assert "no transport other than 'wifi'" in r["reasons"][0]
+
+
+def test_preflight_passes_with_a_surviving_transport():
+    r = network_write_preflight(_state(["wifi", "4g"]), "wifi")
+    assert r["passed"] is True
+    assert r["fallback"] == "4g"
+    assert r["reasons"] == []
+
+
+def test_preflight_fallback_set_is_relative_to_the_target_not_the_active():
+    """Regression, 2026-08-07.
+
+    Gateway on 4G, rewriting the WiFi config. 4G is the fallback even though it
+    is also the active transport. The first draft excluded the active transport
+    and would have refused the primary use case outright.
+    """
+    state = _state(["4g"], linked=["4g"])
+    assert network_write_preflight(state, "wifi")["passed"] is True
+    assert network_write_preflight(state, "wifi")["fallback"] == "4g"
+
+
+def test_preflight_uses_available_not_linked():
+    """Regression, 2026-08-08.
+
+    A full hour on WiFi with cellular enabled and in reception but parked:
+    4GNetSwitch=1, operatorRSSI=22, 4GConnectBSStatus=0. Keying on
+    linked_transports refuses every write to the transport carrying traffic.
+    """
+    state = _state(["wifi", "4g"], linked=["wifi"])
+    r = network_write_preflight(state, "wifi")
+    assert r["passed"] is True, "idle-but-available cellular is a valid fallback"
+    assert r["fallbacks"] == ["4g"]
+
+
+def test_preflight_allow_no_fallback_overrides_and_is_recorded():
+    r = network_write_preflight(_state(["wifi"]), "wifi", allow_no_fallback=True)
+    assert r["passed"] is True
+    assert r["reasons"] == []
+    assert any("allow_no_fallback" in o for o in r["overrides"])
+
+
+def test_preflight_refuses_a_target_below_the_signal_floor():
+    r = network_write_preflight(
+        _state(["wifi", "4g"]), "wifi", ssid="weak-net", scan=_scan(("weak-net", 22)),
+    )
+    assert r["passed"] is False
+    assert r["target_signal_pct"] == 22
+    assert "below the 30% floor" in r["reasons"][0]
+
+
+def test_preflight_accepts_a_target_at_the_floor():
+    r = network_write_preflight(
+        _state(["wifi", "4g"]), "wifi", ssid="ok-net", scan=_scan(("ok-net", 30)),
+    )
+    assert r["passed"] is True
+    assert r["target_signal_pct"] == 30
+
+
+def test_preflight_refuses_an_ssid_absent_from_the_scan():
+    r = network_write_preflight(
+        _state(["wifi", "4g"]), "wifi", ssid="hidden", scan=_scan(("other", 90)),
+    )
+    assert r["passed"] is False
+    assert "was not seen in the scan" in r["reasons"][0]
+
+
+def test_preflight_does_not_leak_the_ssid_into_the_refusal():
+    """pii_policy — refusals are logged and land in tests/results/."""
+    r = network_write_preflight(
+        _state(["wifi", "4g"]), "wifi", ssid="MyHomeNetwork", scan=_scan(("x", 90)),
+    )
+    assert "MyHomeNetwork" not in r["reasons"][0]
+    assert "My***" in r["reasons"][0]
+
+
+def test_preflight_allow_weak_signal_overrides_the_floor():
+    r = network_write_preflight(
+        _state(["wifi", "4g"]), "wifi", ssid="weak", scan=_scan(("weak", 8)),
+        allow_weak_signal=True,
+    )
+    assert r["passed"] is True
+    assert any("allow_weak_signal" in o for o in r["overrides"])
+
+
+def test_preflight_skips_the_signal_check_without_a_scan():
+    """Unknown must not be treated as a failure, nor silently as a pass."""
+    r = network_write_preflight(_state(["wifi", "4g"]), "wifi", ssid="whatever")
+    assert r["passed"] is True
+    assert r["target_signal_pct"] is None
+
+
+def test_preflight_signal_check_does_not_apply_to_non_wifi_targets():
+    r = network_write_preflight(
+        _state(["wifi", "4g"]), "4g", scan=_scan(("x", 8)),
+    )
+    assert r["passed"] is True
+    assert r["fallback"] == "wifi"
+
+
+def test_preflight_two_independent_gates_both_reported():
+    """A caller must see every reason, not just the first."""
+    r = network_write_preflight(
+        _state(["wifi"]), "wifi", ssid="weak", scan=_scan(("weak", 5)),
+    )
+    assert r["passed"] is False
+    assert len(r["reasons"]) == 2
+
+
+def test_preflight_allow_no_fallback_does_not_open_the_signal_gate():
+    """The overrides are independent — one flag must not imply the other."""
+    r = network_write_preflight(
+        _state(["wifi"]), "wifi", ssid="weak", scan=_scan(("weak", 5)),
+        allow_no_fallback=True,
+    )
+    assert r["passed"] is False
+    assert len(r["reasons"]) == 1
+    assert "below the 30% floor" in r["reasons"][0]
+
+
+def test_preflight_handles_an_empty_available_set():
+    r = network_write_preflight({"available_transports": []}, "wifi")
+    assert r["passed"] is False
+    assert "available=none" in r["reasons"][0]
+
+
+def test_preflight_is_pure():
+    """No mutation of the caller's state dict."""
+    state = _state(["wifi", "4g"])
+    before = dict(state)
+    network_write_preflight(state, "wifi")
+    assert state == before
+
+
+# ── P2-3 set_wifi_credentials (cmdType 337 opt:1) ────────────────────
+
+import json
+from unittest.mock import AsyncMock, MagicMock
+
+from franklinwh_cloud.exceptions import FranklinWHError
+
+# Shape validated on live hardware 2026-08-09 — see
+# tests/results/2026-08-09_U2-REAPPLY-WIFI_pass.txt
+STORED_CFG = {
+    "wifi_ssid": "home-net",
+    "wifi_password": "stored-secret",
+    "ap_ssid": "AP_1234",
+    "ap_password": "ap-secret",
+    "wifi_safety": 1,
+}
+ACK_338_OK = json.dumps({"opt": 1, "result": 0, "reason": 0})
+
+
+class _WriteClient(NetworkMixin):
+    """Client stand-in capturing the 337 payload without any I/O."""
+
+    def __init__(self, cfg=STORED_CFG, ack=ACK_338_OK):
+        self.sent = []
+        self.invalidations = []
+        self.get_wifi_config = AsyncMock(return_value=dict(cfg))
+        self._mqtt_send = AsyncMock(return_value={"result": {"dataArea": ack}})
+
+    def _build_payload(self, cmd, dataArea):
+        self.sent.append((int(cmd), dataArea))
+        return {"cmdType": int(cmd), "dataArea": dataArea}
+
+    def invalidate_cache(self, method=None):
+        self.invalidations.append(method)
+
+
+async def test_set_wifi_credentials_refuses_without_confirm():
+    """API-affecting write against physical hardware — CLAUDE.md rule 6."""
+    c = _WriteClient()
+    with pytest.raises(ValueError, match="confirm=True"):
+        await c.set_wifi_credentials("home-net", "pw")
+    assert c.sent == [], "nothing may reach the wire"
+
+
+async def test_set_wifi_credentials_rejects_an_empty_ssid():
+    c = _WriteClient()
+    with pytest.raises(ValueError, match="non-empty"):
+        await c.set_wifi_credentials("", "pw", confirm=True)
+    assert c.sent == []
+
+
+async def test_set_wifi_credentials_echoes_the_ap_identity_unchanged():
+    """Design 2.3b-1 — ap_SSID/ap_Pw are the aGate's OWN AP and are required."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("new-net", "new-pw", confirm=True)
+
+    cmd, area = c.sent[0]
+    assert cmd == 337
+    assert area["opt"] == 1
+    assert area["ap_SSID"] == "AP_1234"
+    assert area["ap_Pw"] == "ap-secret"
+
+
+async def test_set_wifi_credentials_sends_the_validated_payload_shape():
+    """Exactly the five keys proven by U2; no more, no fewer."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("new-net", "new-pw", confirm=True)
+
+    _, area = c.sent[0]
+    assert set(area) == {"opt", "wifi_SSID", "wifi_Pw", "ap_SSID", "ap_Pw"}
+    assert area["wifi_SSID"] == "new-net"
+    assert area["wifi_Pw"] == "new-pw"
+
+
+async def test_set_wifi_credentials_sends_empty_string_for_a_null_password():
+    """Open networks are untested, but the key must still be present."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("open-net", None, confirm=True)
+    assert c.sent[0][1]["wifi_Pw"] == ""
+
+
+async def test_set_wifi_credentials_reports_accepted_not_connected():
+    """Gotcha G7 — a wrong password also returns result:0."""
+    c = _WriteClient()
+    r = await c.set_wifi_credentials("n", "p", confirm=True)
+
+    assert r == {"cmd": 338, "result": 0, "reason": 0, "accepted": True}
+    assert "connected" not in r, "the ack must never claim association"
+
+
+async def test_set_wifi_credentials_marks_a_rejected_write_not_accepted():
+    c = _WriteClient(ack=json.dumps({"opt": 1, "result": 1, "reason": 3}))
+    r = await c.set_wifi_credentials("n", "p", confirm=True)
+    assert r["accepted"] is False
+    assert r["reason"] == 3
+
+
+async def test_set_wifi_credentials_never_returns_the_password():
+    """pii_policy — the return value is logged and lands in tests/results/."""
+    c = _WriteClient()
+    r = await c.set_wifi_credentials("n", "hunter2", confirm=True)
+    assert "hunter2" not in json.dumps(r)
+
+
+async def test_set_wifi_credentials_invalidates_cache_before_and_after():
+    """G6 — a stale ap_SSID must not be echoed, and the verifier reads next."""
+    c = _WriteClient()
+    await c.set_wifi_credentials("n", "p", confirm=True)
+
+    assert "get_wifi_config" in c.invalidations
+    assert "get_network_info" in c.invalidations
+    assert c.invalidations.count("get_network_info") >= 2, "before read and after write"
+
+
+async def test_set_wifi_credentials_refuses_when_the_agate_has_no_ap_identity():
+    """Without ap_SSID the payload is incomplete; do not guess one."""
+    c = _WriteClient(cfg={**STORED_CFG, "ap_ssid": None})
+    with pytest.raises(FranklinWHError, match="ap_SSID"):
+        await c.set_wifi_credentials("n", "p", confirm=True)
+    assert c.sent == []
+
+
+async def test_set_wifi_credentials_does_not_log_the_password(caplog):
+    import logging
+
+    c = _WriteClient()
+    with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
+        await c.set_wifi_credentials("MyHomeNetwork", "hunter2", confirm=True)
+
+    assert "hunter2" not in caplog.text
+    assert "MyHomeNetwork" not in caplog.text
+    assert "My***" in caplog.text
+
+
+# ── P2-4 verify loop (design section 4) ──────────────────────────────
+
+from franklinwh_cloud.exceptions import (
+    DeviceTimeoutException,
+    GatewayOfflineException,
+)
+
+
+def _net(type_id, ip):
+    return {"currentNetType": type_id, "wifi": {"ip": ip}}
+
+
+ON_WIFI = _net(3, "192.168.0.110")
+ON_4G = _net(4, "0.0.0.0")
+ASSOCIATED_NO_LEASE = _net(3, "0.0.0.0")   # the 2026-03-21 failure mode
+
+
+class _VerifyClient(NetworkMixin):
+    """Replays a scripted sequence of 317 reads with no sleeping."""
+
+    def __init__(self, sequence, ssid="home-net", cfg_sequence=None):
+        self._seq = list(sequence)
+        self._cfg_seq = list(cfg_sequence) if cfg_sequence else None
+        self._ssid = ssid
+        self.write_calls = 0
+        self.invalidations = []
+
+    def invalidate_cache(self, method=None):
+        self.invalidations.append(method)
+
+    async def get_network_info(self):
+        if not self._seq:
+            return ON_4G
+        item = self._seq.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    async def get_wifi_config(self):
+        if self._cfg_seq:
+            item = self._cfg_seq.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return item
+        return {"wifi_ssid": self._ssid}
+
+    async def get_connection_status(self):
+        return {"awsStatus": 0, "netStatus": 0}
+
+    async def set_wifi_credentials(self, *a, **k):
+        self.write_calls += 1
+
+
+@pytest.fixture
+def nosleep(monkeypatch):
+    """Run the verify loop without real delays."""
+    async def _instant(_seconds):
+        return None
+    monkeypatch.setattr("franklinwh_cloud.mixins.network.asyncio.sleep", _instant)
+
+
+async def test_verify_one_passing_poll_is_not_success(nosleep):
+    """Debounce — reassociation dips through other transports (2.3a)."""
+    c = _VerifyClient([ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=10, poll_interval_s=5)
+    assert r["state"] == "timeout"
+
+
+async def test_verify_two_consecutive_passing_polls_succeed(nosleep):
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["polls"] == 2
+    assert r["after"] == {"type_id": 3, "type": "wifi", "ip": "192.168.0.110"}
+
+
+async def test_verify_transient_dip_resets_the_counter(nosleep):
+    """The observed 3 -> 4 -> 3 dip, five seconds apart."""
+    c = _VerifyClient([ON_WIFI, ON_4G, ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["polls"] == 4, "the dip must not count toward the debounce"
+
+
+async def test_verify_rejects_associated_without_a_lease(nosleep):
+    """2026-03-21: associated at 76% holding 0.0.0.0, no working path."""
+    c = _VerifyClient([ASSOCIATED_NO_LEASE] * 6)
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout"
+    assert r["last_known"] == {"type_id": 3, "ip": None}
+
+
+async def test_verify_requires_the_requested_ssid(nosleep):
+    """G9 — the aGate roams unprompted; currentNetType alone proves nothing."""
+    c = _VerifyClient([ON_WIFI] * 6, cfg_sequence=[{"wifi_ssid": "someone-else"}] * 6)
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout", "wrong SSID is not success"
+
+
+async def test_verify_ssid_mismatch_resets_the_counter(nosleep):
+    c = _VerifyClient(
+        [ON_WIFI] * 4,
+        cfg_sequence=[
+            {"wifi_ssid": "home-net"},
+            {"wifi_ssid": "other"},
+            {"wifi_ssid": "home-net"},
+            {"wifi_ssid": "home-net"},
+        ],
+    )
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["polls"] == 4
+
+
+async def test_verify_survives_unreachable_polls_and_counts_them(nosleep):
+    """G8 — the gateway genuinely disappears mid-cutover."""
+    c = _VerifyClient([
+        GatewayOfflineException("code 136"),
+        DeviceTimeoutException("code 102"),
+        ON_WIFI,
+        ON_WIFI,
+    ])
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["unreachable_polls"] == 2
+
+
+async def test_verify_survives_cloudfront_html(nosleep):
+    """G10 — InvalidResponseError killed a 60-minute poll on iteration 2."""
+    from franklinwh_cloud.exceptions import InvalidResponseError
+
+    c = _VerifyClient([InvalidResponseError("<html>504</html>"), ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["unreachable_polls"] == 1
+
+
+async def test_verify_unreachable_poll_resets_the_debounce(nosleep):
+    """A blackout between two good polls is not two consecutive confirmations."""
+    c = _VerifyClient([ON_WIFI, GatewayOfflineException("136"), ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout"
+
+
+async def test_verify_tolerates_a_failing_ssid_read(nosleep):
+    c = _VerifyClient(
+        [ON_WIFI] * 4,
+        cfg_sequence=[
+            GatewayOfflineException("136"),
+            {"wifi_ssid": "home-net"},
+            {"wifi_ssid": "home-net"},
+        ],
+    )
+    r = await c._verify_wifi_switch("home-net", timeout_s=60, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["unreachable_polls"] == 1
+
+
+async def test_verify_never_retries_the_write(nosleep):
+    """A retry against a reassociating aGate is how it becomes a dead one."""
+    c = _VerifyClient([ON_4G] * 10)
+    await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert c.write_calls == 0
+
+
+async def test_verify_timeout_carries_last_known_and_a_recovery_hint(nosleep):
+    c = _VerifyClient([ON_4G] * 10)
+    r = await c._verify_wifi_switch("home-net", timeout_s=20, poll_interval_s=5)
+    assert r["state"] == "timeout"
+    assert r["last_known"]["type_id"] == 4
+    assert "NOT been retried" in r["recovery_hint"]
+    assert "falls back to 4G on its own" in r["recovery_hint"]
+
+
+async def test_verify_does_not_gate_success_on_cloud_flags(nosleep):
+    """2026-08-08 — on WiFi with a lease while 339 reported everything zero."""
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert r["state"] == "connected"
+    assert r["cloud"] == {"aws_status_raw": 0, "net_status_raw": 0}
+
+
+async def test_verify_invalidates_cache_before_every_poll(nosleep):
+    """Defect 6 — a cached read is not a verification."""
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert c.invalidations.count("get_network_info") >= 2
+
+
+async def test_verify_is_bounded_when_the_clock_does_not_advance(nosleep):
+    """Poll-count guard — never an unbounded loop against hardware."""
+    c = _VerifyClient([ON_4G] * 500)
+    r = await c._verify_wifi_switch("home-net", timeout_s=30, poll_interval_s=5)
+    assert r["state"] == "timeout"
+    assert r["polls"] <= 8
+
+
+async def test_verify_carries_the_before_snapshot_through(nosleep):
+    before = {"type_id": 4, "type": "4g", "ip": None}
+    c = _VerifyClient([ON_WIFI, ON_WIFI])
+    r = await c._verify_wifi_switch(
+        "home-net", timeout_s=30, poll_interval_s=5, before=before
+    )
+    assert r["before"] == before
+
+
+# ── P2-5 switch_to_wifi orchestrator (design section 5.3) ────────────
+
+class _SwitchClient(NetworkMixin):
+    """Full orchestrator stand-in: state, scan, write and verify all mocked."""
+
+    def __init__(
+        self,
+        available=("wifi", "4g"),
+        active=("4g", 4, None),
+        stored_ssid="home-net",
+        scan_networks=(("home-net", 90),),
+        net_sequence=None,
+        scan_error=None,
+    ):
+        key, tid, ip = active
+        self._state = {
+            "available_transports": list(available),
+            "linked_transports": [key],
+            "active": {"id": tid, "key": key, "ip": ip},
+        }
+        self._stored_ssid = stored_ssid
+        self._scan_networks = scan_networks
+        self._scan_error = scan_error
+        self._net_seq = list(net_sequence) if net_sequence else [ON_WIFI, ON_WIFI]
+        self.writes = []
+        self.invalidations = []
+
+    def invalidate_cache(self, method=None):
+        self.invalidations.append(method)
+
+    async def get_network_state(self, probe_local=False):
+        return self._state
+
+    async def get_wifi_config(self):
+        return {"wifi_ssid": self._stored_ssid, "wifi_password": "stored-secret"}
+
+    async def scan_wifi_networks_ranked(self, **kw):
+        if self._scan_error:
+            raise self._scan_error
+        return {"networks": [{"ssid": s, "signal_pct": p}
+                             for s, p in self._scan_networks]}
+
+    async def get_network_info(self):
+        return self._net_seq.pop(0) if self._net_seq else ON_WIFI
+
+    async def get_connection_status(self):
+        return {"awsStatus": 1, "netStatus": 1}
+
+    async def set_wifi_credentials(self, ssid, password, *, confirm=False):
+        self.writes.append({"ssid": ssid, "password": password, "confirm": confirm})
+        return {"cmd": 338, "result": 0, "reason": 0, "accepted": True}
+
+
+async def test_switch_refuses_without_confirm():
+    c = _SwitchClient()
+    with pytest.raises(ValueError, match="confirm=True"):
+        await c.switch_to_wifi("home-net", "pw")
+    assert c.writes == []
+
+
+async def test_switch_happy_path_returns_the_5_3_contract(nosleep):
+    c = _SwitchClient()
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert set(r) == {"requested", "preflight", "write_ack", "verification"}
+    assert r["requested"] == {"ssid": "home-net", "password_source": "user"}
+    assert r["preflight"]["passed"] is True
+    assert r["preflight"]["fallback"] == "4g"
+    assert r["write_ack"]["accepted"] is True
+    assert r["verification"]["state"] == "connected"
+
+
+async def test_switch_reuses_the_stored_password_for_the_stored_ssid(nosleep):
+    """The primary use case: stranded on 4G, no password to hand."""
+    c = _SwitchClient()
+    r = await c.switch_to_wifi("home-net", None, confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["requested"]["password_source"] == "stored"
+    assert c.writes[0]["password"] == "stored-secret"
+
+
+async def test_switch_refuses_a_null_password_for_an_unknown_ssid():
+    """337 returns a password for the stored network only — nothing to reuse."""
+    c = _SwitchClient(stored_ssid="home-net")
+    with pytest.raises(ValueError, match="not the network currently stored"):
+        await c.switch_to_wifi("cafe-wifi", None, confirm=True)
+    assert c.writes == []
+
+
+async def test_switch_does_not_leak_the_ssid_in_that_error():
+    c = _SwitchClient(stored_ssid="home-net")
+    with pytest.raises(ValueError) as e:
+        await c.switch_to_wifi("SecretNetwork", None, confirm=True)
+    assert "SecretNetwork" not in str(e.value)
+
+
+async def test_switch_refused_preflight_sends_no_write(nosleep):
+    """WiFi is the only available transport — rewriting it strands the gateway."""
+    c = _SwitchClient(available=("wifi",), active=("wifi", 3, "192.168.0.110"))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True)
+
+    assert r["preflight"]["passed"] is False
+    assert r["write_ack"] is None
+    assert r["verification"]["state"] == "skipped"
+    assert c.writes == [], "no write may reach the gateway on a refusal"
+
+
+async def test_switch_refused_preflight_is_returned_not_raised(nosleep):
+    """The caller needs `reasons` to decide whether an override is right."""
+    c = _SwitchClient(available=("wifi",))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True)
+    assert r["preflight"]["reasons"], "refusal must explain itself"
+
+
+async def test_switch_refuses_a_weak_target(nosleep):
+    c = _SwitchClient(scan_networks=(("home-net", 12),))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True)
+
+    assert r["preflight"]["passed"] is False
+    assert r["preflight"]["target_signal_pct"] == 12
+    assert c.writes == []
+
+
+async def test_switch_allow_weak_signal_proceeds(nosleep):
+    c = _SwitchClient(scan_networks=(("home-net", 12),))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               allow_weak_signal=True,
+                               timeout_s=30, poll_interval_s=5)
+    assert r["preflight"]["passed"] is True
+    assert len(c.writes) == 1
+
+
+async def test_switch_scan_failure_skips_the_signal_gate_not_the_write(nosleep):
+    """Unknown signal is not bad signal; the fallback gate still protects."""
+    c = _SwitchClient(scan_error=GatewayOfflineException("136"))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["preflight"]["passed"] is True
+    assert r["preflight"]["target_signal_pct"] is None
+    assert len(c.writes) == 1
+
+
+async def test_switch_scan_disabled_skips_the_signal_gate(nosleep):
+    c = _SwitchClient(scan_networks=(("home-net", 5),))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True, scan=False,
+                               timeout_s=30, poll_interval_s=5)
+    assert r["preflight"]["passed"] is True
+
+
+async def test_switch_no_verify_says_skipped_not_connected(nosleep):
+    """G7 — skipped verification must never read as success."""
+    c = _SwitchClient()
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True, verify=False)
+
+    assert r["write_ack"]["accepted"] is True
+    assert r["verification"]["state"] == "skipped"
+    assert r["verification"]["reason"] == "verify=False"
+
+
+async def test_switch_verify_timeout_is_reported_not_raised(nosleep):
+    c = _SwitchClient(net_sequence=[ON_4G] * 12)
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=20, poll_interval_s=5)
+
+    assert r["write_ack"]["accepted"] is True
+    assert r["verification"]["state"] == "timeout"
+    assert "recovery_hint" in r["verification"]
+
+
+async def test_switch_carries_the_before_snapshot_into_verification(nosleep):
+    c = _SwitchClient(active=("4g", 4, None))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["verification"]["before"] == {"type_id": 4, "type": "4g", "ip": None}
+    assert r["verification"]["after"]["type"] == "wifi"
+
+
+async def test_switch_passes_confirm_through_to_the_write(nosleep):
+    c = _SwitchClient()
+    await c.switch_to_wifi("home-net", "pw", confirm=True,
+                           timeout_s=30, poll_interval_s=5)
+    assert c.writes[0]["confirm"] is True
+
+
+async def test_switch_preflight_target_is_wifi_not_the_active_transport(nosleep):
+    """2026-08-07 regression: on 4G, rewriting WiFi — 4G is the fallback."""
+    c = _SwitchClient(available=("4g",), active=("4g", 4, None))
+    r = await c.switch_to_wifi("home-net", "pw", confirm=True,
+                               timeout_s=30, poll_interval_s=5)
+
+    assert r["preflight"]["passed"] is True
+    assert r["preflight"]["fallback"] == "4g"
+
+
+# ── DEF-PREFLIGHT-UNVERIFIED-ETHERNET / DEF-ETH-LINK-SHARED-FLAG ─────
+
+def _state_eth(available, active_key="wifi"):
+    return {
+        "available_transports": list(available),
+        "linked_transports": [active_key],
+        "active": {"key": active_key},
+    }
+
+
+def test_preflight_does_not_trust_an_idle_ethernet_port():
+    """One aGate Ethernet port is reserved for FranklinWH-internal use.
+
+    It can hold an address while having no route to the cloud, and the API
+    exposes nothing that distinguishes it from a user port. Counting it would
+    let a write proceed on a fallback that cannot catch it.
+    """
+    r = network_write_preflight(_state_eth(["wifi", "eth0"]), "wifi")
+
+    assert r["passed"] is False
+    assert r["unverified_fallbacks"] == ["eth0"]
+    assert "FranklinWH-internal" in r["reasons"][0]
+
+
+def test_preflight_trusts_ethernet_when_it_is_the_active_transport():
+    """Active means proven — the gateway is answering through it right now."""
+    r = network_write_preflight(
+        _state_eth(["wifi", "eth0"], active_key="eth0"), "wifi",
+    )
+    assert r["passed"] is True
+    assert r["fallback"] == "eth0"
+    assert r["unverified_fallbacks"] == []
+
+
+def test_preflight_still_passes_when_cellular_is_the_real_fallback():
+    """The primary use case must not regress: idle eth0 is ignored, 4G carries."""
+    r = network_write_preflight(_state_eth(["wifi", "eth0", "4g"]), "wifi")
+
+    assert r["passed"] is True
+    assert r["fallback"] == "4g"
+    assert r["unverified_fallbacks"] == ["eth0"]
+
+
+def test_preflight_trust_ethernet_opt_in_records_the_override():
+    r = network_write_preflight(
+        _state_eth(["wifi", "eth0"]), "wifi", trust_ethernet=True,
+    )
+    assert r["passed"] is True
+    assert any("trust_ethernet" in o for o in r["overrides"])
+
+
+def test_preflight_both_ethernet_ports_are_distrusted_together():
+    r = network_write_preflight(_state_eth(["wifi", "eth0", "eth1"]), "wifi")
+    assert r["passed"] is False
+    assert r["unverified_fallbacks"] == ["eth0", "eth1"]
+
+
+def test_preflight_wifi_and_4g_are_never_treated_as_unverified():
+    """Only Ethernet has the internal-port ambiguity."""
+    r = network_write_preflight(_state_eth(["wifi", "4g"], active_key="4g"),
+                                "wifi")
+    assert r["unverified_fallbacks"] == []
+    assert r["passed"] is True
+
+
+def test_preflight_refusal_names_the_override_that_would_help():
+    r = network_write_preflight(_state_eth(["wifi", "eth0"]), "wifi")
+    assert "trust_ethernet=True" in r["reasons"][0]
+
+
+async def test_switch_to_wifi_threads_trust_ethernet_through(nosleep):
+    c = _SwitchClient(available=("wifi", "eth0"), active=("wifi", 3, "1.2.3.4"))
+    refused = await c.switch_to_wifi("home-net", "pw", confirm=True)
+    assert refused["preflight"]["passed"] is False
+    assert c.writes == []
+
+    c2 = _SwitchClient(available=("wifi", "eth0"), active=("wifi", 3, "1.2.3.4"))
+    ok = await c2.switch_to_wifi("home-net", "pw", confirm=True,
+                                 trust_ethernet=True,
+                                 timeout_s=30, poll_interval_s=5)
+    assert ok["preflight"]["passed"] is True
+    assert len(c2.writes) == 1
+
+
+def test_network_state_tags_the_shared_ethernet_link_flag():
+    """DEF-ETH-LINK-SHARED-FLAG — firmware reports one status for both ports."""
+    import inspect
+
+    from franklinwh_cloud.mixins import devices
+
+    src = inspect.getsource(devices.DevicesMixin.get_network_state)
+    assert "link_shared" in src
+    assert "SHARED_LINK_IDS" in src
+
+
+# ── DEF-WIFI-SWITCH-BREAKS-SPAN ──────────────────────────────────────
+
+def _switch_src():
+    import inspect
+
+    from franklinwh_cloud.mixins.network import NetworkMixin
+
+    return inspect.getsource(NetworkMixin.switch_to_wifi)
+
+
+def test_the_span_hazard_is_documented():
+    """SPAN needs Ethernet; moving to WiFi kills it with no error anywhere."""
+    src = _switch_src()
+    assert "SPAN" in src
+    assert "DEF-WIFI-SWITCH-BREAKS-SPAN" in src
+
+
+def test_the_docstring_admits_the_preflight_does_not_check():
+    """Claiming protection it does not provide would be worse than the gap."""
+    src = _switch_src()
+    assert "does **not** check for SPAN" in src
+
+
+def test_the_preflight_still_does_not_consult_span():
+    """Guard: if a SPAN check is added, this test must be updated deliberately.
+
+    Enforcement needs sign-off — it adds a call to a write path — so the
+    current state is documented-but-unenforced, and that should not change by
+    accident.
+    """
+    import inspect
+
+    from franklinwh_cloud.mixins import network
+
+    src = inspect.getsource(network.network_write_preflight)
+    assert "span" not in src.lower()
+
+
+# ── SPAN integration facts the docs must keep straight ───────────────
+
+def _span_doc():
+    import pathlib
+
+    return pathlib.Path("docs/SPAN_INTEGRATION.md").read_text()
+
+
+def test_span_doc_records_the_agate_as_modbus_client():
+    """Direction matters: our 502 probe tests the aGate, SPAN runs on the panel."""
+    d = _span_doc()
+    assert "aGate is the Modbus client" in d
+    assert "502" in d
+
+
+def test_span_doc_records_that_span_supplies_the_internet():
+    """Changes the hazard: that cable may carry the gateway's only uplink."""
+    assert "provides the aGate's internet connection" in _span_doc()
+
+
+def test_span_doc_warns_about_the_eth1_name_collision():
+    """SPAN's ETH-1 is a SPAN port. Matching numbers would hit the Debug port."""
+    d = _span_doc()
+    assert "not the aGate's Eth1" in d
+    assert "Debug" in d
+
+
+def test_span_doc_marks_wifi_reachability_as_unresolved():
+    """Whether SPAN survives a WiFi switch depends on topology — unestablished."""
+    d = _span_doc()
+    assert "INFERRED" in d
+    assert "point-to-point" in d
+
+
+def test_span_doc_distinguishes_our_502_probe_from_spans():
+    assert "not the same service" in _span_doc()
+
+
+# ── DEF-SPAN-FLAG-IS-CONFIG-NOT-DETECTION ────────────────────────────
+
+def test_span_docstring_no_longer_claims_detection():
+    """The flag is an installer setting; "detected" asserted a mechanism."""
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    src = inspect.getsource(DevicesMixin.get_span_setting)
+    assert "1 = SPAN panel detected" not in src
+    assert "not autodetection" in src.lower() or "not** autodetection" in src
+
+
+def test_span_docstring_says_zero_is_not_evidence_of_absence():
+    """A panel can be cabled and wired while the flag reads 0.
+
+    Whitespace is normalised first: the phrase wraps across lines in the
+    docstring, and asserting on the raw text would fail on formatting rather
+    than on meaning.
+    """
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    src = " ".join(inspect.getsource(DevicesMixin.get_span_setting).split())
+    assert "evidence that no SPAN panel is present" in src
+
+
+def test_overview_keeps_the_old_key_and_adds_an_honest_one():
+    """span_connected is read downstream; span_configured is what it means."""
+    import inspect
+
+    from franklinwh_cloud.mixins.devices import DevicesMixin
+
+    src = inspect.getsource(DevicesMixin.get_connectivity_overview)
+    assert '"span_connected"' in src
+    assert '"span_configured"' in src
+
+
+def test_diag_does_not_render_span_as_active():
+    """"Active" implied the panel was answering. It implies no such thing."""
+    import inspect
+
+    from franklinwh_cloud.cli_commands import diag
+
+    src = inspect.getsource(diag)
+    assert "● Active" not in src
+    assert "● Configured" in src
+
+
+# ── SPAN claims must stay consistent across every doc ────────────────
+
+def _read(path):
+    import pathlib
+
+    return pathlib.Path(path).read_text()
+
+
+def test_no_doc_still_says_span_panel_detected():
+    """"Detected" asserts autodetection; the flag is an installer setting."""
+    for path in ("docs/API_REFERENCE.md", "docs/API_COOKBOOK.md",
+                 "docs/SPAN_INTEGRATION.md"):
+        assert "SPAN panel detected" not in _read(path), path
+
+
+def test_api_reference_states_zero_is_not_absence():
+    d = " ".join(_read("docs/API_REFERENCE.md").split())
+    assert "not* evidence no panel is present" in d
+
+
+def test_cookbook_no_longer_conflates_the_two_modbus_services():
+    """502 on the aGate is not the SPAN link, which runs 502 on the panel."""
+    d = _read("docs/API_COOKBOOK.md")
+    assert "Modbus polling is available locally!" not in d
+    assert "ON THE AGATE" in d
+
+
+def test_the_modbus_gating_question_is_recorded_as_a_question():
+    """AP-14: speculation is welcome — labelled, with what would settle it."""
+    d = _read("docs/SPAN_INTEGRATION.md")
+    assert "ASSUMED" in d
+    assert "recorded as a question, not a finding" in d
+
+
+def test_the_strong_form_is_recorded_as_already_refuted():
+    """502 listens with spanFlag 0 on the reference gateway."""
+    d = _read("docs/SPAN_INTEGRATION.md")
+    assert "refutes the strong form" in d
+    assert "does **not** touch the narrower form" in d

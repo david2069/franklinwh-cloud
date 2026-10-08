@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-TOU-CURRENT-COUNT
  Date:    2026-04-14 00:24:08 AEST
  Branch:  feat/openapi-stubs
- Commit:  638328c (pre-commit)
+ Commit:  0d7e7b2 (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

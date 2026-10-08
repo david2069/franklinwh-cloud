@@ -15,6 +15,11 @@
 4. **No `ShouldAutoProceed: true`** on implementation plans — wait for user approval
 5. **Save test results** to `tests/results/` for traceability
 6. **API-affecting changes** (`set_tou_schedule`, `set_mode`, etc.) need user sign-off before commit
+7. **No unsourced claims about the API (AP-14)** — it is reverse-engineered, so
+   every field meaning is an inference. Verify against `hars/` before acting on
+   an existing comment; cite a sample count or document page, or label the claim
+   `INFERRED` / `ASSUMED`. Never assert a field is deprecated or defective —
+   that is indistinguishable from outside. See `.agents/policies/evidence_standard.md`
 
 ## Project Layout
 
@@ -33,5 +38,17 @@
 cd ~/dev/franklinwh-cloud
 python -m pytest tests/ -m "not live" -v --tb=short   # offline only; live tests change the real aGate
 ```
+
+Live tests are **opt-in** — `pyproject.toml` sets `addopts = "-m 'not live'"`, so the
+command above never touches the real cloud or aGate. To run them deliberately:
+
+```bash
+python -m pytest tests/ -m live -v          # authenticates for real; see AP-13
+```
+
+> ⚠️ `tests/test_live_mode.py::test_live_set_mode` issues real `set_mode()` writes that
+> change the physical aGate's operating mode. Never run `-m live` unattended.
+> The older `--ignore=tests/test_live.py` form was **not** a sufficient guard: it missed
+> the live tests in `test_live_mode.py` and `test_integration.py`.
 
 > Credentials live in `~/dev/franklinwh-cloud-test/franklinwh.ini`

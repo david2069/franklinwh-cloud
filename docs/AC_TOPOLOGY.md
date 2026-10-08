@@ -1,0 +1,171 @@
+# AC Topology: split-phase, single-phase, three-phase
+
+> **Short version:** the FranklinWH API models everything as **split-phase**
+> (L1 + L2), including single-phase installations where no L2 exists. On an
+> AU/NZ system, `L1` and `L2` are not two independent legs — treat
+> `gridLineVol` as the real measurement.
+
+Evidence tiers per [AP-14](../.agents/policies/evidence_standard.md). Vendor
+citations carry a version and date — see
+[VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md). A claim sourced to "the datasheet"
+without a revision ages silently, and FranklinWH revises these: the Ethernet
+port naming already reversed meaning between two of them.
+
+**Sources used on this page**
+
+| Claim | Source | Version / date |
+|---|---|---|
+| AU/NZ is `230/240 VAC L/N/PE`, 50 Hz | System Datasheet aGate X-01-AU & aPower X-02-AU | **V1.7, 2026-05-30** |
+| AU three-phase is 415 V | same | **V1.7, 2026-05-30** |
+| Observed `L1 119.7 / L2 119.7 / Line 239.4` at 49.93 Hz | live AU gateway, user report | **2026-09** |
+| US split-phase 120/240 V | market standard + US datasheets — **not observed**, see `DEF-AC-TOPOLOGY-NO-US-SAMPLE` | — |
+
+---
+
+## What the API reports
+
+Every AC reading arrives with L1/L2 companions, regardless of what is actually
+installed:
+
+| Concern | Fields |
+|---|---|
+| Grid voltage | `gridVol1`, `gridVol2`, `gridLineVol` |
+| Inverter | `invVolt1`, `invVolt2`, `invLineVol` |
+| Current | `gridCurr1`, `gridCurr2` |
+| BMS detail | `gridVoltAN`, `gridVoltBN`, `solarVoltAN`, `solarVoltBN` |
+
+The A/B and 1/2 naming is split-phase vocabulary: two 120 V legs in antiphase
+summing to 240 V, which is the North American residential standard.
+
+## On a single-phase system this is a modelling artifact
+
+**OBSERVED** on a live AU gateway (user report, 2026-09):
+
+```
+GRID VOLTAGES      INVERTER LINES      Frequency
+  L1   119.7 V       L1   119.6 V        49.93 Hz
+  L2   119.7 V       L2   119.6 V
+  Line 239.4 V       Line 239.4 V
+```
+
+**CONFIRMED** — *System Datasheet aGate X-01-AU & aPower X-02-AU*,
+**V1.7, issued 2026-05-30** (`DS-AGATE-AU-V1.7` in
+[VENDOR_DOCUMENTS.md](VENDOR_DOCUMENTS.md)): the AU/NZ system is
+**`230/240 VAC L/N/PE`, 50 Hz** — line, neutral and protective earth. There is
+no second active conductor.
+
+So the two "legs" are the API halving a single L-N measurement, or reporting
+the same measurement twice. `49.93 Hz` confirms this is a 50 Hz installation,
+not a US one. **`L1 = 119.7 V` does not mean the site has 120 V legs.**
+
+### Consequences
+
+- **Do not treat L1 and L2 as independent measurements** on single-phase. They
+  are not two circuits, and an alarm on "L2 low" has no physical referent.
+- **Do not sum them.** `gridLineVol` is already the L-N voltage. (This library
+  performs **no** L1/L2 arithmetic anywhere — verified — so nothing currently
+  double-counts. Keep it that way.)
+- **`gridLineVol` is tenths of a volt** — `2440` = 244.0 V. Handled in
+  `mixins/stats.py`.
+
+## The `three_phase` flag is ambiguous
+
+`isThreePhaseInstall` is a **boolean**, and `models.py` documents `0` as
+"split-phase". That is a US-centric reading: on an AU/NZ site, `0` means
+**single-phase**, which is a different topology.
+
+So the library can distinguish three-phase from everything-else, but **cannot
+distinguish split-phase from single-phase** from that flag alone. Today the
+gap is bridged by region:
+
+```python
+is_single_phase = not snap.flags.three_phase
+is_au = snap.site.country_id == 3
+if is_au and is_single_phase:   # ... treat as L-N, suppress L2
+```
+
+**ASSUMED:** that `country_id == 3` implies single-phase. It holds for AU/NZ
+residential and matches the datasheet, but it is an inference from market, not
+a reading from the device. A US 208 V commercial installation, or any market
+added later, would not be covered.
+
+## Current handling is inconsistent
+
+| Surface | Single-phase aware? |
+|---|---|
+| `discover` | **Yes** — labels "Voltage"/"Current", suppresses L2 for AU |
+| `diag` | Partial — says "Single Phase (L1)" but renders L1/L2 elsewhere |
+| `bms` | **No** — always "Grid Feed (L1/L2)", "Inv Bus (L1/L2)" |
+| `support` | **No** — emits `grid_voltage_l1_v` / `_l2_v` unconditionally |
+| `schema` | **No** — lists both with no topology note |
+
+`discover` got this right and the rest were never updated. Tracked as
+`DEF-AC-TOPOLOGY-INCONSISTENT`.
+
+## Guidance
+
+**Reading:** on single-phase, use `gridLineVol` / `invLineVol`. Ignore the
+per-leg values, or present them explicitly as an API artifact.
+
+**Building automations:** do not alarm on per-leg imbalance on single-phase —
+the legs are derived, so imbalance is meaningless. Frequency and line voltage
+are the meaningful grid-quality signals.
+
+**Three-phase:** `isThreePhaseInstall == 1`. How L1/L2/L3 map onto these
+two-leg fields is **not established** — no three-phase capture exists in the
+corpus. Do not assume L1/L2 carry two of the three phases.
+
+## The pattern: a split-phase-first data model
+
+Added 2026-09-15. **INFERRED** — this is a reading of accumulated evidence, not
+a vendor statement. It is recorded because it explains, in one shape, a set of
+defects filed separately.
+
+The API appears to model a **North American split-phase installation as the
+baseline**, with other markets expressed as that model constrained. Evidence,
+each item filed as its own ticket:
+
+| Observation | Ticket |
+|---|---|
+| Every AC reading is an L1/L2 pair, including where no second conductor exists | `DEF-AC-TOPOLOGY-INCONSISTENT` |
+| `isThreePhaseInstall` is a **boolean**, so single-phase and split-phase are indistinguishable | `DEF-PHASE-FLAG-AMBIGUOUS` |
+| `nemType: 0` maps to a **Californian** tariff scheme on an Australian gateway | `DEF-NEM-TYPE-ZERO-UNRESOLVED` |
+| US-utility programme flags (`sgipEntrance`, `bbEntrance`, `ja12Entrance`, `sdcpFlag`) are present on non-US gateways | `DEF-SDCP-MEANING-UNSOURCED` |
+| The CarSW/V2L channel reports live telemetry on AU hardware while the feature flag stays off | `DEF-AU-V2L-HARDCODED-FALSE` |
+| aHub is `120/240 Vac 60 Hz` — North America only — yet is the accessory carrying 4-8 circuits | `DEF-CATALOG-AHUB-CIRCUIT-COUNT` |
+| Vendor port naming differs by hardware revision, with the AU line on the oldest | `DEF-ETH-PORT-IDENTITY-UNCONFIRMED` |
+
+Documentation is localised per market — the AU guides speak in `230/240 VAC
+L/N/PE` at 50 Hz and never mention split-phase, while the US ones use
+`120/240`, `60 Hz`, `L1/L2` and `208 V`. **The wire protocol is not localised in
+the same way.** An AU gateway is handed the US field set and leaves the
+inapplicable parts null, zero, or — in the CarSW case — quietly populated.
+
+### Why this matters for callers
+
+1. **Prefer what the device reports over what the market implies.** The reverse
+   produced `DEF-AU-V2L-HARDCODED-FALSE`, where a regional assumption discarded
+   the gateway's own answer.
+2. **A field being present says nothing about it applying.** `sdcpFlag` exists
+   on gateways thousands of kilometres from San Diego.
+3. **A US-shaped default is not a neutral default.** `nemType: 0` → "NEM 2.0"
+   is confidently wrong outside California, and being non-empty made it harder
+   to notice than a blank would have been.
+
+### What would change this reading
+
+A vendor statement about the data model, or a US capture showing the same
+fields behaving differently there. **ASSUMED** until then: this is a pattern
+across observations, and a pattern is not a specification. Every individual
+ticket above stands on its own evidence and does not depend on this section
+being right.
+
+## Not established
+
+- Whether single-phase L1/L2 are a halved measurement or the same value
+  reported twice. The observed values are equal to 0.1 V, which is consistent
+  with either.
+- Whether any field distinguishes split-phase from single-phase directly,
+  removing the need for the region inference.
+- How three-phase sites populate these fields.
+- Whether 208 V US commercial installs behave as split-phase here.

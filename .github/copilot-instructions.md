@@ -10,7 +10,8 @@
    ```bash
    python3 -c "import ast; ast.parse(open('<file>').read()); print('OK')"
    ```
-3. **Run tests**: `python -m pytest tests/ -v --tb=short --ignore=tests/test_live.py`
+3. **Run tests**: `python -m pytest tests/ -v --tb=short` (live tests are deselected by
+   default via `addopts` in `pyproject.toml`; `-m live` opts in and writes to real hardware)
 4. **Save test results** to `tests/results/` for traceability
 5. **No auto-proceed** on implementation plans — wait for explicit user approval
 6. **API-affecting changes** (`set_tou_schedule`, `set_mode`, PCS settings) require user sign-off before commit

@@ -71,9 +71,17 @@ nav:
     - Sandbox Setup: SANDBOX_SETUP.md
   - Guides:
     - API Cookbook: API_COOKBOOK.md
+    - Time & Time Zones: TIME_AND_TIMEZONES.md
+    - AC Topology: AC_TOPOLOGY.md
+    - SPAN Integration: SPAN_INTEGRATION.md
+    - Capture Requests: CAPTURE_REQUESTS.md
+    - Vendor Documents: VENDOR_DOCUMENTS.md
+    - Smart Circuits & Generator Design: SMART_CIRCUITS_GENERATOR_DESIGN.md
     - API Reference: API_REFERENCE.md
     - API Endpoint Mapping: API_ENDPOINTS_MAPPING.md
     - MQTT Command Catalog: MQTT_CMD_CATALOG.md
+    - Network Connectivity & WiFi Switching: NETWORK_CONNECTIVITY_DESIGN.md
+    - Network Probe Test Plan (Remote-Safe): NETWORK_PROBE_TEST_PLAN.md
     - Operating Modes Guide: OPERATING_MODES_GUIDE.md
     - TOU Schedule Guide: TOU_SCHEDULE_GUIDE.md
     - TOU Tariff Reference: TOU_TARIFF_REFERENCE.md

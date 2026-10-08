@@ -39,6 +39,45 @@ def _parse_mqtt_json(raw, cmd_type: int):
         ) from e
 
 
+def _connectivity_signals(conn_status, net_info, stats):
+    """Resolve WiFi and cellular signal for :meth:`get_connectivity_overview`.
+
+    DEF-DIAG-SIGNAL-SOURCE. Both values previously came from
+    ``runtimeData`` (cmdType 203), which reads ``0.0`` on hardware where
+    cmdType 339 reports 72% WiFi and cmdType 317 reports ``operatorRSSI`` 22
+    with the SIM active.
+
+    The two transports are handled differently, because their units differ:
+
+    * **WiFi** — 339-extended ``WifiSignalStrength`` and
+      ``runtimeData.wifi_signal`` are *both* 0-100 percentages, so preferring
+      the extended payload is a same-unit swap. Falls back to runtimeData when
+      the firmware does not return the extended form.
+    * **4G** — ``runtimeData.signal`` is a 0-100 percentage but 317
+      ``operatorRSSI`` is a **0-52 vendor scale**. These are not
+      interchangeable, so the raw value is exposed under its own key rather
+      than overwriting a percentage with something that is not one. Writing 22
+      into ``mobile_signal`` would repeat the dBm-mislabelling class of defect,
+      not fix it.
+    """
+    wifi_pct = conn_status.get("WifiSignalStrength")
+    wifi_source = "339"
+    if wifi_pct is None:
+        wifi_pct = stats.current.wifi_signal
+        wifi_source = "203/runtimeData"
+
+    return {
+        # 0-100 %
+        "wifi_signal": wifi_pct,
+        "wifi_signal_source": wifi_source,
+        # 0-100 %, from runtimeData. Key and unit deliberately unchanged.
+        "mobile_signal": stats.current.mobile_signal,
+        # 0-52 vendor scale — NOT a percentage. See the note above.
+        "mobile_signal_raw": (net_info.get("operator") or {}).get("rssi"),
+        "mobile_signal_scale": "0-52",
+    }
+
+
 class DevicesMixin:
     """Accessory, device, and hardware information methods."""
 
@@ -282,8 +321,31 @@ class DevicesMixin:
             circuits[i] = SmartCircuitDetail.from_api_payload(raw_data, i)
         return circuits
 
-    async def _update_smart_circuit_config(self, circuit: int, updates: dict):
-        """Helper to perform a read-modify-write 311 cycle for a specific circuit."""
+    async def _update_smart_circuit_config(self, circuit: int, updates: dict,
+                                           msg_type: int = 1):
+        """Read-modify-write 311 cycle for one circuit.
+
+        ``msg_type`` selects what KIND of change this is, and the firmware
+        silently discards a write whose kind does not match its content.
+
+        CONFIRMED from 52 app writes in the corpus plus live tests 2026-09-27:
+
+        ===========  ==========  =========  ==================================
+        MsgType      Mode        schedule   meaning
+        ===========  ==========  =========  ==================================
+        1            0 or 1      disarmed   switch the circuit on/off
+        2            2           armed      edit the schedule / config
+        ===========  ==========  =========  ==================================
+
+        This method hardcoded ``1`` for every write, so **every config edit was
+        sent as a switch command and dropped** — silently, with ``result: 0``.
+        Switch writes always worked, which is why nothing noticed:
+        ``set_smart_switch_state(2, "ON")`` moves ``Sw2Mode`` 0->1 and
+        ``switch_2_state`` 0->1 live. DEF-311-CONFIG-WRITES-WRONG-MSGTYPE.
+
+        Callers changing ``Mode`` keep the default. Callers changing schedule
+        or SoC-cutoff fields must pass ``msg_type=2``.
+        """
         payload = await self.get_smart_circuits_info()
         payload["opt"] = 1
         payload.pop("modeChoose", None)
@@ -293,7 +355,7 @@ class DevicesMixin:
             if f"Sw{i}MsgType" in payload:
                 payload[f"Sw{i}MsgType"] = 0
 
-        payload[f"Sw{circuit}MsgType"] = 1
+        payload[f"Sw{circuit}MsgType"] = msg_type
         for k, v in updates.items():
             payload[k] = v
 
@@ -381,7 +443,7 @@ class DevicesMixin:
             f"Sw{circuit}AtuoEn": 1 if enable else 0,
             f"Sw{circuit}SocLowSet": int(soc)
         }
-        return await self._update_smart_circuit_config(circuit, updates)
+        return await self._update_smart_circuit_config(circuit, updates, msg_type=2)
 
     async def set_smart_circuit_load_limit(self, circuit: int, max_amps: int):
         """Configure the maximum amperage draw for a Smart Circuit.
@@ -398,7 +460,7 @@ class DevicesMixin:
             raise ValueError("Circuit must be 1, 2, or 3")
             
         updates = {f"Sw{circuit}LoadLimit": int(max_amps)}
-        return await self._update_smart_circuit_config(circuit, updates)
+        return await self._update_smart_circuit_config(circuit, updates, msg_type=2)
 
     async def get_device_info(self):
         """Get detailed device info for the current gateway.
@@ -464,13 +526,37 @@ class DevicesMixin:
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)
 
+    #: Highest Smart Circuit index the cmdType 353/354 payload could carry.
+    #: cmdType 311 has three hardcoded slots, so three is the ceiling for THIS
+    #: command. aHub supports 4-8 circuits and needs a different command
+    #: entirely — see FEAT-SC-V2-CLOUD-CAPABILITY.
+    _MAX_SC_INDEX = 3
+
     async def get_accessories_power_info(self, option=1):
         """Get accessories power and energy information.
 
         Parameters
         ----------
-        option : str
-            0 = raw, 1 = Smart Circuits, 2 = V2L, 3 = Generator
+        option : int | str
+            0 = raw, 1 = Smart Circuits, 2 = V2L, 3 = Generator.
+            Accepted as either type — the default was an ``int`` while every
+            branch compared against a ``str``, so the default call matched
+            nothing and silently returned the raw payload
+            (DEF-ACCESSORY-POWER-OPTION-TYPE).
+
+        Note
+        ----
+        Circuits are discovered from the keys the gateway actually returned,
+        not from a fixed range. The reference gateway is an AU two-circuit
+        system and sends only ``SW1*``/``SW2*``; a US three-circuit system
+        should send ``SW3*`` as well. **That is untested** — no three-circuit
+        capture exists — so absence of ``SW3Curr`` here is not evidence the
+        field does not exist elsewhere.
+
+        Values are returned **raw**. Scaling is established for frequency only
+        (``freq`` is tenths: 500 = 50.0 Hz, observed 493-500 across 177
+        samples); the voltage and current scales are not established, so no
+        divisor is applied. See docs/SMART_CIRCUITS_GENERATOR_DESIGN.md.
         """
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(MqttCmd.ACCESSORY_LOADS, dataArea)  # cmdType 353
@@ -478,29 +564,185 @@ class DevicesMixin:
         raw_data = json.loads(data)
         result = {}
 
-        if option == "0":
+        # Normalise so 1 and "1" behave identically.
+        opt = str(option) if option is not None else "1"
+
+        if opt == "0":
             return raw_data
-        if option == "1":
-            result["smart_circuits"] = [
-                {"id": 1, "current": raw_data.get("SW1Curr", 0), "voltage": raw_data.get("Sw1Volt", 0),
-                 "power": raw_data.get("SW1ExpPower", 0), "energy": raw_data.get("SW1ExpEnergy", 0)},
-                {"id": 2, "current": raw_data.get("SW2Curr", 0), "voltage": raw_data.get("Sw2Volt", 0),
-                 "power": raw_data.get("SW2ExpPower", 0), "energy": raw_data.get("SW2ExpEnergy", 0)},
-            ]
+        if opt == "1":
+            circuits = []
+            for i in range(1, self._MAX_SC_INDEX + 1):
+                # Note the inconsistent vendor casing: SW1Curr but Sw1Volt.
+                present = any(k in raw_data for k in
+                              (f"SW{i}Curr", f"Sw{i}Volt", f"SW{i}ExpPower",
+                               f"SW{i}ExpEnergy"))
+                if not present:
+                    continue
+                circuits.append({
+                    "id": i,
+                    "current": raw_data.get(f"SW{i}Curr", 0),
+                    "voltage": raw_data.get(f"Sw{i}Volt", 0),
+                    "power": raw_data.get(f"SW{i}ExpPower", 0),
+                    "energy": raw_data.get(f"SW{i}ExpEnergy", 0),
+                })
+            result["smart_circuits"] = circuits
             return result
-        if option == "2":
+        if opt == "2":
             result["v2l"] = {
                 "current": raw_data.get("CarSWCurr", 0), "power": raw_data.get("CarSWPower", 0),
                 "imp_energy": raw_data.get("CarSWImpEnergy", 0), "exp_energy": raw_data.get("CarSWExpEnergy", 0),
             }
             return result
-        if option == "3":
+        if opt == "3":
             result["generator"] = {
                 "power": raw_data.get("genpowerGen", 0), "voltage": raw_data.get("volt", 0),
                 "current": raw_data.get("curr", 0), "frequency": raw_data.get("freq", 0),
             }
             return result
         return raw_data
+
+    async def get_smart_circuit_detail(self, circuit=None):
+        """Per-circuit configuration, schedule **and** live metrics in one view.
+
+        Step B of ``docs/SMART_CIRCUITS_GENERATOR_DESIGN.md``. Composes two
+        commands that have always had to be called separately:
+
+        * **cmdType 311** — mode, on/off, SoC cutoff, load limit, schedule
+        * **cmdType 353/354** — current, voltage, power, energy
+
+        Parameters
+        ----------
+        circuit : int | None
+            Restrict to one circuit (1-3). ``None`` returns every circuit the
+            gateway reports.
+
+        Returns
+        -------
+        dict
+            ``{"circuits": [...], "source": {...}}``. Each circuit carries
+            ``config``, ``schedule`` and ``metrics`` blocks.
+
+        Note
+        ----
+        **Metrics are raw.** Only ``freq`` has an established divisor; voltage
+        and current scales are not established, so nothing is divided and
+        ``metrics.scale`` says so (AP-14).
+
+        The schedule's four ``SwNTime`` entries are returned as a positional
+        list, not as start/end pairs: whether they are two windows or four
+        independent slots is **not established** — every captured sample is the
+        unconfigured default. ``raw_time_set`` is passed through undeciphered
+        (DEF-SC-TIMESET-UNDECIPHERED).
+
+        A circuit present in config but absent from the metrics payload gets
+        ``metrics: None`` rather than zeros, so "not reported" stays
+        distinguishable from "reading zero".
+        """
+        import asyncio as _asyncio
+
+        # Sequential, not gathered: get_bms_info documents that the MQTT layer
+        # cannot multiplex simultaneous requests.
+        config = await self.get_smart_circuits()
+        try:
+            power = await self.get_accessories_power_info(1)
+            metrics_by_id = {m["id"]: m
+                             for m in (power.get("smart_circuits") or [])}
+            metrics_ok = True
+        except Exception as e:
+            logger.warning(f"get_smart_circuit_detail: metrics unavailable: {e}")
+            metrics_by_id, metrics_ok = {}, False
+
+        wanted = [circuit] if circuit is not None else sorted(config)
+        circuits = []
+        for cid in wanted:
+            detail = config.get(cid)
+            if detail is None:
+                continue
+            m = metrics_by_id.get(cid)
+            circuits.append({
+                "id": cid,
+                "name": detail.name,
+                "config": {
+                    "mode": detail.mode,
+                    "is_on": detail.is_on,
+                    "soc_cutoff_enabled": detail.soc_cutoff_enabled,
+                    "soc_cutoff_limit": detail.soc_cutoff_limit,
+                    "load_limit": detail.load_limit,
+                    "pro_load_type": detail.pro_load_type,
+                },
+                "schedule": {
+                    "slots": detail.time_schedules,
+                    "enabled": detail.time_enabled,
+                    "raw_time_set": detail.time_set,
+                    "pairing": "unverified",
+                },
+                "metrics": None if m is None else {
+                    "current": m["current"],
+                    "voltage": m["voltage"],
+                    "power": m["power"],
+                    "energy": m["energy"],
+                    "scale": "raw — only freq has an established divisor",
+                },
+            })
+
+        return {
+            "circuits": circuits,
+            "source": {"config_cmd": 311, "metrics_cmd": 353,
+                       "metrics_available": metrics_ok},
+        }
+
+    async def get_generator_detail(self):
+        """Generator configuration and live metrics in one view.
+
+        Step C of ``docs/SMART_CIRCUITS_GENERATOR_DESIGN.md``.
+
+        Returns
+        -------
+        dict
+            ``{"config": {...}, "metrics": {...} | None, "source": {...}}``
+
+        Warning
+        -------
+        The generator fields in the cmdType 353/354 payload are **unprefixed**
+        — ``power``, ``curr``, ``volt``, ``freq`` — where circuits use
+        ``SW``/``Sw`` and V2L uses ``CarSW``. They can only be attributed to
+        the generator **by position in the payload**, not by name. That
+        attribution is INFERRED, not confirmed, and ``metrics.attribution``
+        records it so a reader is not misled.
+
+        ``freq`` is tenths (500 = 50.0 Hz, CONFIRMED across 177 samples); the
+        other scales are not established and are passed through raw.
+        """
+        try:
+            config = await self.get_generator_info()
+        except Exception as e:
+            logger.warning(f"get_generator_detail: config unavailable: {e}")
+            config = {}
+
+        try:
+            power = await self.get_accessories_power_info(3)
+            metrics = (power.get("generator") or {}) or None
+        except Exception as e:
+            logger.warning(f"get_generator_detail: metrics unavailable: {e}")
+            metrics = None
+
+        if metrics is not None:
+            metrics = {
+                **metrics,
+                "frequency_hz": (round(metrics["frequency"] / 10, 1)
+                                 if isinstance(metrics.get("frequency"), (int, float))
+                                 else None),
+                "scale": "raw except frequency_hz; voltage/current scales unestablished",
+                "attribution": ("INFERRED — these fields are unprefixed in the "
+                                "353/354 payload and attributed to the generator "
+                                "by position, not by name"),
+            }
+
+        return {
+            "config": config,
+            "metrics": metrics,
+            "source": {"config_cmd": 311, "metrics_cmd": 353},
+        }
 
     async def get_span_settings(self, requestType):
         """Get SPAN Panel settings associated with this aGate.
@@ -523,12 +765,28 @@ class DevicesMixin:
         return data["result"]
 
     async def get_span_setting(self):
-        """Check if this aGate has a SPAN panel detected/configured.
+        """Has a SPAN panel integration been **configured** on this aGate?
 
         Returns
         -------
         dict
-            {"spanFlag": 0|1} — 0 = no SPAN panel, 1 = SPAN panel detected
+            ``{"spanFlag": 0|1}``
+
+            * ``1`` — the SPAN integration has been configured.
+            * ``0`` — **not configured.** This is *not* evidence that no SPAN
+              panel is present.
+
+        Note
+        ----
+        The flag reflects a deliberate installer action, **not autodetection**.
+        Per SPAN's app note the integration is enabled on an *installer*
+        account via Settings → Modbus → SPAN Panel, entering the panel's IP and
+        port 502. A panel can therefore be physically cabled and wired while
+        this reads 0.
+
+        The earlier wording here said "detected", which asserted a discovery
+        mechanism the evidence does not show. See ``docs/SPAN_INTEGRATION.md``
+        and DEF-SPAN-FLAG-IS-CONFIG-NOT-DETECTION.
         """
         url = self.url_base + "hes-gateway/terminal/span/getSpanSetting"
         data = await self._get(url)
@@ -545,18 +803,422 @@ class DevicesMixin:
         return data["result"]
 
     async def set_generator_mode(self, mode):
-        """Set generator operating mode.
+        """Issue a generator **manual switch** command.
+
+        .. warning::
+            **MISNAMED — this does not set the operating mode.**
+            DEF-GEN-MODE-WRITES-MANUSW.
+
+            It posts ``manuSw``, and correlating all 35 captured
+            ``updateIotGenerator`` writes against the surrounding reads shows
+            ``manuSw`` and ``mode`` are different controls:
+
+            * ``{"mode": N}`` writes moved the **mode** field and nothing else
+              (4 samples, 3-7 s to the confirming read). That is the mode
+              setter.
+            * A ``{"manuSw": 2}`` write left ``manuSw`` **unchanged at 0** and
+              moved **genStat 1→2** (Running → Cooldown). So ``manuSw`` is a
+              manual start/stop command acting on generator state.
+
+            The name and the old docstring ("1 = Auto-schedule, 2 = Manual")
+            describe ``mode``; the payload sends ``manuSw``. Behaviour is left
+            unchanged because correcting it alters what an existing public
+            method does, which needs sign-off (CLAUDE.md rule 6).
+
+            **ASSUMED:** the value→effect mapping below. Only one clean
+            ``manuSw`` sample exists.
 
         Parameters
         ----------
         mode : int
-            1 = Auto-schedule, 2 = Manual
+            Sent as ``manuSw``. Observed: ``2`` while running preceded a
+            transition to Cooldown; ``1`` was also sent once. What each value
+            commands is **not established**.
         """
         payload = {"gatewayId": self.gateway, "manuSw": mode, "opt": 1}
         url = self.url_base + "hes-gateway/terminal/updateIotGenerator"
         params = {"gatewayId": self.gateway}
         data = await self._post(url, params=params, payload=payload)
         return data["result"]
+
+    #: Generator charge windows exposed by ``selectIotGenerator``.
+    GENERATOR_CHARGE_WINDOWS = 3
+
+    @staticmethod
+    def _parse_hhmm(value, label):
+        """Validate an ``"HH:MM"`` string and return minutes past midnight."""
+        if not isinstance(value, str) or len(value) != 5 or value[2] != ":":
+            raise ValueError(f"{label} must be 'HH:MM', got {value!r}")
+        try:
+            h, m = int(value[:2]), int(value[3:])
+        except ValueError:
+            raise ValueError(f"{label} must be 'HH:MM', got {value!r}") from None
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError(f"{label} out of range: {value!r}")
+        return h * 60 + m
+
+    SMART_CIRCUIT_WINDOWS = 2        # "Only two time slots can be scheduled" — app
+    SMART_CIRCUIT_SLOTS = 4          # two start/end pairs
+
+    #: A slot the firmware has never had written to it.
+    _SC_PLACEHOLDER_DATES = ("2000-01-01", "1970-01-01")
+
+    async def set_smart_circuit_schedule(self, circuit, windows, *,
+                                         cycle_days=None, base_date=None,
+                                         confirm=False, verify=True):
+        """Set a Smart Circuit's time schedule — up to two on/off windows.
+
+        The four ``SwNTime`` slots are **two start/end pairs**, paired by
+        ``SwNTimeSet = [1, 0, 1, 0]`` (slot 0 opens, slot 1 closes, slot 2
+        opens, slot 3 closes) and armed individually by ``SwNTimeEn``. The
+        app enforces the same limit: *"Only two time slots can be scheduled"*.
+
+        Parameters
+        ----------
+        circuit : int
+            1, 2 or 3.
+        windows : list[dict]
+            Up to two, each ``{"start": "HH:MM", "end": "HH:MM",
+            "enabled": bool}``. ``enabled`` defaults to True. Fewer than two
+            disarms the remainder; an empty list disarms the whole schedule
+            **without discarding the configured times**, which is what the app
+            appears to do when a schedule is switched off.
+        cycle_days : int, optional
+            ``SwNFreq`` — the repeat interval in **days**. ``0`` means
+            "Once only" (CONFIRMED: the app showed *Cycle interval: Once only*
+            with ``Sw1Freq = 0``, and *60 days* with ``Sw1Freq = 60``).
+            Left unchanged when omitted.
+        base_date : str, optional
+            ``"YYYY-MM-DD"`` for the date half of each slot. Execution date is
+            ``base_date + k x cycle_days`` (CONFIRMED: 2026-06-19 + 2x60 =
+            2026-10-17, matching the app exactly). When omitted, each slot
+            **keeps its existing date** and only the time is changed.
+        confirm : bool
+            Must be True — this determines when a circuit energises.
+        verify : bool
+            Read the schedule back and compare (default True).
+
+        Returns
+        -------
+        dict
+            ``{ack, verified, mismatches, note}``. **``verified`` is the field
+            that matters** — ``ack`` only means the request was accepted.
+
+        .. warning::
+            **The gateway accepts a schedule it will not store.** An ack is not
+            a confirmation. ``verified=None`` means the check could not run,
+            which is not the same as passing. DEF-WRITES-NOT-VERIFIED.
+
+        Note
+        ----
+        **Times are gateway-local wall clock**, not the caller's, and the date
+        halves are gateway-local dates. Nothing is converted — see
+        ``docs/TIME_AND_TIMEZONES.md``.
+
+        **No date is invented.** With ``cycle_days=0`` the base date *is* the
+        execution date, so a stale one means the schedule never fires. This
+        method will not guess "today": the gateway's own date is what matters
+        and the client's may differ. A slot whose existing date is a factory
+        placeholder therefore requires an explicit ``base_date`` rather than
+        being silently filled in.
+
+        **``Mode`` and ``ProLoad`` are not touched.** Arming a schedule is
+        separate from switching the circuit, and the setters that do write
+        those two disagree with the hardware — see
+        DEF-SC-PROLOAD-WRITTEN-INVERTED. Use :meth:`set_smart_circuit_state`
+        for the switch.
+
+        Overlapping enabled windows and windows spanning midnight are
+        **rejected**, matching :meth:`set_generator_charge_schedule`: neither
+        has been observed, and the app does not permit the former.
+        """
+        if circuit not in range(1, self._MAX_SC_INDEX + 1):
+            raise ValueError(f"Circuit must be 1..{self._MAX_SC_INDEX}")
+        if not confirm:
+            raise ValueError(
+                "set_smart_circuit_schedule() determines when a circuit "
+                "energises. Pass confirm=True."
+            )
+
+        windows = list(windows or [])
+        if len(windows) > self.SMART_CIRCUIT_WINDOWS:
+            raise ValueError(
+                f"a circuit supports at most {self.SMART_CIRCUIT_WINDOWS} "
+                f"windows, got {len(windows)}"
+            )
+        if cycle_days is not None:
+            if not isinstance(cycle_days, int) or isinstance(cycle_days, bool) or cycle_days < 0:
+                raise ValueError(f"cycle_days must be a non-negative int, got {cycle_days!r}")
+        if base_date is not None:
+            self._parse_ymd(base_date, "base_date")
+
+        spans = []
+        for i, w in enumerate(windows, start=1):
+            if not w.get("enabled", True):
+                continue
+            start = self._parse_hhmm(w.get("start"), f"window {i} start")
+            end = self._parse_hhmm(w.get("end"), f"window {i} end")
+            if start >= end:
+                raise ValueError(
+                    f"window {i}: start {w['start']} must be before end "
+                    f"{w['end']}. Windows spanning midnight have never been "
+                    f"observed and are not supported."
+                )
+            spans.append((start, end, i))
+
+        spans.sort()
+        for (s1, e1, i1), (s2, e2, i2) in zip(spans, spans[1:]):
+            if s2 < e1:
+                raise ValueError(
+                    f"windows {i1} and {i2} overlap; the official app does not "
+                    f"permit this"
+                )
+
+        # Read first: the date half of each slot is preserved unless the caller
+        # supplied one, and 311 is a whole-block write regardless.
+        current = await self.get_smart_circuits_info() or {}
+        existing = list(current.get(f"Sw{circuit}Time") or [])
+        existing += [""] * (self.SMART_CIRCUIT_SLOTS - len(existing))
+
+        times, enabled = [], []
+        for i in range(self.SMART_CIRCUIT_WINDOWS):
+            w = windows[i] if i < len(windows) else None
+            on = bool(w and w.get("enabled", True))
+            for half, key in ((0, "start"), (1, "end")):
+                slot = i * 2 + half
+                date = self._sc_slot_date(existing[slot], base_date, slot)
+                hhmm = w[key] if w else self._sc_slot_time(existing[slot])
+                times.append(f"{date} {hhmm}")
+                enabled.append(1 if on else 0)
+
+        updates = {
+            f"Sw{circuit}Time": times,
+            f"Sw{circuit}TimeEn": enabled,
+            # Pairing is fixed: open, close, open, close. Observed [1,0,1,0]
+            # on every capture and on live hardware.
+            f"Sw{circuit}TimeSet": [1, 0, 1, 0],
+        }
+        if cycle_days is not None:
+            updates[f"Sw{circuit}Freq"] = cycle_days
+
+        logger.info(
+            "set_smart_circuit_schedule: circuit %d, %d armed window(s)%s",
+            circuit, sum(1 for e in enabled[::2] if e),
+            f", cycle {cycle_days}d" if cycle_days is not None else "",
+        )
+        ack = await self._update_smart_circuit_config(circuit, updates, msg_type=2)
+
+        if not verify:
+            return {"ack": ack, "verified": None, "mismatches": [],
+                    "note": "verify=False — the ack alone does not mean stored"}
+
+        try:
+            stored = await self.get_smart_circuits_info() or {}
+        except Exception as e:
+            logger.warning(f"set_smart_circuit_schedule: read-back failed: {e}")
+            return {"ack": ack, "verified": None, "mismatches": [],
+                    "note": f"read-back failed: {e}"}
+
+        mismatches = []
+        for key, want in updates.items():
+            got = stored.get(key)
+            if isinstance(want, list):
+                got_list = list(got or [])
+                if [str(x) for x in want] != [str(x) for x in got_list]:
+                    mismatches.append({"field": key, "sent": want, "stored": got})
+            elif str(want) != str(got):
+                mismatches.append({"field": key, "sent": want, "stored": got})
+
+        return {
+            "ack": ack,
+            "verified": not mismatches,
+            "mismatches": mismatches,
+            "note": ("stored as sent" if not mismatches else
+                     "the gateway accepted the write but did not store these "
+                     "values — the schedule is NOT in effect"),
+        }
+
+    @staticmethod
+    def _parse_ymd(value, label):
+        """Validate a ``"YYYY-MM-DD"`` string; return it unchanged."""
+        import datetime as _dt
+        if not isinstance(value, str):
+            raise ValueError(f"{label} must be 'YYYY-MM-DD', got {value!r}")
+        try:
+            _dt.date.fromisoformat(value)
+        except ValueError:
+            raise ValueError(f"{label} must be 'YYYY-MM-DD', got {value!r}") from None
+        return value
+
+    @classmethod
+    def _sc_slot_date(cls, existing, base_date, slot):
+        """The date half for one slot — the caller's, or the one already there.
+
+        Never invents one. A placeholder date is the firmware's "never written"
+        marker, and with ``cycle_days=0`` the base date *is* the execution date,
+        so guessing would produce a schedule that silently never fires.
+        """
+        if base_date:
+            return base_date
+        head = existing.split(" ", 1)[0] if isinstance(existing, str) and " " in existing else ""
+        if head and not head.startswith(cls._SC_PLACEHOLDER_DATES):
+            return head
+        raise ValueError(
+            f"slot {slot} has no usable date ({existing!r}); pass base_date="
+            f"'YYYY-MM-DD'. The gateway's own date is what schedules run "
+            f"against and it is not assumed here."
+        )
+
+    @staticmethod
+    def _sc_slot_time(existing):
+        """The time half of a slot being left alone, for a disarmed window."""
+        if isinstance(existing, str) and " " in existing:
+            tail = existing.split(" ", 1)[1][:5]
+            if len(tail) == 5 and tail[2] == ":":
+                return tail
+        return "00:00"
+
+    async def set_generator_charge_schedule(self, windows, *, confirm=False,
+                                            verify=True):
+        """Set the generator charge schedule — up to three daily windows.
+
+        The generator runs to charge the batteries inside these windows.
+        Mirrors the write captured from the official app::
+
+            {"charge1En": 1, "charge1StartTime": "11:00",
+             "charge1EndTime": "23:59", "charge2En": 0, "charge3En": 0,
+             "opt": 1}
+
+        Parameters
+        ----------
+        windows : list[dict]
+            Up to three, each ``{"start": "HH:MM", "end": "HH:MM",
+            "enabled": bool}``. ``enabled`` defaults to True. Fewer than three
+            disables the remainder. An empty list disables all.
+        confirm : bool
+            Must be True — this determines when an engine runs.
+
+        verify : bool
+            Read the schedule back and compare (default True).
+
+        Returns
+        -------
+        dict
+            ``{ack, verified, mismatches, note}``. **``verified`` is the field
+            that matters** — ``ack`` only means the request was accepted.
+
+        .. warning::
+            **The gateway accepts a schedule it will not store.** An ack is not
+            a confirmation: an invalid or rejected write returns success and is
+            silently discarded. Only a read-back establishes what is actually in
+            effect. ``verified=None`` means the check could not run, which is
+            not the same as passing. DEF-WRITES-NOT-VERIFIED.
+
+        Note
+        ----
+        **Times are gateway-local wall clock**, not the caller's. A gateway in
+        another time zone runs these at ITS local time — see
+        ``docs/TIME_AND_TIMEZONES.md``. Nothing is converted here.
+
+        Disabled windows are sent as ``chargeNEn: 0`` with **no times**,
+        exactly as the app does. Whether omitting the times clears them is not
+        established; mirroring the captured shape is the safer choice.
+
+        Overlapping enabled windows are **rejected**. The official app does not
+        let a user enter them, which suggests the backend may not validate —
+        so this does. Windows spanning midnight (``start >= end``) are also
+        rejected: no such window has been observed, and the behaviour is
+        unverified.
+        """
+        if not confirm:
+            raise ValueError(
+                "set_generator_charge_schedule() determines when the generator "
+                "runs. Pass confirm=True."
+            )
+        windows = list(windows or [])
+        if len(windows) > self.GENERATOR_CHARGE_WINDOWS:
+            raise ValueError(
+                f"at most {self.GENERATOR_CHARGE_WINDOWS} windows, got {len(windows)}"
+            )
+
+        spans = []
+        for i, w in enumerate(windows, start=1):
+            if not w.get("enabled", True):
+                continue
+            start = self._parse_hhmm(w.get("start"), f"window {i} start")
+            end = self._parse_hhmm(w.get("end"), f"window {i} end")
+            if start >= end:
+                raise ValueError(
+                    f"window {i}: start {w['start']} must be before end "
+                    f"{w['end']}. Windows spanning midnight have never been "
+                    f"observed and are not supported."
+                )
+            spans.append((start, end, i))
+
+        # The app prevents overlaps in its UI, so the backend may accept them
+        # silently and behave unpredictably. Reject rather than find out.
+        spans.sort()
+        for (s1, e1, i1), (s2, e2, i2) in zip(spans, spans[1:]):
+            if s2 < e1:
+                raise ValueError(
+                    f"windows {i1} and {i2} overlap; the official app does not "
+                    f"permit this"
+                )
+
+        payload = {"gatewayId": self.gateway}
+        for i in range(1, self.GENERATOR_CHARGE_WINDOWS + 1):
+            w = windows[i - 1] if i <= len(windows) else None
+            enabled = bool(w and w.get("enabled", True))
+            payload[f"charge{i}En"] = 1 if enabled else 0
+            if enabled:
+                payload[f"charge{i}StartTime"] = w["start"]
+                payload[f"charge{i}EndTime"] = w["end"]
+        payload["opt"] = 1
+
+        logger.info(
+            "set_generator_charge_schedule: %d enabled window(s)",
+            sum(1 for i in range(1, self.GENERATOR_CHARGE_WINDOWS + 1)
+                if payload[f"charge{i}En"]),
+        )
+        url = self.url_base + "hes-gateway/terminal/updateIotGenerator"
+        params = {"gatewayId": self.gateway}
+        data = await self._post(url, params=params, payload=payload)
+        ack = data.get("result", data)
+
+        if not verify:
+            return {"ack": ack, "verified": None,
+                    "note": "verify=False — the ack alone does not mean stored"}
+
+        # The gateway ACCEPTS a rejected schedule and simply does not store it,
+        # so the ack proves nothing. Read back and compare.
+        try:
+            stored = await self.get_generator_info() or {}
+        except Exception as e:
+            logger.warning(f"set_generator_charge_schedule: read-back failed: {e}")
+            return {"ack": ack, "verified": None,
+                    "note": f"read-back failed: {e}"}
+
+        mismatches = []
+        for i in range(1, self.GENERATOR_CHARGE_WINDOWS + 1):
+            for key in (f"charge{i}En", f"charge{i}StartTime", f"charge{i}EndTime"):
+                if key not in payload:
+                    continue      # disabled windows carry no times, by design
+                want, got = payload[key], stored.get(key)
+                # En is 0/1 on the wire and may read back as bool or int.
+                if key.endswith("En"):
+                    if bool(want) != bool(got):
+                        mismatches.append({"field": key, "sent": want, "stored": got})
+                elif str(want) != str(got):
+                    mismatches.append({"field": key, "sent": want, "stored": got})
+
+        return {
+            "ack": ack,
+            "verified": not mismatches,
+            "mismatches": mismatches,
+            "note": ("stored as sent" if not mismatches else
+                     "the gateway accepted the write but did not store these "
+                     "values — the schedule is NOT in effect"),
+        }
 
     async def set_v2l_mode(self, enable: bool) -> dict:
         """Enable or disable V2L (Vehicle-to-Load) output via the CarSW port.
@@ -567,6 +1229,15 @@ class DevicesMixin:
             Based on analysis of the cmdType 311 Smart Circuit payload structure:
 
             - On US V1 Smart Circuits + Generator Module, Sw3 is the CarSW (V2L) port.
+
+            **Topology, per user report 2026-09-15 (not vendor-confirmed):** a US
+            unit has three circuits; circuits 1 and 2 are 110/120 V and can be
+            **merged into a single 240 V circuit** (``SwMerge``). Where a
+            Generator Module is fitted, that merged pair can serve as the **V2L
+            input in place of the normal generator port**. That makes V2L partly
+            an input-side topology choice, not only an output toggle — so the
+            assumption above, that V2L maps to a single ``Sw3Mode`` write, may
+            describe just one arrangement. See DEF-V2L-MERGE-TOPOLOGY.
             - The hypothesis is that toggling V2L maps to ``Sw3Mode = 1 (ON) / 0 (OFF)``
               via the same cmdType 311 write path used for Smart Circuit control.
             - A separate dedicated V2L endpoint (e.g. ``updateV2l``) may exist but has
@@ -763,7 +1434,7 @@ class DevicesMixin:
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 335)
 
-    async def scan_wifi_networks_poll(self, max_attempts=3, delay_s=2.0):
+    async def scan_wifi_networks_poll(self, max_attempts=6, delay_s=5.0):
         """Poll for WiFi scan results until complete or max attempts reached.
 
         Calls scan_wifi_networks() repeatedly, waiting between attempts.
@@ -774,9 +1445,16 @@ class DevicesMixin:
         Parameters
         ----------
         max_attempts : int
-            Maximum number of scan attempts (default: 3).
+            Maximum number of scan attempts (default: 6).
         delay_s : float
-            Seconds to wait between attempts (default: 2.0).
+            Seconds to wait between attempts (default: 5.0).
+
+        Note
+        ----
+        The previous defaults (3 attempts x 2.0 s = 6 s ceiling) were shorter
+        than the hardware needs and reported failure on healthy gateways. In the
+        HAR corpus the mobile app waits ~11-12 s between a pending scan and a
+        populated result, so the ceiling is now 30 s.
 
         Returns
         -------
@@ -805,10 +1483,29 @@ class DevicesMixin:
         Returns
         -------
         dict
-            Connection status:
-            - routerStatus: 0 = disconnected, 1 = connected
+            The raw parsed cmdType 340 payload. Always present:
+
+            - routerStatus: local link state. **NOT a boolean** — values 0, 1
+              and 4 have all been observed. Semantics unresolved; do not coerce
+              to bool. Treat as an opaque code.
             - netStatus: 0 = no internet, 1 = internet available
             - awsStatus: 0 = offline, 1 = connected to AWS cloud
+
+            Newer gateway firmware additionally returns (absent on older units,
+            so always use ``.get()``):
+
+            - EthConnectRouterStatus: Ethernet link to router (0/1)
+            - wifiConnectRouterStatus: WiFi link to router (0/1)
+            - 4GConnectBSStatus: cellular base-station registration (0/1)
+            - WifiSignalStrength: 0-100 percentage
+            - 4GSignalStrength: vendor scale, observed 0-52 (NOT a percentage)
+            - currentNetType: active transport, see ``NETWORK_TYPES``
+
+        Note
+        ----
+        These extended fields are firmware-dependent, not app-version dependent
+        — they appear in captures as early as 2025-05 and are absent from some
+        later ones. ``get_network_state()`` handles the fallback for you.
         """
         dataArea = {"opt": 0}
         wire_payload = self._build_payload(MqttCmd.CLOUD_CONNECTIVITY, dataArea)  # cmdType 339
@@ -834,6 +1531,410 @@ class DevicesMixin:
         raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return _parse_mqtt_json(raw, 341)
 
+    async def scan_wifi_networks_ranked(
+        self,
+        *,
+        scan_time: int = 10,
+        min_rssi: int = 0,
+        dedupe: bool = True,
+        max_attempts: int = 6,
+        delay_s: float = 5.0,
+        usable_rssi: int = 30,
+    ):
+        """Scan for WiFi networks and return them ranked by signal strength.
+
+        Wraps the asynchronous cmdType 335 scan and normalises the result into a
+        sorted, deduplicated list suitable for presenting to a user.
+
+        Parameters
+        ----------
+        scan_time : int
+            Value for ``wifi_ScanTime``. Both 0 and 10 are observed in the
+            mobile app; 10 yields more networks (default: 10).
+        min_rssi : int
+            Drop networks below this signal percentage (default: 0, keep all).
+        dedupe : bool
+            Collapse repeated SSIDs, keeping the strongest (default: True).
+        max_attempts, delay_s
+            Passed to the underlying poll.
+        usable_rssi : int
+            Threshold at or above which a network is marked ``usable``
+            (default: 30).
+
+        Returns
+        -------
+        dict
+            ``{"scan_seconds", "networks": [...], "warnings": [...]}`` where each
+            network is ``{ssid, signal_pct, signal_bars, secured, seen_count,
+            usable}``, sorted by ``signal_pct`` descending.
+
+        Note
+        ----
+        ``wifi_RSSI`` is a 0-100 quality percentage, not dBm — verified across
+        169 samples in the HAR corpus (range 8-100, always even, never
+        negative).
+
+        The scan returns no BSSID, band or channel, so individual access points
+        in a mesh cannot be distinguished or targeted. Repeated SSIDs are
+        therefore collapsed rather than listed separately.
+
+        Warning
+        -------
+        **The aGate can only join 2.4 GHz networks** (FranklinWH System
+        Installation Guide p.59, Method 2), but the scan discovers both bands
+        and reports no band field. So a 5 GHz-only SSID can be returned here at
+        full signal, written by :meth:`switch_to_wifi`, accepted by the gateway
+        — and never associate. It is indistinguishable in advance from a
+        correct network, and indistinguishable afterwards from a wrong
+        password, because neither surfaces an error. A ``warnings`` entry says
+        so on every scan.
+        """
+        dataArea = {"wifi_ScanTime": scan_time}
+        result = None
+        for attempt in range(max_attempts):
+            wire_payload = self._build_payload(MqttCmd.WIFI_SCAN, dataArea)  # cmdType 335
+            raw = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
+            result = _parse_mqtt_json(raw, 335)
+            if result.get("result") == 0:
+                logger.debug(f"WiFi scan complete on attempt {attempt + 1}")
+                break
+            if attempt < max_attempts - 1:
+                logger.debug(
+                    f"WiFi scan pending (attempt {attempt + 1}/{max_attempts}), "
+                    f"retrying in {delay_s}s..."
+                )
+                await asyncio.sleep(delay_s)
+        else:
+            logger.warning(f"WiFi scan did not complete after {max_attempts} attempts")
+
+        warnings_out = []
+        raw_list = (result or {}).get("wifi_Info") or []
+        if not isinstance(raw_list, list):
+            raw_list = []
+        if (result or {}).get("result") != 0:
+            warnings_out.append(
+                f"Scan did not complete after {max_attempts} attempts "
+                f"(last reason={(result or {}).get('reason')})"
+            )
+
+        best = {}
+        seen_counts = {}
+        for entry in raw_list:
+            if not isinstance(entry, dict):
+                continue
+            ssid = entry.get("wifi_SSID")
+            if ssid is None:
+                continue
+            rssi = entry.get("wifi_RSSI") or 0
+            seen_counts[ssid] = seen_counts.get(ssid, 0) + 1
+            if not dedupe:
+                best.setdefault(len(best), (ssid, rssi, entry.get("wifi_Safety")))
+            elif ssid not in best or rssi > best[ssid][1]:
+                best[ssid] = (ssid, rssi, entry.get("wifi_Safety"))
+
+        collapsed = sum(c - 1 for c in seen_counts.values() if c > 1)
+        if dedupe and collapsed:
+            warnings_out.append(
+                f"{collapsed} duplicate SSID entries collapsed (mesh or dual-band)"
+            )
+
+        networks = []
+        for ssid, rssi, safety in best.values():
+            if rssi < min_rssi:
+                continue
+            networks.append({
+                "ssid": ssid,
+                "signal_pct": rssi,
+                "signal_bars": min(4, max(0, (rssi + 24) // 25)),
+                "secured": bool(safety),
+                "seen_count": seen_counts.get(ssid, 1),
+                "usable": rssi >= usable_rssi,
+            })
+        networks.sort(key=lambda n: (-n["signal_pct"], n["ssid"]))
+
+        if networks:
+            # Cannot be filtered: cmdType 335 returns no band field, so a
+            # 5 GHz-only SSID is indistinguishable from a joinable one here.
+            warnings_out.append(
+                "The aGate joins 2.4 GHz networks only (Installation Guide "
+                "p.59). The scan reports no band, so a 5 GHz-only SSID cannot "
+                "be filtered out and will fail to associate if selected."
+            )
+
+        return {
+            "scan_seconds": scan_time,
+            "networks": networks,
+            "warnings": warnings_out,
+        }
+
+    async def get_network_state(self, *, probe_local=False, local_timeout_s=1.5):
+        """Unified view of which transport the aGate is using right now.
+
+        Composes three MQTT reads — cmdType 317 (interface detail), 339
+        (reachability) and 341 (interface enable switches) — into the single
+        answer to "what is this aGate connected on?".
+
+        Returns
+        -------
+        dict
+            See ``docs/NETWORK_CONNECTIVITY_DESIGN.md`` section 5.1 for the full
+            contract. Key fields:
+
+            - ``active``: the transport currently in use (id, key, label, ip,
+              gateway, dns, dhcp, mac, signal_pct)
+            - ``interfaces``: all four, each with enabled/link/ip/is_active
+            - ``cloud``: aws_connected, internet, router_status_raw
+            - ``linked_transports``: keys of every transport **currently
+              carrying traffic**. The aGate parks the ones it is not using, so
+              in practice this holds at most one entry.
+            - ``available_transports``: keys of every transport that would
+              actually carry traffic if the one in use stopped. For 4G that
+              means an **active SIM with reception**; for WiFi and Ethernet it
+              means **connected and holding an address** (static or DHCP) —
+              signal or a plugged cable alone does not qualify. This is the set
+              a write-safety preflight must use: check
+              ``set(available_transports) - {target}`` is non-empty for the
+              interface you are about to modify. Note the *active* transport
+              counts as a fallback when you are modifying a different one.
+            - ``redundant``: True when more than one transport is available
+            - ``cloud``: see ``gateway_reachable`` — the only evidenced claim
+              in that block
+            - ``local``: LAN reachability, populated only when
+              ``probe_local=True``. A discriminator, never a verdict: it says
+              the gateway is powered and on the network, not that it can reach
+              FranklinWH. Never gate a write on it.
+            - ``source``: which cmdTypes answered, and whether the firmware
+              returned the extended 339 payload
+
+        Parameters
+        ----------
+        probe_local : bool
+            Open a TCP connection to the gateway's LAN address to check it is
+            answering locally (default False). Off by default because it is
+            I/O, only meaningful from the same LAN, and irrelevant to every
+            existing caller.
+        local_timeout_s : float
+            Per-port connect timeout for that probe.
+
+        Warning
+        -------
+        ``active`` is the transport the aGate has **selected for itself**, not a
+        user-configured primary. The gateway re-selects autonomously: across the
+        HAR corpus, 17 of 19 observed transport changes followed no command at
+        all. Present this to users as "active connection", never as "configured
+        primary", and never treat a change in it as proof that a write worked.
+        """
+        from franklinwh_cloud.const.devices import (
+            NETWORK_SWITCH_KEYS,
+            NETWORK_TYPE_KEYS,
+            NETWORK_TYPES,
+            UNASSIGNED_IPS,
+        )
+
+        from franklinwh_cloud.const import SIM_STATUS
+
+        # The three MQTT reads, plus a best-effort REST lookup for SIM state.
+        # simCardStatus lives on the gateway-list object, not in any cmdType, so
+        # it costs a REST call rather than sendMqtt budget. Failures are
+        # tolerated: without it, 4G availability falls back to signal alone.
+        net_info, conn_status, switches, gw_list = await asyncio.gather(
+            self.get_network_info(),
+            self.get_connection_status(),
+            self.get_network_switches(),
+            self.get_home_gateway_list(),
+            return_exceptions=True,
+        )
+        for essential in (net_info, conn_status, switches):
+            if isinstance(essential, BaseException):
+                raise essential
+
+        sim_status = None
+        if not isinstance(gw_list, BaseException):
+            match = next(
+                (g for g in (gw_list.get("result") or [])
+                 if isinstance(g, dict) and g.get("id") == self.gateway),
+                None,
+            )
+            if match is not None:
+                sim_status = match.get("simCardStatus")
+        else:
+            logger.debug(f"get_network_state: SIM status unavailable: {gw_list}")
+
+        # Prefer 317's currentNetType; the extended 339 payload carries the same
+        # field on newer firmware and is used only as a fallback.
+        active_id = net_info.get("currentNetType")
+        extended = "currentNetType" in conn_status
+        if active_id is None:
+            active_id = conn_status.get("currentNetType")
+
+        # Per-transport link state. The extended 339 fields are authoritative
+        # when present; otherwise fall back to "has a usable address".
+        # DEF-ETH-LINK-SHARED-FLAG. The 339-extended payload carries ONE
+        # Ethernet status, not one per port, so eth0 and eth1 necessarily read
+        # the same value. That is a firmware limitation, not a bug here — but
+        # it must not be presented as two independent per-port observations.
+        # Entries for ids 1 and 2 are tagged link_shared=True so renderers can
+        # say so rather than implying precision the wire does not provide.
+        #
+        # `available` is unaffected: it also requires a per-port ADDRESS, which
+        # the firmware does report separately, so a port cannot be judged a
+        # fallback on the shared flag alone.
+        link_by_id = {
+            1: conn_status.get("EthConnectRouterStatus"),
+            2: conn_status.get("EthConnectRouterStatus"),
+            3: conn_status.get("wifiConnectRouterStatus"),
+            4: conn_status.get("4GConnectBSStatus"),
+        }
+        SHARED_LINK_IDS = (1, 2)
+
+        interfaces = []
+        for iface_id, key in NETWORK_TYPE_KEYS.items():
+            cfg = net_info.get(key if key != "4g" else "operator", {}) or {}
+            ip = cfg.get("ip")
+            has_addr = ip not in UNASSIGNED_IPS
+            link = link_by_id.get(iface_id)
+            if link is None:
+                # No extended payload — infer. Cellular has no IP in the 317
+                # response at all, so fall back to signal presence for 4G.
+                link = bool(cfg.get("rssi")) if iface_id == 4 else has_addr
+            entry = {
+                "id": iface_id,
+                "key": key,
+                "label": NETWORK_TYPES.get(iface_id, f"Unknown ({iface_id})"),
+                "enabled": switches.get(NETWORK_SWITCH_KEYS[iface_id]) == 1,
+                "link": bool(link),
+                "ip": ip if has_addr else None,
+                "dhcp": cfg.get("dhcp"),
+                "mac": cfg.get("mac"),
+                "is_active": iface_id == active_id,
+            }
+            if iface_id in SHARED_LINK_IDS:
+                # True => `link` is the Ethernet-family flag, not this port's.
+                entry["link_shared"] = True
+            if iface_id == 3:
+                entry["signal_pct"] = conn_status.get("WifiSignalStrength")
+            if iface_id == 4:
+                # Vendor scale (observed 0-52), NOT a percentage — see
+                # discovery.py. Reported under a distinct key so a UI cannot
+                # accidentally render it as one.
+                entry["signal_raw"] = cfg.get("rssi")
+                entry["sim_status"] = sim_status
+                entry["sim_status_name"] = SIM_STATUS.get(sim_status)
+                entry.pop("dhcp", None)
+
+            # "available" = would this transport actually carry traffic if the
+            # one in use stopped? Distinct from "link" = carrying it right now.
+            # The aGate parks transports it is not using, so at most one is ever
+            # linked; judging fallback safety on `link` alone would refuse every
+            # write to the active transport.
+            #
+            # The two families are judged differently, because they fail
+            # differently:
+            #
+            #   4G  — the out-of-the-box fallback. It holds no IP while idle
+            #         (cmdType 317 exposes no address for `operator` at all), so
+            #         the test is an ACTIVE SIM plus RECEPTION. Observed
+            #         2026-08-08: a full hour on WiFi with 4GNetSwitch=1 and
+            #         operatorRSSI=21-22 but 4GConnectBSStatus=0 — idle, yet it
+            #         had carried the connection that same morning.
+            #
+            #   WiFi / Ethernet — must be genuinely CONNECTED AND ACTIVE, i.e.
+            #         hold an address, static or DHCP. Signal or a plugged cable
+            #         is not enough: on 2026-03-21 and again on 2026-08-08 the
+            #         aGate sat associated at 76% with 0.0.0.0 and no working
+            #         path. That state is a candidate to switch TO (see
+            #         scan_wifi_networks_ranked), never a fallback to rely ON.
+            if iface_id == 4:
+                # sim_status None => REST lookup failed; fall back to signal
+                # alone rather than falsely declaring the lifeline dead.
+                sim_ok = sim_status is None or sim_status == 2
+                capable = bool(cfg.get("rssi")) and sim_ok
+            else:
+                capable = bool(entry["link"]) and has_addr
+            entry["available"] = entry["enabled"] and capable
+
+            interfaces.append(entry)
+
+        by_id = {i["id"]: i for i in interfaces}
+        active = by_id.get(active_id)
+
+        # Opportunistic LAN check. Separate from the cloud verdict on purpose:
+        # answering on the LAN says the gateway is powered and addressed, not
+        # that it can reach FranklinWH. Together the two localise a fault that
+        # neither can localise alone.
+        local_block = {"probed": False, "reachable": None, "port": None,
+                       "host": None}
+        if probe_local:
+            from franklinwh_cloud.mixins.network import probe_local_reachability
+            local_block = await probe_local_reachability(
+                active["ip"] if active else None, timeout_s=local_timeout_s,
+            )
+
+        # Two different questions, deliberately kept apart:
+        #
+        #   linked_transports    — what is carrying traffic right now (factual)
+        #   available_transports — what COULD carry traffic (write-safety)
+        #
+        # Preflight must use `available`. The aGate parks unused transports, so
+        # `linked` holds at most one entry and subtracting the write target from
+        # it would refuse every write to the active transport.
+        #
+        # Either way the set is relative to the TARGET of the write, not to the
+        # active transport: when the aGate is on 4G and you are rewriting the
+        # WiFi config, 4G is the fallback even though it is also active.
+        # See NETWORK_CONNECTIVITY_DESIGN.md section 3.
+        linked = [i["key"] for i in interfaces if i["enabled"] and i["link"]]
+        available = [i["key"] for i in interfaces if i["available"]]
+
+        return {
+            "gateway_id": self.gateway,
+            "active": {
+                "id": active_id,
+                "key": active["key"] if active else None,
+                "label": NETWORK_TYPES.get(active_id, f"Unknown ({active_id})"),
+                "ip": active["ip"] if active else None,
+                "gateway": (net_info.get(active["key"], {}) or {}).get("gateway")
+                           if active and active["key"] != "4g" else None,
+                "dns": (net_info.get(active["key"], {}) or {}).get("dns")
+                       if active and active["key"] != "4g" else None,
+                "selection": "device-managed",
+            },
+            "interfaces": interfaces,
+            "cloud": {
+                # `gateway_reachable` is the only claim in this block that is
+                # actually evidenced. It is tautological — this payload reached
+                # us through the cloud, so the cloud path works — and that is
+                # precisely why it is trustworthy. Everything else here is the
+                # gateway's SELF-REPORT, which has been observed reporting all
+                # three flags as zero while answering MQTT through the very
+                # cloud it claimed was down (design section 2.5a).
+                "gateway_reachable": True,
+                # Kept with their existing meaning and value so downstream
+                # consumers do not break. Do not gate anything on them.
+                "aws_connected": conn_status.get("awsStatus") == 1,
+                "internet": conn_status.get("netStatus") == 1,
+                # Raw self-reports, exposed for comparison. cmdType 317 and 339
+                # each carry an awsStatus and they have been observed
+                # disagreeing on the same gateway at the same moment (317 said
+                # 1, 339 said 0, and 317 matched observable reality).
+                # DEF-AWS-STATUS-SOURCE.
+                "aws_status_339_raw": conn_status.get("awsStatus"),
+                "aws_status_317_raw": net_info.get("awsStatus"),
+                "net_status_raw": conn_status.get("netStatus"),
+                # routerStatus is NOT a boolean (0, 1 and 4 all observed) —
+                # passed through unmapped until its semantics are established.
+                "router_status_raw": conn_status.get("routerStatus"),
+                "self_report_trusted": False,
+            },
+            "local": local_block,
+            "linked_transports": linked,
+            "available_transports": available,
+            # True when losing the transport currently in use would still leave
+            # another one able to take over.
+            "redundant": len(available) > 1,
+            "source": {"cmds": [317, 339, 341], "extended_339": extended},
+        }
+
     async def get_site_detail(self, site_id: str = None):
         """Get site details (name, address, location).
 
@@ -853,7 +1954,7 @@ class DevicesMixin:
             # Match on gateway serial (self.gateway) to get the correct siteId.
             try:
                 res = await self.get_home_gateway_list()
-                gateways = res.get("result", [])
+                gateways = (res.get("result") or [])
                 # Match by gateway serial number, fall back to first gateway
                 matched = next(
                     (gw for gw in gateways if gw.get("id") == self.gateway),
@@ -948,11 +2049,11 @@ class DevicesMixin:
         primary_ip = None
         primary_gateway = None
         if primary_id == 1:
-            cfg = net_info.get("eth0", {})
+            cfg = (net_info.get("eth0") or {})
         elif primary_id == 2:
-            cfg = net_info.get("eth1", {})
+            cfg = (net_info.get("eth1") or {})
         elif primary_id == 3:
-            cfg = net_info.get("wifi", {})
+            cfg = (net_info.get("wifi") or {})
         else:
             cfg = {}
             
@@ -963,22 +2064,26 @@ class DevicesMixin:
         # Map NETWORK_TYPES id → net_info interface key for IP lookup
         backups = []
         if net_switches.get("ethernet0NetSwitch") == 1 and primary_id != 1:
-            ip = net_info.get("eth0", {}).get("ip")
+            ip = (net_info.get("eth0") or {}).get("ip")
             backups.append({"id": 1, "name": NETWORK_TYPES.get(1), "ip": ip})
         if net_switches.get("ethernet1NetSwitch") == 1 and primary_id != 2:
-            ip = net_info.get("eth1", {}).get("ip")
+            ip = (net_info.get("eth1") or {}).get("ip")
             backups.append({"id": 2, "name": NETWORK_TYPES.get(2), "ip": ip})
         if net_switches.get("wifiNetSwitch") == 1 and primary_id != 3:
-            ip = net_info.get("wifi", {}).get("ip")
+            ip = (net_info.get("wifi") or {}).get("ip")
             backups.append({"id": 3, "name": NETWORK_TYPES.get(3), "ip": ip})
         if net_switches.get("4GNetSwitch") == 1 and primary_id != 4:
-            rssi = net_info.get("operator", {}).get("rssi")
+            rssi = (net_info.get("operator") or {}).get("rssi")
             backups.append({"id": 4, "name": NETWORK_TYPES.get(4), "rssi": rssi})
             
         overview = {
-            "cloud_connected": bool(conn_status.get("awsStatus")),
-            "router_connected": bool(conn_status.get("routerStatus")),
-            "internet_connected": bool(conn_status.get("netStatus")),
+            "cloud_connected": conn_status.get("awsStatus") == 1,
+            # routerStatus is NOT a boolean — 0, 1 and 4 have all been observed
+            # on live hardware, so bool() reported 4 as "connected". Compare
+            # explicitly against 1 and expose the raw code alongside.
+            "router_connected": conn_status.get("routerStatus") == 1,
+            "router_status_raw": conn_status.get("routerStatus"),
+            "internet_connected": conn_status.get("netStatus") == 1,
             "primary": {
                 "id": primary_id,
                 "name": primary_name,
@@ -986,17 +2091,18 @@ class DevicesMixin:
                 "gateway": primary_gateway
             },
             "backups": backups,
-            "signals": {
-                "wifi_signal": stats.current.wifi_signal,
-                "mobile_signal": stats.current.mobile_signal
-            }
+            "signals": _connectivity_signals(conn_status, net_info, stats),
         }
         
         if deep_scan:
             # Check SPAN flag
             try:
                 span = await self.get_span_setting()
+                # Key name retained — downstream consumers read it. It means
+                # CONFIGURED, not reachable: the flag is set by an installer in
+                # the app, and says nothing about whether the panel answers.
                 overview["span_connected"] = bool(span.get("spanFlag"))
+                overview["span_configured"] = bool(span.get("spanFlag"))
             except Exception:
                 overview["span_connected"] = False
                 
@@ -1143,7 +2249,7 @@ class DevicesMixin:
             await asyncio.sleep(verify_interval_s)
             try:
                 verify_resp = await self.get_gateway_tou_list()
-                verify_result = verify_resp.get("result", {})
+                verify_result = (verify_resp.get("result") or {})
                 final_send_status = verify_result.get("touSendStatus")
                 final_alert_message = verify_result.get("touAlertMessage") or ""
                 if final_send_status is None:

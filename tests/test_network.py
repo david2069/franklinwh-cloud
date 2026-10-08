@@ -37,7 +37,9 @@ MOCK_NETWORK_INFO_RAW = json.dumps({
             "eth1GateWay": "",
             "operatorMAC": "11:22:33:44:55:66",
             "operatorDNS": "8.8.8.8",
-            "operatorRSSI": -65,
+            # Positive vendor scale, observed 0-52 across the HAR corpus — the
+            # previous -65 implied dBm, which this field never uses.
+            "operatorRSSI": 22,
             "awsStatus": 1,
         }
     }
@@ -78,11 +80,17 @@ MOCK_WIFI_CONFIG_RAW = json.dumps({
     "wifi_Safety": 1,
 })
 
+# Verbatim shape from cmdType 336 responses in the HAR corpus (SSIDs redacted).
+# NOTE: the key is wifi_Info (not wifi_list), entries use wifi_SSID / wifi_RSSI /
+# wifi_Safety, and wifi_RSSI is a POSITIVE 0-100 quality percentage — never dBm.
+# The previous fixture invented wifi_list/ssid/rssi/security with negative RSSI,
+# a shape the gateway has never emitted.
 MOCK_SCAN_COMPLETE_RAW = json.dumps({
     "result": 0,
-    "wifi_list": [
-        {"ssid": "do_not_trespass", "rssi": -45, "security": 1},
-        {"ssid": "neighbor_wifi", "rssi": -70, "security": 1},
+    "reason": 0,
+    "wifi_Info": [
+        {"wifi_SSID": "net_a", "wifi_RSSI": 76, "wifi_Safety": 1},
+        {"wifi_SSID": "net_b", "wifi_RSSI": 28, "wifi_Safety": 1},
     ],
 })
 
@@ -229,13 +237,25 @@ class TestScanWifiNetworks:
 
     @pytest.mark.asyncio
     async def test_complete_scan(self):
-        """result=0 should return scan data."""
+        """result=0 should return scan data under the wire key wifi_Info."""
         client = _make_mock_client(MOCK_SCAN_COMPLETE_RAW)
         _bind_method(client, "scan_wifi_networks")
         result = await client.scan_wifi_networks()
 
         assert result["result"] == 0
-        assert len(result["wifi_list"]) == 2
+        assert len(result["wifi_Info"]) == 2
+        assert result["wifi_Info"][0]["wifi_SSID"] == "net_a"
+
+    @pytest.mark.asyncio
+    async def test_scan_rssi_is_a_positive_percentage(self):
+        """wifi_RSSI is 0-100 quality, not dBm — guards against reintroducing
+        the negative-dBm fixture shape the gateway never emits."""
+        client = _make_mock_client(MOCK_SCAN_COMPLETE_RAW)
+        _bind_method(client, "scan_wifi_networks")
+        result = await client.scan_wifi_networks()
+
+        for net in result["wifi_Info"]:
+            assert 0 <= net["wifi_RSSI"] <= 100
 
     @pytest.mark.asyncio
     async def test_pending_scan(self):
@@ -270,7 +290,7 @@ class TestScanWifiNetworksPoll:
         """Should return immediately when scan completes on first attempt."""
         client = _make_mock_client()
         _bind_method(client, "scan_wifi_networks_poll")
-        client.scan_wifi_networks = AsyncMock(return_value={"result": 0, "wifi_list": []})
+        client.scan_wifi_networks = AsyncMock(return_value={"result": 0, "wifi_Info": []})
 
         result = await client.scan_wifi_networks_poll(max_attempts=3, delay_s=0)
         assert result["result"] == 0
@@ -284,7 +304,8 @@ class TestScanWifiNetworksPoll:
         client.scan_wifi_networks = AsyncMock(side_effect=[
             {"result": 1, "reason": 3},  # pending
             {"result": 1, "reason": 3},  # pending
-            {"result": 0, "wifi_list": [{"ssid": "net1"}]},  # complete
+            {"result": 0, "wifi_Info": [{"wifi_SSID": "net1", "wifi_RSSI": 76,
+                                        "wifi_Safety": 1}]},  # complete
         ])
 
         result = await client.scan_wifi_networks_poll(max_attempts=3, delay_s=0)

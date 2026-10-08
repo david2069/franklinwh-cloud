@@ -30,6 +30,75 @@ from franklinwh_cloud.models import Current, Totals, GridConnectionState
 #           "311" = cmdType 311 (smart circuits), "derived" = computed by library
 #   group:  display section label
 
+# ── Network inventory ──────────────────────────────────────────────────────────
+# Capabilities and settings exposed by get_network_state(), which composes
+# cmdType 317 (interface config), 339 (reachability) and 341 (enable switches)
+# plus a REST lookup for SIM state.
+#
+# Deliberately separate from CURRENT_SCHEMA: these are not Current dataclass
+# fields, and the per-interface records are a repeating shape rather than flat
+# attributes.
+
+NETWORK_SCHEMA = {
+    # Active transport — what the aGate has selected for ITSELF (see below)
+    "active.id":              ("currentNetType",          "317/commSetPara", "int",  "Network Active"),
+    "active.label":           ("NETWORK_TYPES[id]",       "derived",         "str",  "Network Active"),
+    "active.ip":              ("<iface>StaticIP",         "317/commSetPara", "ipv4", "Network Active"),
+    "active.gateway":         ("<iface>GateWay",          "317/commSetPara", "ipv4", "Network Active"),
+    "active.dns":             ("<iface>DNS",              "317/commSetPara", "ipv4", "Network Active"),
+    "active.selection":       ("always 'device-managed'", "derived",         "str",  "Network Active"),
+
+    # Per-interface record — repeated for eth0, eth1, wifi, 4g
+    "interfaces[].enabled":   ("<x>NetSwitch",            "341",             "bool", "Network Interfaces"),
+    "interfaces[].link":      ("<x>ConnectRouterStatus",  "339 (extended)",  "bool", "Network Interfaces"),
+    "interfaces[].ip":        ("<x>StaticIP",             "317/commSetPara", "ipv4", "Network Interfaces"),
+    "interfaces[].dhcp":      ("<x>DHCP",                 "317/commSetPara", "bool", "Network Interfaces"),
+    "interfaces[].mac":       ("<x>MAC",                  "317/commSetPara", "str",  "Network Interfaces"),
+    "interfaces[].is_active": ("id == currentNetType",    "derived",         "bool", "Network Interfaces"),
+    "interfaces[].available": ("see availability rule",   "derived",         "bool", "Network Interfaces"),
+
+    # Signal — note the two scales are NOT the same unit
+    "interfaces[wifi].signal_pct":     ("WifiSignalStrength", "339 (extended)",  "%",   "Network Signal"),
+    "interfaces[4g].signal_raw":       ("operatorRSSI",       "317/commSetPara", "0-52", "Network Signal"),
+    "interfaces[4g].sim_status":       ("simCardStatus",      "getHomeGatewayList", "int", "Network Signal"),
+    "interfaces[4g].sim_status_name":  ("SIM_STATUS[status]", "derived",         "str",  "Network Signal"),
+
+    # Cloud reachability
+    "cloud.aws_connected":    ("awsStatus == 1",          "339",             "bool", "Network Cloud"),
+    "cloud.internet":         ("netStatus == 1",          "339",             "bool", "Network Cloud"),
+    # Local reachability — NOT from the wire. Every other entry here is a field
+    # the gateway sent; these four are the result of a TCP connect from
+    # wherever the caller runs. Populated only by
+    # get_network_state(probe_local=True) or discover(probe_local=True).
+    "local.probed":           ("—",  "TCP probe",  "bool",    "Network Local"),
+    "local.reachable":        ("—",  "TCP probe",  "bool",    "Network Local"),
+    "local.port":             ("—",  "TCP probe",  "9000|22", "Network Local"),
+    "local.host":             ("—",  "TCP probe",  "ipv4",    "Network Local"),
+    "cloud.router_status_raw":("routerStatus",            "339",             "code", "Network Cloud"),
+
+    # Derived roll-ups used for write safety
+    "linked_transports":      ("derived",                 "derived",         "list", "Network Summary"),
+    "available_transports":   ("derived",                 "derived",         "list", "Network Summary"),
+    "redundant":              ("len(available) > 1",      "derived",         "bool", "Network Summary"),
+    "source.extended_339":    ("derived",                 "derived",         "bool", "Network Summary"),
+}
+
+# Availability rule, printed alongside the inventory so the semantics travel
+# with the data. See docs/NETWORK_CONNECTIVITY_DESIGN.md section 3.
+NETWORK_NOTES = [
+    "active is the transport the aGate selected for ITSELF, not a configured",
+    "  primary — it re-selects autonomously and returns to the preferred link.",
+    "available = would this carry traffic if the one in use stopped?",
+    "  4G       : enabled + SIM Active + reception (holds no IP while idle)",
+    "  WiFi/Eth : enabled + linked + holding an address (static or DHCP)",
+    "signal_pct (WiFi) is 0-100%; signal_raw (4G) is a 0-52 vendor scale.",
+    "local.* is a TCP probe from the CALLER, not a gateway field. 9000 is the",
+    "  local 'Direct Connection' API, 22 the fallback. reachable=None means",
+    "  'could not check' — meaningful only on the gateway's own LAN.",
+    "routerStatus is NOT a boolean — 0, 1 and 4 all observed. Shown raw.",
+]
+
+
 CURRENT_SCHEMA = {
     # Power flow
     "solar_production":         ("p_sun",              "203/runtimeData",  "kW",    "Power Flow"),
@@ -64,7 +133,7 @@ CURRENT_SCHEMA = {
     "generator_relay":          ("main_sw[1]",         "203/runtimeData",  "relay", "Relays"),
     "solar_relay1":             ("main_sw[2]",         "203/runtimeData",  "relay", "Relays"),
     # Connectivity
-    "mobile_signal":            ("signal",             "203/runtimeData",  "dBm",   "Connectivity"),
+    "mobile_signal":            ("signal",             "203/runtimeData",  "%",     "Connectivity"),
     "wifi_signal":              ("wifiSignal",         "203/runtimeData",  "%",     "Connectivity"),
     "network_connection":       ("connType",           "203/runtimeData",  "int",   "Connectivity"),
     # V2L
@@ -113,6 +182,9 @@ CURRENT_SCHEMA = {
     "load_solar_relay1":        ("loadSolarRelay1Stat","211/result",       "relay", "Load & V2L Relays (211)"),
     "load_solar_relay2":        ("loadSolarRelay2Stat","211/result",       "relay", "Load & V2L Relays (211)"),
     # Electrical measurements (cmdType 211 — opt-in) — matches --filter power
+    # L1/L2 are reported for every install. On a non-split-phase site they are
+    # an API artifact, not two conductors — use grid_line_voltage instead.
+    # See docs/AC_TOPOLOGY.md and DEF-AC-TOPOLOGY-INCONSISTENT.
     "grid_voltage1":            ("gridVol1",           "211/result",       "V",     "Power Measurements (211)"),
     "grid_voltage2":            ("gridVol2",           "211/result",       "V",     "Power Measurements (211)"),
     "grid_current1":            ("gridCurr1",          "211/result",       "A",     "Power Measurements (211)"),
@@ -164,6 +236,67 @@ TOTALS_SCHEMA = {
 # ── Grid Power Control Settings ─────────────────────────────────────────────
 # Source: get_power_control_settings()  (REST — not MQTT/cmdType)
 # Encoding: -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW power cap
+# Generator settings and charge schedule — selectIotGenerator (REST).
+# Settings, not runtime state: the runtime values live in CURRENT_SCHEMA.
+GENERATOR_SCHEMA = {
+    "genEn":            ("genEn",            "selectIotGenerator", "0/1",   "Generator Config"),
+    "genStat":          ("genStat",          "selectIotGenerator", "code",  "Generator Config"),
+    # `mode` and `manuSw` are DIFFERENT controls. A manuSw write moves genStat
+    # (a manual start/stop); a mode write moves mode. DEF-GEN-MODE-WRITES-MANUSW.
+    "mode":             ("mode",             "selectIotGenerator", "code",  "Generator Config"),
+    "manuSw":           ("manuSw",           "selectIotGenerator", "code",  "Generator Config"),
+    # SoC thresholds. NOT genStartSoc/genStopSoc — those do not exist.
+    "genStartElec":     ("genStartElec",     "selectIotGenerator", "%",     "Generator Config"),
+    "genCloseElec":     ("genCloseElec",     "selectIotGenerator", "%",     "Generator Config"),
+    "genRatedPower":    ("genRatedPower",    "selectIotGenerator", "W",     "Generator Config"),
+    "genModel":         ("genModel",         "selectIotGenerator", "str",   "Generator Config"),
+    "startDelTime":     ("startDelTime",     "selectIotGenerator", "s",     "Generator Config"),
+    "generatorAlarmFlag": ("generatorAlarmFlag", "selectIotGenerator", "0/1", "Generator Config"),
+    # Three charge windows, in GATEWAY-LOCAL wall clock. Writable via
+    # set_generator_charge_schedule(). See docs/TIME_AND_TIMEZONES.md.
+    "charge1En":        ("charge1En",        "selectIotGenerator", "0/1",   "Generator Schedule"),
+    "charge1StartTime": ("charge1StartTime", "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge1EndTime":   ("charge1EndTime",   "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge2En":        ("charge2En",        "selectIotGenerator", "0/1",   "Generator Schedule"),
+    "charge2StartTime": ("charge2StartTime", "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge2EndTime":   ("charge2EndTime",   "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge3En":        ("charge3En",        "selectIotGenerator", "0/1",   "Generator Schedule"),
+    "charge3StartTime": ("charge3StartTime", "selectIotGenerator", "HH:MM", "Generator Schedule"),
+    "charge3EndTime":   ("charge3EndTime",   "selectIotGenerator", "HH:MM", "Generator Schedule"),
+}
+
+# Smart Circuit schedule — cmdType 311. Read-only in this library: the array
+# layout is unestablished, so there is no setter. DEF-SC-TIMESET-UNDECIPHERED.
+SMART_CIRCUIT_SCHEDULE_SCHEMA = {
+    "SwNTime":    ("Sw{1-3}Time",    "311", "list[str]", "Smart Circuit Schedule"),
+    "SwNTimeEn":  ("Sw{1-3}TimeEn",  "311", "list[0/1]", "Smart Circuit Schedule"),
+    "SwNTimeSet": ("Sw{1-3}TimeSet", "311", "list[?]",   "Smart Circuit Schedule"),
+    "SwMerge":    ("SwMerge",        "311", "0/1",       "Smart Circuit Schedule"),
+    # CONFIRMED live 2026-09-18: app "Cycle interval: 60 days" -> Sw1Freq = 60.
+    "SwNFreq":    ("Sw{1-3}Freq",    "311", "days",      "Smart Circuit Schedule"),
+}
+
+def _sc_live(sc_info, api_key):
+    """Resolve a Smart Circuit schema key against a live 311 payload.
+
+    Keys are written templated — ``Sw{1-3}Time`` — because one schema row
+    describes three circuits. Returns ``{1: value, 2: value, ...}`` for a
+    templated key, or the plain value for a fixed one like ``SwMerge``.
+    Circuits absent from the payload are omitted rather than reported as 0:
+    this gateway has two, and a missing third is not a third reading zero.
+    """
+    if not isinstance(sc_info, dict):
+        return None
+    if "{1-3}" not in api_key:
+        return sc_info.get(api_key)
+    out = {}
+    for i in (1, 2, 3):
+        key = api_key.replace("{1-3}", str(i))
+        if key in sc_info:
+            out[i] = sc_info[key]
+    return out or None
+
+
 GRID_LIMITS_SCHEMA = {
     "globalGridChargeMax":      ("globalGridChargeMax",      "get_power_control_settings", "kW / -1", "Global Limits"),
     "globalGridDischargeMax":   ("globalGridDischargeMax",   "get_power_control_settings", "kW / -1", "Global Limits"),
@@ -176,7 +309,13 @@ GRID_LIMITS_SCHEMA = {
     "solarFlag":                ("solarFlag",                "get_power_control_settings", "bool",    "Grid Connection"),
     "notControlExportSolar":    ("notControlExportSolar",    "get_power_control_settings", "bool",    "Feed-In (Export)"),
     "peakDemandGridMax":        ("peakDemandGridMax",        "get_power_control_settings", "kW / -1", "Peak Demand"),
-    "bbDischargePower":         ("bbDischargePower",         "get_power_control_settings", "kW",      "Backup Battery"),
+    # "bb" is Battery Bonus, the Hawaiian Electric programme — NOT "backup
+    # battery", which is what this group used to say. discovery.py has always
+    # documented the sibling flag correctly ("bb: bool  # Hawaii Battery
+    # Bonus"); only this label misread the abbreviation. Corpus: bbDischargePower
+    # is null in all 3,930 samples, alongside bbEntrance=0 in all 4,001 — i.e.
+    # the cap is only populated once enrolled. DEF-BB-GROUP-MISLABEL.
+    "bbDischargePower":         ("bbDischargePower",         "get_power_control_settings", "kW",      "Battery Bonus (HI)"),
     "sgipFlag":                 ("sgipFlag",                 "get_power_control_settings", "0/1",     "Programmes"),
     "itcFlag":                  ("itcFlag",                  "get_power_control_settings", "0/1",     "Programmes"),
     "isNem3":                   ("isNem3",                   "get_power_control_settings", "0/1",     "Programmes"),
@@ -212,6 +351,96 @@ def _fmt_value(val) -> str:
     if isinstance(val, (list, tuple)):
         return str(val)
     return str(val)
+
+
+def network_health(state):
+    """Derive connectivity findings from a get_network_state() snapshot.
+
+    The API exposes no connection-attempt history — selectDeviceRunLogList is a
+    static alarm-code dictionary, not an event log — so health has to be derived
+    from current state. Continuous history requires client-side polling; see
+    ``tools/network_probe.py observe``.
+
+    Returns a list of ``{level, code, detail}`` dicts, most severe first.
+    """
+    findings = []
+    ifaces = {i["key"]: i for i in (state.get("interfaces") or [])}
+    available = (state.get("available_transports") or [])
+
+    wifi = (ifaces.get("wifi") or {})
+    if wifi.get("enabled") and wifi.get("signal_pct") and not wifi.get("ip"):
+        findings.append({
+            "level": "WARN", "code": "wifi_no_lease",
+            "detail": f"WiFi associated at {wifi['signal_pct']}% but holding no address "
+                      f"— no DHCP lease. This is the 2026-03-21 failure mode.",
+        })
+
+    cell = (ifaces.get("4g") or {})
+    if cell.get("enabled") and cell.get("sim_status") not in (None, 2):
+        findings.append({
+            "level": "WARN", "code": "sim_not_active",
+            "detail": f"SIM reports {cell.get('sim_status_name')!r} — cellular is not a "
+                      f"usable fallback even with reception.",
+        })
+    if cell.get("enabled") and not cell.get("signal_raw"):
+        findings.append({
+            "level": "WARN", "code": "no_cellular_reception",
+            "detail": "4G enabled but reception is 0 — the out-of-the-box fallback is unavailable.",
+        })
+    if not cell.get("enabled"):
+        findings.append({
+            "level": "WARN", "code": "cellular_disabled",
+            "detail": "4GNetSwitch is off. The aGate cannot fall back to cellular, so a "
+                      "failed network change would need on-site recovery.",
+        })
+
+    if not state.get("redundant"):
+        findings.append({
+            "level": "WARN", "code": "no_redundancy",
+            "detail": f"Only {available or 'nothing'} can carry traffic. Any network write "
+                      f"targeting it risks stranding the gateway.",
+        })
+
+    # DEF-ETH-LINK-SHARED-FLAG: firmware reports ONE Ethernet link status for
+    # both ports, so these two findings are not independent observations. Say
+    # so, and lean on the per-port address, which the firmware does report
+    # separately.
+    for key in ("eth0", "eth1"):
+        e = (ifaces.get(key) or {})
+        if e.get("enabled") and not e.get("link") and not e.get("ip"):
+            shared = " The Ethernet link flag is shared by both ports (firmware " \
+                     "reports one status for the pair), so this rests on the " \
+                     "per-port address." if e.get("link_shared") else ""
+            findings.append({
+                "level": "INFO", "code": f"{key}_no_link",
+                "detail": f"{key} is enabled but has no link and no address — cable "
+                          f"likely unplugged. Not counted as a fallback.{shared}",
+            })
+
+    cloud = (state.get("cloud") or {})
+    if not cloud.get("aws_connected"):
+        # Surface the disagreement between the two self-reports rather than
+        # just the one. DEF-AWS-STATUS-SOURCE.
+        raw_339 = cloud.get("aws_status_339_raw")
+        raw_317 = cloud.get("aws_status_317_raw")
+        detail = (
+            f"cmdType 339 reports awsStatus={raw_339}, yet this data arrived through "
+            f"the cloud. These flags have been observed contradicting reality — do "
+            f"not gate anything on them."
+        )
+        if raw_317 is not None and raw_317 != raw_339:
+            detail += (
+                f" cmdType 317 reports awsStatus={raw_317} for the same gateway at "
+                f"the same moment, and it is the one matching observable reality. "
+                f"Use round-trip success, not either flag."
+            )
+        findings.append({
+            "level": "INFO", "code": "cloud_flags_unreliable", "detail": detail,
+        })
+
+    order = {"WARN": 0, "INFO": 1}
+    findings.sort(key=lambda f: order.get(f["level"], 9))
+    return findings
 
 
 async def run(client, json_output: bool = False, show_live: bool = False,
@@ -259,19 +488,95 @@ async def run(client, json_output: bool = False, show_live: bool = False,
     if show_live:
         try:
             pcs_res = await client.get_power_control_settings()
-            live_grid_limits = pcs_res.get("result", {}) if isinstance(pcs_res, dict) else {}
+            live_grid_limits = (pcs_res.get("result") or {}) if isinstance(pcs_res, dict) else {}
         except Exception as e:
             if not json_output:
                 print(f"⚠ Could not fetch grid limits: {e}")
 
+    # Network inventory — composed from cmdType 317/339/341 plus a REST SIM lookup,
+    # so it is fetched separately from the 203-based Current snapshot.
+    live_network = None
+    if show_live:
+        try:
+            live_network = await client.get_network_state()
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ Could not fetch network state: {e}")
+
+    # JA12 compliance capacity — California Title 24 only, and gated on the
+    # gateway actually advertising it. Firing unconditionally would send a
+    # CA-specific request from every gateway in every market.
+    #
+    # AP-14: this endpoint has ZERO captured responses in the corpus, so its
+    # response shape is unknown. Rendered generically rather than against a
+    # declared schema — inventing field names for a payload nobody has observed
+    # is exactly what the evidence standard forbids. Once a real response is
+    # captured, a JA12_SCHEMA can replace this.
+    # Generator and Smart Circuit config. Both are ordinary reads; neither was
+    # ever wired up, so these two sections rendered an empty Live Value column
+    # on every --live run and looked broken rather than unimplemented.
+    live_generator = None
+    if show_live:
+        try:
+            live_generator = await client.get_generator_info()
+        except Exception as e:
+            # A gateway with no generator module is the common case, not a
+            # fault — say so rather than printing a scary failure.
+            if not json_output:
+                print(f"⚠ No generator data: {e}")
+
+    live_sc = None
+    if show_live:
+        try:
+            live_sc = await client.get_smart_circuits_info()
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ No smart circuit data: {e}")
+
+    live_ja12 = None
+    if show_live:
+        try:
+            entrance = await client.get_entrance_info()
+            ent = (entrance.get("result") or {}) if isinstance(entrance, dict) else {}
+            if ent.get("ja12Entrance"):
+                live_ja12 = await client.query_compliance_capacity()
+        except Exception as e:
+            if not json_output:
+                print(f"⚠ Could not check JA12 compliance capacity: {e}")
+
     if json_output:
-        _json_output(live_current, live_totals, live_grid_limits, filter_group)
+        _json_output(live_current, live_totals, live_grid_limits, filter_group,
+                     live_network, live_ja12, live_generator, live_sc)
         return
 
-    _terminal_output(live_current, live_totals, live_grid_limits, filter_group)
+    _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
+                     live_network, live_ja12, live_generator, live_sc)
 
 
-def _json_output(live_current, live_totals, live_grid_limits, filter_group):
+def _totals_filtered_out(filter_group, group) -> bool:
+    """Should this TOTALS_SCHEMA row be hidden under ``--filter``?
+
+    DEF-SCHEMA-TOTALS-POWER-FILTER. Plain substring matching rendered the
+    ``stats.totals`` header with zero rows for ``--filter power``: no totals
+    group contains the word. CURRENT_SCHEMA happens to have "Power Flow" and
+    "Power Measurements (211)", so the filter looked like it worked.
+
+    Every TOTALS_SCHEMA group is cumulative energy — Battery, Grid,
+    Generation, Smart Circuits, V2L, Load Breakdown, APbox/MPPT. So "power"
+    and "energy" match all of them, rather than a hardcoded subset that would
+    silently drift as groups are added.
+    """
+    if not filter_group:
+        return False
+    f = filter_group.lower()
+    if f in ("power", "energy"):
+        return False
+    return f not in group.lower()
+
+
+def _json_output(live_current, live_totals, live_grid_limits, filter_group,
+                 live_network=None, live_ja12=None, live_generator=None,
+                 live_sc=None):
     """Emit JSON schema output."""
     result = {"current": {}, "totals": {}, "grid_limits": {}}
 
@@ -284,7 +589,7 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group):
         result["current"][field] = entry
 
     for field, (api_key, source, units, group) in TOTALS_SCHEMA.items():
-        if filter_group and filter_group.lower() not in group.lower():
+        if _totals_filtered_out(filter_group, group):
             continue
         entry = {"api_key": api_key, "source": source, "units": units, "group": group}
         if live_totals is not None:
@@ -321,10 +626,47 @@ def _json_output(live_current, live_totals, live_grid_limits, filter_group):
         entry = {"api_key": api_key, "source": source, "units": units, "group": group}
         result["mode"][field] = entry
 
+    result["network"] = {}
+    for field, (api_key, source, units, group) in NETWORK_SCHEMA.items():
+        if filter_group and filter_group.lower() not in group.lower() \
+                and filter_group.lower() != "network":
+            continue
+        result["network"][field] = {
+            "api_key": api_key, "source": source, "units": units, "group": group,
+        }
+    if result["network"]:
+        result["network_notes"] = NETWORK_NOTES
+    if live_network is not None:
+        result["network_state"] = live_network
+        result["network_health"] = network_health(live_network)
+
+    # Passed through verbatim: the response shape has never been captured, so
+    # there is nothing to map it onto. AP-14.
+    result["generator"] = {}
+    for f, (a, s, u, g) in GENERATOR_SCHEMA.items():
+        entry = {"api_key": a, "source": s, "units": u, "group": g}
+        if live_generator is not None:
+            entry["live_value"] = live_generator.get(a)
+        result["generator"][f] = entry
+
+    # SwN keys are templated across circuits, so the live value is per circuit
+    # rather than a single scalar.
+    result["smart_circuit_schedule"] = {}
+    for f, (a, s, u, g) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items():
+        entry = {"api_key": a, "source": s, "units": u, "group": g}
+        if live_sc is not None:
+            entry["live_value"] = _sc_live(live_sc, a)
+        result["smart_circuit_schedule"][f] = entry
+
+    if live_ja12 is not None:
+        result["ja12_compliance_capacity"] = live_ja12
+
     print_json_output(result)
 
 
-def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
+def _terminal_output(live_current, live_totals, live_grid_limits, filter_group,
+                     live_network=None, live_ja12=None, live_generator=None,
+                     live_sc=None):
     """Emit human-readable schema table."""
     print_header("API Field Schema — Current & Totals")
 
@@ -375,7 +717,7 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
 
     totals_group = None
     for field, (api_key, source, units, group) in TOTALS_SCHEMA.items():
-        if filter_group and filter_group.lower() not in group.lower():
+        if _totals_filtered_out(filter_group, group):
             continue
         if group != totals_group:
             print(f"\n  ── {group}")
@@ -460,6 +802,9 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
             print(row)
 
     print()
+    print("  L1/L2 voltages and currents are reported for EVERY install. On a")
+    print("  single-phase site (e.g. AU/NZ 230/240 VAC L/N/PE) they are an API")
+    print("  artifact, not two conductors — use the Line value. docs/AC_TOPOLOGY.md")
     print("  Relay encoding: 1=OPEN (connected), 0=CLOSED (disconnected)  — all relays")
     print("  cmdType 211 fields only populated when get_stats(include_electrical=True)")
     print("  cmdType 311 fields require Smart Circuit accessory installed")
@@ -509,6 +854,137 @@ def _terminal_output(live_current, live_totals, live_grid_limits, filter_group):
                 else:
                     row += f"  {_fmt_value(raw)}"
             print(row)
+
+    # ── Network inventory ──────────────────────────────────────────────────
+    show_network = (not filter_group) or filter_group.lower() == "network" \
+        or any(filter_group.lower() in g.lower() for _, _, _, g in NETWORK_SCHEMA.values())
+
+    if show_network:
+        print_section("🌐", "Network Capabilities & Settings")
+        net_group = None
+        for field, (api_key, source, units, group) in NETWORK_SCHEMA.items():
+            if filter_group and filter_group.lower() not in group.lower() \
+                    and filter_group.lower() != "network":
+                continue
+            if group != net_group:
+                print(f"\n  ── {group}")
+                net_group = group
+            print(f"  {field:<32}  {api_key:<26}  {source:<20}  {units}")
+
+        print("\n  Semantics:")
+        for line in NETWORK_NOTES:
+            print(f"    {line}")
+
+        if live_network is not None:
+            print_section("📶", "Network — Current State")
+            act = (live_network.get("active") or {})
+            print(f"  ACTIVE   {act.get('label')}   {act.get('ip') or '—'}"
+                  f"   gw {act.get('gateway') or '—'}   ({act.get('selection')})")
+            print()
+            print(f"  {'iface':<6} {'enabled':<8} {'link':<6} {'active':<7} "
+                  f"{'available':<10} {'address':<16} {'addr src':<9} "
+                  f"{'signal':<10} note")
+            for i in (live_network.get("interfaces") or []):
+                sig = ""
+                note = ""
+                if i["key"] == "wifi" and i.get("signal_pct") is not None:
+                    sig = f"{i['signal_pct']}%"
+                elif i["key"] == "4g":
+                    sig = f"{i.get('signal_raw')}/52" if i.get("signal_raw") else "—"
+                    note = f"SIM {i.get('sim_status_name') or 'unknown'}"
+                # DEF-SCHEMA-DHCP-NOT-RENDERED. The capability inventory above
+                # advertises interfaces[].dhcp, so show it. It reports whether
+                # the aGate is a DHCP CLIENT — it says nothing about whether
+                # the router holds a reservation for it, which no FranklinWH
+                # endpoint exposes. Hence "addr src", not "reserved".
+                dhcp = i.get("dhcp")
+                addr_src = "—" if dhcp is None else ("dhcp" if dhcp else "static")
+                print(f"  {i['key']:<6} {str(i['enabled']):<8} {str(i['link']):<6} "
+                      f"{str(i['is_active']):<7} {str(i['available']):<10} "
+                      f"{str(i.get('ip') or '—'):<16} {addr_src:<9} "
+                      f"{sig:<10} {note}")
+
+            cloud = (live_network.get("cloud") or {})
+            print(f"\n  carrying traffic : {live_network.get('linked_transports')}")
+            print(f"  available        : {live_network.get('available_transports')}"
+                  f"   redundant={live_network.get('redundant')}")
+            print(f"  cloud            : aws={cloud.get('aws_connected')} "
+                  f"internet={cloud.get('internet')} "
+                  f"routerStatus={cloud.get('router_status_raw')} (raw code)")
+            print(f"  extended 339     : {(live_network.get('source') or {}).get('extended_339')}")
+
+            findings = network_health(live_network)
+            print_section("🩺", "Network — Health Check")
+            if not findings:
+                print("  ✓ no findings")
+            for f in findings:
+                mark = "⚠" if f["level"] == "WARN" else "·"
+                print(f"  {mark} [{f['level']}] {f['code']}")
+                print(f"      {f['detail']}")
+            print("\n  Note: the API exposes no connection-attempt history — "
+                  "selectDeviceRunLogList\n        is a static alarm-code dictionary, not an "
+                  "event log. For continuous\n        history, poll with "
+                  "`tools/network_probe.py observe`.")
+
+    gen_filtered = (not filter_group
+                    or filter_group.lower() in "generator"
+                    or filter_group.lower() in "schedule")
+    if gen_filtered:
+        print()
+        print_section("🔌", "Generator Config & Schedule  (selectIotGenerator)")
+        print("  Charge windows are GATEWAY-LOCAL wall clock — docs/TIME_AND_TIMEZONES.md")
+        print("  `mode` and `manuSw` are different controls — DEF-GEN-MODE-WRITES-MANUSW")
+        print()
+        print(_header_row())
+        print(_divider())
+        g_group = None
+        for field, (api_key, source, units, group) in GENERATOR_SCHEMA.items():
+            if group != g_group:
+                print(f"\n  ── {group}")
+                g_group = group
+            row = (f"  {field:<{col_field}}  {api_key:<{col_key}}  "
+                   f"{source:<{col_src}}  {units:<{col_units}}")
+            if live_generator is not None:
+                row += f" {_fmt_value(live_generator.get(api_key))}"
+            print(row)
+
+        print()
+        print_section("🕑", "Smart Circuit Schedule  (cmdType 311)")
+        print("  Four slots are TWO start/end pairs — TimeSet [1,0,1,0]; TimeEn arms")
+        print("  each slot; Freq is a cycle in DAYS and 0 means \"Once only\".")
+        print("  Times are GATEWAY-LOCAL wall clock — docs/TIME_AND_TIMEZONES.md")
+        print("  Write with set_smart_circuit_schedule() or `fwh sc --schedule`.")
+        print()
+        print(_header_row())
+        print(_divider())
+        for field, (api_key, source, units, group) in SMART_CIRCUIT_SCHEDULE_SCHEMA.items():
+            row = (f"  {field:<{col_field}}  {api_key:<{col_key}}  "
+                   f"{source:<{col_src}}  {units:<{col_units}}")
+            if live_sc is not None:
+                row += f" {_fmt_value(_sc_live(live_sc, api_key))}"
+            print(row)
+
+    ja12_filtered = (not filter_group
+                     or filter_group.lower() in "ja12"
+                     or filter_group.lower() in "compliance")
+    if live_ja12 is not None and ja12_filtered:
+        print()
+        print_section("📋", "JA12 Compliance Capacity  (ja12/queryComplianceCapacity)")
+        print("  California Title 24 JA12. Shown because this gateway reports")
+        print("  ja12Entrance — it is not requested otherwise.")
+        print()
+        if isinstance(live_ja12, dict) and live_ja12:
+            # Rendered generically. No field in this payload has ever been
+            # observed in the capture corpus, so no schema is asserted for it
+            # and no units are claimed. AP-14.
+            width = max(len(str(k)) for k in live_ja12)
+            for k, v in live_ja12.items():
+                print(f"  {str(k):<{max(width, 24)}}  {_fmt_value(v)}")
+            print()
+            print("  Field meanings are not documented and no response to this")
+            print("  endpoint appears in the capture corpus — values are shown raw.")
+        else:
+            print(f"  {_fmt_value(live_ja12)}")
 
     if live_current is None:
         print("\n  Tip: run with --live to show current values alongside the schema")

@@ -12,9 +12,29 @@ Supports:
 - Pricing rates (buy/sell per tariff tier)
 - Full overwrite (operation=0) — the only mode the Cloud API supports
 
-CAUTION: The saveTouDispatch API endpoint is destructive — it validates,
-saves, AND switches the system to TOU mode. There is no 'update data only'
-path. Calling it always forces a TOU mode switch.
+CAUTION: saveTouDispatch is destructive — it is a full overwrite and there
+is no 'update data only' path.
+
+Whether it ALSO switches the system to TOU mode is version-dependent:
+
+* CONFIRMED through app 2.11.0 / 2026-03: it did. Across 38 distinct
+  saveTouDispatch calls in the HAR corpus, spanning app 2.3.1 to 2.11.0,
+  the app never followed a save with updateTouModeV2 — the backend made
+  the switch itself.
+* OBSERVED ~2026-06 onward (user report, current firmware): it no longer
+  does. The app reports the schedule saved and OFFERS to switch, calling
+  the ordinary mode endpoint (updateTouModeV2, i.e. set_mode) only if the
+  user accepts.
+
+The corpus ends 2026-03-20, so it cannot date the change; it establishes
+only that the old behaviour held to that point. See
+DEF-TOU-SAVE-NO-LONGER-SWITCHES-MODE.
+
+Callers must therefore NOT assume a save activates the schedule. Set the
+mode explicitly when that is the intent::
+
+    await client.set_tou_schedule(...)
+    await client.set_mode("Time of Use")   # no longer implied by the save
 """
 
 import json
@@ -181,7 +201,7 @@ class TouMixin:
         for f in sorted(backup_dir.glob("*.json"), reverse=True):
             try:
                 data = _json.loads(f.read_text())
-                meta = data.get("meta", {})
+                meta = (data.get("meta") or {})
                 ts = datetime.fromisoformat(meta.get("timestamp", "1970-01-01T00:00:00+00:00"))
                 age_days = (datetime.now(timezone.utc) - ts).days
                 entry = {
@@ -366,9 +386,9 @@ class TouMixin:
 
         if option == 2:
             # Return full detailVoList from first season, first day type
-            day_types = strategyList[0].get("dayTypeVoList", [])
+            day_types = (strategyList[0].get("dayTypeVoList") or [])
             if day_types:
-                return day_types[0].get("detailVoList", [])
+                return (day_types[0].get("detailVoList") or [])
             return []
 
         # ── option=1: Find current and next dispatch blocks ─────────
@@ -385,13 +405,13 @@ class TouMixin:
                          f"for month {current_month}")
 
             # ── Find the correct day type ───────────────────────────
-            day_type_list = season.get("dayTypeVoList", [])
+            day_type_list = (season.get("dayTypeVoList") or [])
             matched_day_type = self._match_day_type(day_type_list, current_weekday)
             if matched_day_type is None:
                 logger.warning("get_tou_info: no matching day type found")
                 continue
 
-            detail_vo_list = matched_day_type.get("detailVoList", [])
+            detail_vo_list = (matched_day_type.get("detailVoList") or [])
             if not detail_vo_list:
                 logger.warning("get_tou_info: detailVoList is empty")
                 continue
@@ -621,9 +641,16 @@ class TouMixin:
         aGate may take a few minutes. touSendStatus=1 may persist as a
         false positive even after the schedule is applied.
 
-        CAUTION: The Cloud API's saveTouDispatch endpoint is destructive.
-        It validates, saves, AND switches the system to TOU mode. There
-        is no 'update data only' path.
+        CAUTION: The Cloud API's saveTouDispatch endpoint is destructive —
+        a full overwrite, with no 'update data only' path.
+
+        It does NOT reliably switch the system to TOU mode. It did so
+        through app 2.11.0 (CONFIRMED: 38 saves in the corpus, none
+        followed by a mode call), but current firmware saves only and
+        leaves the mode alone, with the app offering the switch as a
+        separate step. Call ``set_mode("Time of Use")`` afterwards if the
+        schedule is meant to take effect now.
+        See DEF-TOU-SAVE-NO-LONGER-SWITCHES-MODE.
 
         Parameters
         ----------
@@ -749,7 +776,7 @@ class TouMixin:
 
         logger.debug(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {self.gateway}")
         res = await self.get_tou_dispatch_detail()
-        template = res.get("result", {}).get("template", None)
+        template = (res.get("result") or {}).get("template", None)
 
         saveTOUdispatch_template = None
         null = 'null'
@@ -799,7 +826,7 @@ class TouMixin:
             account = null
             try:
                 gw_res = await self.get_home_gateway_list()
-                for gw in gw_res.get("result", []):
+                for gw in (gw_res.get("result") or []):
                     if gw.get("id") == self.gateway:
                         account = gw.get("account")
                         break
@@ -1096,20 +1123,20 @@ class TouMixin:
 
         try:
             existing = await self.get_tou_dispatch_detail()
-            existing_strategies = existing.get("result", {}).get("strategyList", [])
+            existing_strategies = ((existing.get("result") or {}).get("strategyList") or [])
             if existing_strategies:
                 # Preserve full season structure
                 existing_seasons = existing_strategies
 
                 # Preserve day types and rates from first season
-                existing_dt_list = existing_strategies[0].get("dayTypeVoList", [])
+                existing_dt_list = (existing_strategies[0].get("dayTypeVoList") or [])
                 if existing_dt_list:
                     existing_day_types = existing_dt_list
                     # Extract rates from first day type
                     for field in self._ALL_RATE_FIELDS:
                         existing_rates[field] = existing_dt_list[0].get(field, 0)
                     # Extract existing schedule blocks
-                    existing_blocks = existing_dt_list[0].get("detailVoList", [])
+                    existing_blocks = (existing_dt_list[0].get("detailVoList") or [])
         except Exception:
             logger.warning("set_tou_schedule: Could not read existing config — using defaults")
 
@@ -1134,7 +1161,7 @@ class TouMixin:
         dispatch_list = []
         try:
             if 'existing' in locals() and existing:
-                dispatch_list = existing.get("result", {}).get("detailDefaultVo", {}).get("touDispatchList", [])
+                dispatch_list = (((existing.get("result") or {}).get("detailDefaultVo") or {}).get("touDispatchList") or [])
         except Exception:
             pass
 
@@ -1226,7 +1253,7 @@ class TouMixin:
             # Resolve existing blocks for matching and merging
             existing_dt_blocks = None
             if existing_dt:
-                existing_dt_blocks = existing_dt.get("detailVoList", [])
+                existing_dt_blocks = (existing_dt.get("detailVoList") or [])
             elif existing_blocks:
                 existing_dt_blocks = existing_blocks
                 
@@ -1337,7 +1364,7 @@ class TouMixin:
                 t_id = existing_s.get("templateId", null)
                 if i == target_idx:
                     # Update this season's day types and schedules.
-                    edt_list = existing_s.get("dayTypeVoList", [])
+                    edt_list = (existing_s.get("dayTypeVoList") or [])
                     built_dts = _build_day_types_for_season(detailVoList, edt_list=edt_list, s_id=s_id)
                     strategyList.append({
                         "id": s_id,
@@ -1769,13 +1796,13 @@ class TouMixin:
         # Read existing template for metadata
         null = None
         res = await self.get_tou_dispatch_detail()
-        template = res.get("result", {}).get("template", {})
+        template = ((res.get("result") or {}).get("template") or {})
 
         # Build account info
         account = null
         try:
             gw_res = await self.get_home_gateway_list()
-            for gw in gw_res.get("result", []):
+            for gw in (gw_res.get("result") or []):
                 account = gw.get("account", null)
                 break
         except Exception:
@@ -1853,7 +1880,7 @@ class TouMixin:
         dispatch_list = []
         try:
             if res:
-                dispatch_list = res.get("result", {}).get("detailDefaultVo", {}).get("touDispatchList", [])
+                dispatch_list = (((res.get("result") or {}).get("detailDefaultVo") or {}).get("touDispatchList") or [])
         except Exception:
             pass
 
@@ -1875,7 +1902,7 @@ class TouMixin:
         for s in strategy_list:
             day_types = []
             s_id = s.get("id", null)
-            for dt in s.get("dayTypeVoList", []):
+            for dt in (s.get("dayTypeVoList") or []):
                 dt_entry = {
                     "dayName": dt.get("dayName", "weekday"),
                     "dayType": dt.get("dayType", 3),
@@ -1901,7 +1928,7 @@ class TouMixin:
                     dt_entry["eleticRateGridFee"] = dt["eleticRateGridFee"]
 
                 enriched_blocks = []
-                for blk in dt.get("detailVoList", []):
+                for blk in (dt.get("detailVoList") or []):
                     enriched_blk = blk.copy()
                     
                     disp_id = enriched_blk.get("dispatchId")
@@ -1962,7 +1989,7 @@ class TouMixin:
         )
         res = await self.save_tou_dispatch(payload)
         if res.get("code") == 200:
-            tou_id = res.get("result", {}).get("id")
+            tou_id = (res.get("result") or {}).get("id")
             logger.debug(f"set_tou_schedule_multi: success — touId={tou_id}")
         else:
             msg = f"set_tou_schedule_multi: saveTouDispatch failed: {res}"
@@ -2021,8 +2048,8 @@ class TouMixin:
             now = datetime.now()
 
         res = await self.get_tou_dispatch_detail()
-        result = res.get("result", {})
-        strategy_list = result.get("strategyList", [])
+        result = (res.get("result") or {})
+        strategy_list = (result.get("strategyList") or [])
         if not strategy_list:
             logger.debug("get_current_tou_price: no strategyList in response")
             return {}
@@ -2045,7 +2072,7 @@ class TouMixin:
         preferred_dt = 2 if is_weekend else 1
 
         # Find best matching dayTypeVoList entry
-        day_types = active_season.get("dayTypeVoList", [])
+        day_types = (active_season.get("dayTypeVoList") or [])
         active_dt = None
         for dt in day_types:
             if dt.get("dayType") == preferred_dt:
@@ -2066,7 +2093,7 @@ class TouMixin:
         # Find active time block
         current_hhmm = now.strftime("%H:%M")
         current_minutes = now.hour * 60 + now.minute
-        detail_list = active_dt.get("detailVoList", [])
+        detail_list = (active_dt.get("detailVoList") or [])
         active_block = None
 
         for block in detail_list:
@@ -2222,7 +2249,7 @@ class TouMixin:
         # ── Step 1: mode list (getGatewayTouListV2) ──────────────────────────
         try:
             mode_resp = await self.get_gateway_tou_list()
-            result = mode_resp.get("result", {})
+            result = (mode_resp.get("result") or {})
         except Exception as exc:
             return {
                 "ok": False,
@@ -2232,7 +2259,7 @@ class TouMixin:
             }
 
         current_id = result.get("currendId")
-        mode_list  = result.get("list", [])
+        mode_list  = (result.get("list") or [])
         stop_mode  = result.get("stopMode", 0) or 0
         grid_charge_en = result.get("gridChargeEn", 0) or 0
         tariff_setting_flag = bool(result.get("tariffSettingFlag", True))

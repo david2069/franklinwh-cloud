@@ -6,6 +6,11 @@ The CLI discover command renders this; FEM and user scripts can also consume it.
 Feature: FEAT-CLI-DISCOVER-VERBOSE
 """
 
+# Lazy annotations (PEP 563): `get_resolved_capabilities` is annotated `-> ResolvedCapabilities`
+# but imports that name inside its body — on Python < 3.14 (e.g. the bridge's 3.12 container)
+# eager annotation evaluation raised NameError at import. Strings-only annotations fix it.
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -57,8 +62,13 @@ class AgateInfo:
     conn_type_name: str = ""
     sim_status: int = 0
     sim_status_name: str = ""
-    wifi_signal: int = 0         # dBm
-    mobile_signal: int = 0       # dBm
+    # Both are 0-100 quality percentages, NOT dBm. Verified over 20,471 samples
+    # in the HAR corpus: runtimeData.wifiSignal spans 0-100 (always even),
+    # runtimeData.signal spans 0-99. Neither is ever negative.
+    # NOTE: commSetPara.operatorRSSI (317) and 4GSignalStrength (339) are a
+    # DIFFERENT, narrower vendor scale (observed 0-52) — do not mix them in.
+    wifi_signal: int = 0         # 0-100 %
+    mobile_signal: int = 0       # 0-100 %
     # Firmware versions (Tier 3)
     ibg_version: str = ""
     sl_version: str = ""
@@ -128,6 +138,39 @@ class SmartCircuitConfig:
     modes: List[str] = field(default_factory=list)
     v2l_port: bool = False       # V2L available on this SC
     v2l_enabled: bool = False    # V2L currently active
+    # Per-circuit schedule, straight from the cmdType 311 payload discover
+    # already fetches. Previously parsed past and discarded — the same shape as
+    # DEF-SC-SCHEDULE-NOT-RENDERED. Costs no extra call.
+    #
+    # Slots are POSITIONAL, not start/end pairs: whether the four SwNTime
+    # entries are two windows or four independent slots is unestablished, and
+    # `time_set` is passed through undeciphered (DEF-SC-TIMESET-UNDECIPHERED).
+    schedules: List[dict] = field(default_factory=list)
+
+
+@dataclass
+class GeneratorConfig:
+    """Generator settings from selectIotGenerator. Tier 3 only — one REST call.
+
+    Field names are the gateway's. The SoC thresholds are ``genStartElec`` /
+    ``genCloseElec``; there is no ``genStartSoc``/``genStopSoc``
+    (DEF-GEN-SOC-FIELD-NAMES).
+
+    ``charge_windows`` are the three generator charge windows, in **gateway-local
+    wall clock** — see ``docs/TIME_AND_TIMEZONES.md``. Unlike Smart Circuit
+    schedules these are plainly named and writable via
+    ``set_generator_charge_schedule()``.
+    """
+    present: bool = False
+    enabled: int | None = None        # genEn
+    state: int | None = None          # genStat
+    mode: int | None = None           # `mode` — NOT manuSw (DEF-GEN-MODE-WRITES-MANUSW)
+    manual_switch: int | None = None  # manuSw — a manual start/stop command
+    start_below_soc: int | None = None   # genStartElec
+    stop_above_soc: int | None = None    # genCloseElec
+    rated_power: int | None = None
+    model: str = ""
+    charge_windows: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -144,6 +187,7 @@ class AccessoriesInfo:
     apbox_di: List[str] = field(default_factory=list)
     apbox_do_status: List[str] = field(default_factory=list)
     generator_state: str = ""
+    generator: "GeneratorConfig" = field(default_factory=lambda: GeneratorConfig())
     v2l_state: str = ""
 
 
@@ -171,9 +215,23 @@ class FeatureFlags:
     sgip: bool = False
     bb: bool = False             # Hawaii Battery Bonus
     ja12: bool = False
+    # `ja12Entrance` (above) and `isJoinJA12` (here) come from DIFFERENT
+    # endpoints — getEntranceInfo vs the gateway list — and never appear in the
+    # same response. Whether "entrance" means eligible-and-offered or actually
+    # joined is unresolved (DEF-ISJOINJA12-NEVER-READ): no captured gateway has
+    # ja12Entrance=1 together with a known isJoinJA12, so the decisive case has
+    # never been observed. Recorded separately rather than merged, so the first
+    # live gateway that has both settles it by observation.
+    #
+    # None = not reported by this firmware/app version, which is NOT the same
+    # as False. Only 9 corpus samples carry the field at all.
+    ja12_joined: bool | None = None
     sdcp: bool = False
     vpp_enrolled: bool = False
+    # US-only. Left blank outside the US rather than asserting a scheme that
+    # does not exist there — see DEF-NEM-TYPE-ZERO-UNRESOLVED.
     nem_type: str = ""           # "NEM 2.0", "NEM 3.0", "No NEM"
+    nem_type_raw: int | None = None   # the wire value, whatever we label it
     ahub_detected: bool = False
     mac1_detected: bool = False
     charging_power_limited: bool = False
@@ -255,6 +313,26 @@ class ProgrammeInfo:
 
 
 @dataclass
+class LocalReachability:
+    """Can the gateway be reached on the LAN, and on which port?
+
+    Populated only when ``discover(probe_local=True)``. Opt-in because it is
+    **local** I/O: it only means anything from the gateway's own network, and
+    every other field on the snapshot comes from the cloud.
+
+    ``reachable`` is None when no probe was attempted or no address was
+    available — "could not check" is not "not listening". See
+    ``docs/AC_TOPOLOGY.md`` for the same principle applied to AC readings.
+    """
+    probed: bool = False
+    reachable: bool | None = None
+    port: int | None = None          # 9000 (local API) or 22 (fallback)
+    host: str | None = None
+    modbus_502_open: bool | None = None   # informational; only listens if enabled
+    note: str = ""
+
+
+@dataclass
 class DeviceSnapshot:
     """Complete device discovery snapshot.
 
@@ -273,6 +351,7 @@ class DeviceSnapshot:
     warranty: WarrantyInfo = field(default_factory=WarrantyInfo)
     electrical: ElectricalInfo = field(default_factory=ElectricalInfo)
     programmes: ProgrammeInfo = field(default_factory=ProgrammeInfo)
+    local: LocalReachability = field(default_factory=LocalReachability)
     region_quirks: dict = field(default_factory=dict)
     accessory_quirks: dict = field(default_factory=dict)
 
@@ -316,7 +395,7 @@ def compile_capabilities(
     hw_ver = str(dev_res.get("sysHdVersion", "100"))
     try:
         catalog = get_catalog()
-        model_info = catalog.get("agate_models", {}).get(hw_ver, {})
+        model_info = ((catalog.get("agate_models") or {}).get(hw_ver) or {})
         agate_generation = model_info.get("generation", 1)
     except Exception:
         agate_generation = 1

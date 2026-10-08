@@ -2,7 +2,7 @@
  TEST RESULTS — FEAT-tou-name-override
  Date:    2026-05-25 02:43:42 AEST
  Branch:  main
- Commit:  7c878ea (pre-commit)
+ Commit:  7a3d0b4 (pre-commit)
  Result:  PASS ✅
 ═══════════════════════════════════════════════════════════
 

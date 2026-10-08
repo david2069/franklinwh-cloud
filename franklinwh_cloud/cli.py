@@ -10,6 +10,7 @@ Usage:
     franklinwh-cli discover                # device enumeration
     franklinwh-cli mode                    # current operating mode
     franklinwh-cli tou                     # TOU schedule info
+    franklinwh-cli energy --period month   # energy history (table/json/csv)
     franklinwh-cli raw <method>            # direct API passthrough
     franklinwh-cli metrics                 # API call metrics
 
@@ -183,6 +184,25 @@ def build_parser() -> argparse.ArgumentParser:
     sub_tou.add_argument("--restore", dest="tou_restore", action="store_true",
                          help="Manually restore the most recent unrestored TOU backup for this gateway.")
 
+    # energy
+    sub_energy = subs.add_parser("energy",
+                                 help="Energy (kWh) and 5-minute power (kW) history — table, JSON or CSV")
+    sub_energy.add_argument("--period", choices=["day", "week", "month", "year", "ytd", "lifetime"],
+                            default="day", help="Period to fetch (default: day)")
+    sub_energy.add_argument("--date", metavar="YYYY-MM-DD",
+                            help="Any date inside the period; snapped to its start "
+                                 "(week → Monday, month → 1st, year → Jan 1). Default: today")
+    sub_energy.add_argument("--format", choices=["table", "json", "csv"], default="table",
+                            help="Output format (default: table). Global --json means --format json")
+    sub_energy.add_argument("--output", "-o", metavar="PATH",
+                            help="Write to a file instead of stdout")
+    sub_energy.add_argument("--interval", choices=["5min"],
+                            help="With --period day: 288 five-minute power samples (kW) instead of the daily kWh total")
+    sub_energy.add_argument("--all-fields", action="store_true",
+                            help="Include every array the API returns (see --describe for names and meanings)")
+    sub_energy.add_argument("--describe", action="store_true",
+                            help="Print the field dictionary (column, API key, unit, evidence) and exit — no login")
+
     # raw
     sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
     sub_raw.add_argument("method", nargs="?", default="help",
@@ -220,14 +240,51 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Detailed Smart Circuit configuration and control")
     sub_sc.add_argument("--on", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 ON")
     sub_sc.add_argument("--off", type=int, metavar="CIRCUIT", help="Turn Circuit 1/2/3 OFF")
-    sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT", help="Set Circuit 1/2/3 to Schedule mode")
+    sub_sc.add_argument("--schedule", type=int, metavar="CIRCUIT",
+                        help="Write SwNMode=2 (\"Schedule mode\"). The app does "
+                             "send this value when scheduling, though it has never "
+                             "been seen in a read — the firmware appears to "
+                             "normalise it. Use --set-schedule to write the "
+                             "schedule itself.")
+    sub_sc.add_argument("--set-schedule", type=int, metavar="CIRCUIT",
+                        help="Write Circuit N's time schedule. Needs --window.")
+    sub_sc.add_argument("--window", action="append", metavar="START-END",
+                        help="A schedule window in GATEWAY-local time, e.g. "
+                             "12:00-13:30. Repeat for a second (max two). "
+                             "Use 'off' to disarm without discarding the times.")
+    sub_sc.add_argument("--cycle-days", type=int, metavar="N",
+                        help="Repeat interval in DAYS for --set-schedule. "
+                             "0 = once only. Left unchanged if omitted.")
+    sub_sc.add_argument("--base-date", metavar="YYYY-MM-DD",
+                        help="Date the schedule counts from (execution date = "
+                             "base + k x cycle). Defaults to each slot's existing "
+                             "date; required if a slot has never been written.")
+    sub_sc.add_argument("--yes", "-y", action="store_true",
+                        help="Skip the confirmation prompt for --set-schedule")
     sub_sc.add_argument("--cutoff", type=int, metavar="CIRCUIT", help="Enable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--disable-cutoff", type=int, metavar="CIRCUIT", help="Disable SOC auto cut-off for Circuit 1/2/3")
     sub_sc.add_argument("--soc", type=int, metavar="PCT", help="SOC limit (0-100) for --cutoff")
     sub_sc.add_argument("--load-limit", type=int, metavar="CIRCUIT",
                         help="Configure the continuous Load Limit in amps for a specific circuit")
+    sub_sc.add_argument("--detail", action="store_true",
+                        help="Show configuration, schedule AND live metrics per circuit")
+    sub_sc.add_argument("--circuit", type=int, metavar="N",
+                        help="With --detail: restrict to one circuit")
     sub_sc.add_argument("--amps", type=int, metavar="A",
                         help="The maximum amperage limit for --load-limit (0 to reset)")
+
+    sub_gen = subs.add_parser("gen", aliases=["generator"],
+                              help="Generator module configuration and live metrics")
+    sub_gen.add_argument("--schedule", action="append", metavar="START-END",
+                         help="Set a generator charge window in GATEWAY-local "
+                              "time, e.g. 11:00-23:59. Repeat for up to three. "
+                              "Use 'off' to disable all.")
+    sub_gen.add_argument("--yes", "-y", action="store_true",
+                         help="Skip the confirmation prompt")
+
+    # network
+    from franklinwh_cloud.cli_commands import network as _network_cmd
+    _network_cmd.register(subs)
 
     # diag
     subs.add_parser("diag", aliases=["diagnostic"],
@@ -278,7 +335,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub_schema.add_argument("--live", action="store_true",
                             help="Fetch live values from get_stats() and show alongside the schema")
     sub_schema.add_argument("--filter", dest="filter_group", metavar="GROUP",
-                            help="Filter to fields in a group (e.g. 'power', 'electrical', 'relay', '211')")
+                            help="Filter to fields in a group (e.g. 'power', 'electrical', "
+                                 "'relay', '211', 'network'). 'network' shows the connectivity "
+                                 "inventory; add --live for current state and a health check")
 
     # fetch (arbitrary endpoint)
     sub_fetch = subs.add_parser("fetch", help="Arbitrary GET/POST to any API endpoint")
@@ -354,6 +413,14 @@ async def async_main():
         parser.print_help()
         return
 
+    # `energy --describe` prints the field dictionary — no credentials needed
+    if args.command == "energy" and getattr(args, "describe", False):
+        from franklinwh_cloud.cli_commands import energy
+        if args.no_color:
+            disable_color()
+        energy.describe(json_output=args.json or args.format == "json")
+        return
+
     # Look for telemetry config
     telemetry_enabled = False
     telemetry_uuid = "anonymous"
@@ -411,13 +478,13 @@ async def async_main():
     # Gateway discovery if not specified
     if not gateway:
         info = fetcher.info or {}
-        gateway_list = info.get("gatewayList", [])
+        gateway_list = (info.get("gatewayList") or [])
         if not gateway_list:
             # Try get_home_gateway_list via a temporary client
             temp_client = Client(fetcher, "")
             try:
                 res = await temp_client.get_home_gateway_list()
-                gateway_list = res.get("result", [])
+                gateway_list = (res.get("result") or [])
             except Exception:
                 pass
         if gateway_list:
@@ -472,6 +539,12 @@ async def async_main():
                               active_only=getattr(args, 'active_only', False),
                               tou_restore=getattr(args, 'tou_restore', False))
 
+            case "energy":
+                from franklinwh_cloud.cli_commands import energy
+                code = await energy.run(client, args)
+                if code:
+                    sys.exit(code)
+
             case "raw":
                 from franklinwh_cloud.cli_commands import raw
                 await raw.run(client, args.method, args.values,
@@ -505,7 +578,28 @@ async def async_main():
                              disable_cutoff=getattr(args, 'disable_cutoff', None),
                              soc=getattr(args, 'soc', None),
                              load_limit=getattr(args, 'load_limit', None),
-                             amps=getattr(args, 'amps', None))
+                             amps=getattr(args, 'amps', None),
+                             detail=getattr(args, 'detail', False),
+                             set_schedule=getattr(args, 'set_schedule', None),
+                             window=getattr(args, 'window', None),
+                             cycle_days=getattr(args, 'cycle_days', None),
+                             base_date=getattr(args, 'base_date', None),
+                             assume_yes=getattr(args, 'yes', False),
+                             detail_circuit=getattr(args, 'circuit', None))
+
+            case "gen" | "generator":
+                from franklinwh_cloud.cli_commands import gen
+                code = await gen.run(client, json_output=args.json,
+                                     schedule=getattr(args, "schedule", None),
+                                     assume_yes=getattr(args, "yes", False))
+                if code:
+                    sys.exit(code)
+
+            case "network" | "net":
+                from franklinwh_cloud.cli_commands import network
+                code = await network.run(client, args)
+                if code:
+                    sys.exit(code)
 
             case "diag" | "diagnostic":
                 from franklinwh_cloud.cli_commands import diag

@@ -21,6 +21,7 @@ from franklinwh_cloud.discovery import (
     DeviceSnapshot, SiteInfo, AgateInfo, APowerUnit, BatteryInfo,
     AccessoryItem, SmartCircuitConfig, AccessoriesInfo, FeatureFlags,
     GridInfo, WarrantyDevice, WarrantyInfo, ElectricalInfo, ProgrammeInfo,
+    GeneratorConfig,
 )
 from franklinwh_cloud.const.states import (
     APBOX_IO_STATE, SMART_CIRCUIT_MODE, GENERATOR_STATE, V2L_RUN_STATE, PCS_STATE, BMS_STATE
@@ -60,18 +61,39 @@ def _ts_to_str(ts_ms):
 class DiscoverMixin:
     """Discovery methods for the Client class."""
 
-    async def discover(self, tier: int = 1) -> DeviceSnapshot:
+    async def discover(self, tier: int = 1, *, probe_local: bool = False,
+                       local_host: str | None = None,
+                       local_timeout_s: float = 1.5) -> DeviceSnapshot:
         """Full device discovery — returns structured DeviceSnapshot.
 
         Parameters
         ----------
         tier : int
             Verbosity level: 1 (quick), 2 (verbose), 3 (pedantic)
+        probe_local : bool
+            Also check whether the gateway answers on its LAN address —
+            TCP 9000 (the local "Direct Connection" API), falling back to 22,
+            plus an informational Modbus 502 check. Default False.
+        local_host : str | None
+            Address to probe. When omitted it is taken from the gateway's
+            active transport, which costs one extra cmdType 317 read.
+        local_timeout_s : float
+            Per-port connect timeout.
 
         Returns
         -------
         DeviceSnapshot
             Structured snapshot of all discovered device data.
+
+        Note
+        ----
+        ``probe_local`` is **opt-in** because every other field here comes from
+        the cloud and works from anywhere, whereas a port probe only means
+        something on the gateway's own network. Enabling it by default would
+        make ``discover()`` behave differently depending on where it runs.
+
+        A failed probe yields ``reachable=False``; **no address to probe yields
+        ``None``**, which is not the same thing.
         """
         snapshot = DeviceSnapshot(
             tier=tier,
@@ -81,6 +103,9 @@ class DiscoverMixin:
 
         # ── Tier 1: Core identity + flags + state ──────────────────
         await self._discover_tier1(snapshot, catalog)
+
+        if probe_local:
+            await self._discover_local(snapshot, local_host, local_timeout_s)
 
         if tier >= 2:
             # ── Tier 2: Full inventory + accessories + warranty ────
@@ -97,17 +122,121 @@ class DiscoverMixin:
 
     # ── Tier 1 ────────────────────────────────────────────────────
 
+    @staticmethod
+    def _sc_schedules(sc_info, count):
+        """Per-circuit schedule from the cmdType 311 payload already fetched.
+
+        Slots are listed POSITIONALLY. Whether the four SwNTime entries are two
+        start/end windows or four independent slots is unestablished — every
+        captured sample is the unconfigured default — and SwNTimeSet is passed
+        through undeciphered. DEF-SC-TIMESET-UNDECIPHERED.
+        """
+        out = []
+        for cid in range(1, max(count, 0) + 1):
+            times = sc_info.get(f"Sw{cid}Time") or []
+            if not times:
+                continue
+            enabled = sc_info.get(f"Sw{cid}TimeEn") or []
+            slots = []
+            for i, raw in enumerate(times):
+                # The date part is real but is NOT the app's "Execution time".
+                # Verified live 2026-09-18: with the app showing Execution time
+                # 17 Oct 2026, Sw1Time carried 2026-06-19 on range 1 and
+                # 2026-09-18 (that day) on range 2. So it reads as a per-range
+                # stamp, and the execution date is held somewhere else.
+                # '2000-01-01' is the unset sentinel. Surfaced as `date_raw`
+                # rather than `date` so nobody reads it as the execution date.
+                # DEF-SC-DATE-DISCARDED / DEF-SC-EXECUTION-DATE-UNLOCATED.
+                date, _, hhmm = str(raw or "").partition(" ")
+                slots.append({
+                    "index": i,
+                    "at": hhmm or None,
+                    "date_raw": None if date in ("", "2000-01-01") else date,
+                    # CONFIRMED by the app: "Only two time slots can be
+                    # scheduled", each a start-end range. So the four entries
+                    # are two ranges: (0,1) and (2,3).
+                    "role": "start" if i % 2 == 0 else "end",
+                    "range": i // 2 + 1,
+                    "enabled": bool(enabled[i]) if i < len(enabled) else False,
+                })
+            # The date in SwNTime is the schedule's BASE date, and SwNFreq the
+            # cycle in days. The app's "Execution time" is the NEXT occurrence,
+            # derived rather than stored:
+            #     next = base + k * cycle_days,  smallest k giving next >= today
+            # CONFIRMED live 2026-09-18: base 2026-06-19 with a 60-day cycle
+            # gives 2026-06-19, 2026-08-18, 2026-10-17 — and the app showed
+            # "Execution time: 17 Oct 2026". DEF-SC-EXECUTION-DATE-UNLOCATED.
+            #
+            # Not computed here: it needs "today" in the GATEWAY's time zone,
+            # which this snapshot does not carry. Computing it from the
+            # caller's clock would be wrong by up to a day across zones — see
+            # docs/TIME_AND_TIMEZONES.md.
+            base = next((s["date_raw"] for s in slots if s["date_raw"]), None)
+            out.append({
+                "circuit": cid,
+                "slots": slots,
+                "base_date": base,
+                "cycle_days": sc_info.get(f"Sw{cid}Freq"),
+                "any_enabled": any(s["enabled"] for s in slots),
+                "raw_time_set": sc_info.get(f"Sw{cid}TimeSet"),
+                # CONFIRMED 2026-09-18: two ranges of (start, end).
+                "pairing": "two ranges of start/end",
+            })
+        return out
+
+    async def _discover_local(self, snap, local_host, timeout_s):
+        """LAN reachability. Never raises — this is supplementary to a cloud call."""
+        from franklinwh_cloud.mixins.network import (
+            LOCAL_MODBUS_PORT, probe_local_reachability, probe_tcp,
+        )
+        from franklinwh_cloud.const.devices import NETWORK_TYPE_KEYS, UNASSIGNED_IPS
+
+        host = local_host
+        if not host:
+            # One extra cmdType 317 read, only when asked to probe and no
+            # address was supplied. discover() otherwise never reads 317.
+            try:
+                net = await self.get_network_info()
+                key = NETWORK_TYPE_KEYS.get(net.get("currentNetType"))
+                cfg = (net.get(key) or {}) if key else {}
+                ip = cfg.get("ip")
+                host = ip if ip not in UNASSIGNED_IPS else None
+            except Exception as e:
+                logger.warning(f"discover: could not resolve LAN address: {e}")
+                snap.local.note = f"address lookup failed: {e}"
+                return
+
+        if not host:
+            # Mid-reassociation, or on a transport with no address (4G holds
+            # none). Not a failure — there is simply nothing to probe.
+            snap.local.note = "no LAN address on the active transport"
+            return
+
+        try:
+            r = await probe_local_reachability(host, timeout_s=timeout_s)
+            snap.local.probed = r["probed"]
+            snap.local.reachable = r["reachable"]
+            snap.local.port = r["port"]
+            snap.local.host = r["host"]
+            # Informational only: Modbus listens solely when enabled, so a
+            # closed port is not evidence of anything.
+            snap.local.modbus_502_open = await probe_tcp(
+                host, LOCAL_MODBUS_PORT, timeout_s=timeout_s)
+        except Exception as e:
+            logger.warning(f"discover: local probe failed: {e}")
+            snap.local.note = f"probe failed: {e}"
+
     async def _discover_tier1(self, snap, catalog):
         """Tier 1: Site identity, aGate, battery count, feature flags, state."""
 
         # 1. Home gateway list → aGate identity
         try:
             res = await self.get_home_gateway_list()
-            gateways = res.get("result", [])
+            gateways = (res.get("result") or [])
             if gateways:
                 gw = gateways[0]
                 hw_ver = int(gw.get("sysHdVersion", 0))
-                model_info = catalog["agate_models"].get(str(hw_ver), {})
+                model_info = (catalog["agate_models"].get(str(hw_ver)) or {})
 
                 snap.agate.serial = gw.get("id", "")
                 snap.agate.hw_version = hw_ver
@@ -134,17 +263,19 @@ class DiscoverMixin:
                 snap.agate.installed = _ts_to_str(gw.get("installTime"))
                 snap.agate.created = _ts_to_str(gw.get("createTime"))
                 # Site basics from gateway
+                # Sibling of ja12Entrance, from a different endpoint. Read,
+                # not interpreted — see FeatureFlags.ja12_joined.
+                if "isJoinJA12" in gw:
+                    snap.flags.ja12_joined = bool(gw.get("isJoinJA12"))
                 snap.site.timezone = gw.get("zoneInfo", "")
                 snap.site.country_id = gw.get("countryId", 0)
                 snap.site.province_id = gw.get("provinceId", 0)
-                country_info = catalog["countries"].get(
-                    str(gw.get("countryId", 0)), {}
-                )
+                country_info = (catalog["countries"].get(str(gw.get("countryId", 0))) or {})
                 snap.site.country = country_info.get("name", "")
                 
                 # Attach region and accessory catalog quirks
-                snap.region_quirks = catalog.get("region_quirks", {}).get(str(snap.site.country_id), {})
-                snap.accessory_quirks = catalog.get("accessory_quirks", {})
+                snap.region_quirks = ((catalog.get("region_quirks") or {}).get(str(snap.site.country_id)) or {})
+                snap.accessory_quirks = (catalog.get("accessory_quirks") or {})
         except Exception as e:
             logger.warning(f"discover: get_home_gateway_list failed: {e}")
 
@@ -206,7 +337,7 @@ class DiscoverMixin:
         # 4. Device info → aPower list, off-grid, V2L, MPPT
         try:
             dev = await self.get_device_info()
-            result = dev.get("result", {}) if isinstance(dev, dict) else {}
+            result = (dev.get("result") or {}) if isinstance(dev, dict) else {}
             if result:
                 snap.agate.device_time = result.get("deviceTime", snap.agate.device_time)
                 snap.agate.device_date = result.get("date", "")
@@ -223,7 +354,7 @@ class DiscoverMixin:
                     snap.grid.connected = False
 
                 # Battery summary
-                apower_list = result.get("apowerList", [])
+                apower_list = (result.get("apowerList") or [])
                 snap.batteries.count = len(apower_list)
                 snap.batteries.total_capacity_kwh = result.get("totalCap", 0.0)
                 snap.batteries.total_rated_power_kw = result.get("fixedPowerTotal", 0.0)
@@ -241,9 +372,9 @@ class DiscoverMixin:
             from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS, AGATE_STATE
 
             comp = await self.get_device_composite_info()
-            result = comp.get("result", {}) if isinstance(comp, dict) else {}
-            solar_vo = result.get("solarHaveVo", {}) if result else {}
-            runtime = result.get("runtimeData", {}) if result else {}
+            result = (comp.get("result") or {}) if isinstance(comp, dict) else {}
+            solar_vo = (result.get("solarHaveVo") or {}) if result else {}
+            runtime = (result.get("runtimeData") or {}) if result else {}
 
             # Install flags live in runtimeData; solarHaveVo is a fallback for older firmware
             def _install(key, default="0"):
@@ -303,7 +434,7 @@ class DiscoverMixin:
                 snap.electrical.i_l2 = runtime.get("gridA2", runtime.get("i_l2"))
                 snap.electrical.frequency = runtime.get("gridFreq", runtime.get("frequency"))
                 # Relays — main_sw: [Grid 1, Generator, Solar PV 1] — encoding: 1=OPEN, 0=CLOSED
-                main_sw = runtime.get("main_sw", [])
+                main_sw = (runtime.get("main_sw") or [])
                 relay_names = ["grid_1", "generator", "solar_pv_1"]
                 for i in range(len(relay_names)):
                     val = main_sw[i] if i < len(main_sw) else 0
@@ -327,8 +458,8 @@ class DiscoverMixin:
                     snap.accessories.v2l_state = V2L_RUN_STATE.get(v2l_stat, str(v2l_stat))
 
                 # BMS and PCS Operational Arrays
-                bms_work = runtime.get("bms_work", [])
-                pe_stat = runtime.get("pe_stat", [])
+                bms_work = (runtime.get("bms_work") or [])
+                pe_stat = (runtime.get("pe_stat") or [])
                 for i, unit in enumerate(snap.batteries.units):
                     if i < len(bms_work):
                         unit.bms_state = BMS_STATE.get(bms_work[i], str(bms_work[i]))
@@ -340,7 +471,7 @@ class DiscoverMixin:
         # 6. Grid status → simulated off-grid (user-opened contactor)
         try:
             gs = await self.get_grid_status()
-            result = gs.get("result", {}) if isinstance(gs, dict) else {}
+            result = (gs.get("result") or {}) if isinstance(gs, dict) else {}
             if result:
                 if result.get("offgridSet"):
                     snap.flags.off_grid = True
@@ -353,7 +484,7 @@ class DiscoverMixin:
         try:
             gp = await self.get_grid_profile_info()
             if isinstance(gp, dict):
-                profiles = gp.get("list", [])
+                profiles = (gp.get("list") or [])
                 current_id = gp.get("currentId", 0)
                 for p in profiles:
                     if p.get("id") == current_id:
@@ -365,13 +496,13 @@ class DiscoverMixin:
         # 8. Site info — siteId + siteName (gateway_name already set from get_equipment_location)
         try:
             site_data = await self.get_site_and_device_info()
-            sites = site_data.get("result", []) if isinstance(site_data, dict) else []
+            sites = (site_data.get("result") or []) if isinstance(site_data, dict) else []
             if sites:
                 site = sites[0]
                 snap.site.site_id = site.get("siteId", 0)
                 snap.site.site_name = site.get("siteName", "")
                 # gateway_name from nested device list (fallback if equipment_location failed)
-                devices = site.get("basicDeviceInfoVOList", [])
+                devices = (site.get("basicDeviceInfoVOList") or [])
                 if devices and not snap.site.gateway_name:
                     snap.site.gateway_name = devices[0].get("gatewayName", "")
         except Exception as e:
@@ -403,7 +534,7 @@ class DiscoverMixin:
                         m = sc_info.get(mode_key, 0)
                         modes.append(SMART_CIRCUIT_MODE.get(m, str(m)))
                     count = 2  # default AU/US-V1; Tier 2 accessories may refine
-                    for acc_id, acc_info in catalog.get("accessories", {}).items():
+                    for acc_id, acc_info in (catalog.get("accessories") or {}).items():
                         if (acc_info.get("type") == "smart_circuits"
                                 and acc_info.get("country_id") == snap.site.country_id):
                             count = acc_info.get("circuit_count", 2)
@@ -419,6 +550,7 @@ class DiscoverMixin:
                     modes=modes,
                     v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
                     v2l_enabled=snap.flags.v2l_enabled,
+                    schedules=self._sc_schedules(sc_info, count),
                 )
         except Exception as e:
             logger.warning(f"discover: get_smart_circuits_info (Tier 1) failed: {e}")
@@ -428,18 +560,18 @@ class DiscoverMixin:
         # Also captures: socExceedTimerEndTime, complianceSoc, delayMinutes (new v2.0.0 fields)
         try:
             tou = await self.get_gateway_tou_list()
-            result = tou.get("result", {}) if isinstance(tou, dict) else {}
+            result = (tou.get("result") or {}) if isinstance(tou, dict) else {}
             if result:
-                snap.electrical.supported_modes = result.get("list", [])
+                snap.electrical.supported_modes = (result.get("list") or [])
                 snap.electrical.tou_status = result.get("status", 0)
-                snap.electrical.tou_dispatch_count = len(result.get("dispatchList", []))
+                snap.electrical.tou_dispatch_count = len((result.get("dispatchList") or []))
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list (Tier 1 modes) failed: {e}")
 
         # 11. aGate detailed info (MAC-1 and full firmware versions)
         try:
             agate_info = await self.get_agate_info()
-            result = agate_info.get("result", {}) if isinstance(agate_info, dict) else {}
+            result = (agate_info.get("result") or {}) if isinstance(agate_info, dict) else {}
             if result:
                 snap.agate.ibg_version = result.get("ibgVersion", "")
                 snap.agate.sl_version = result.get("slVersion", "")
@@ -464,7 +596,7 @@ class DiscoverMixin:
         # 6. aPower info → per-unit firmware
         try:
             apinfo = await self.get_apower_info()
-            ap_list = apinfo.get("result", []) if isinstance(apinfo, dict) else []
+            ap_list = (apinfo.get("result") or []) if isinstance(apinfo, dict) else []
             ap_by_serial = {u.serial: u for u in snap.batteries.units}
             for ap in ap_list:
                 sn = ap.get("apowerSn", "")
@@ -505,10 +637,10 @@ class DiscoverMixin:
         # 7. Accessories
         try:
             accy = await self.get_accessories(0)  # Common accessory list (includes AU SC)
-            accy_list = accy.get("result", []) if isinstance(accy, dict) else []
+            accy_list = (accy.get("result") or []) if isinstance(accy, dict) else []
             for item in accy_list:
                 atype = item.get("accessoryType", 0)
-                type_name = catalog.get("accessory_api_types", {}).get(str(atype), f"type_{atype}")
+                type_name = (catalog.get("accessory_api_types") or {}).get(str(atype), f"type_{atype}")
                 acc = AccessoryItem(
                     serial=item.get("snSerialNumber", "") or item.get("sn", ""),
                     accessory_type=atype,
@@ -532,8 +664,14 @@ class DiscoverMixin:
                     sw_merged = sc_info.get("SwMerge", 0) == 1
 
                     if sw_merged:
-                        # US V2 V2L merge topology: physical SC1+SC2 → logical SC1 (240V),
-                        # physical SC3 → logical SC2. The firmware always returns all 3 Sw
+                        # US V2L merge topology: physical SC1+SC2 → logical SC1 (240V),
+                        # physical SC3 → logical SC2. Circuits 1 and 2 are
+                        # 110/120 V individually; merged they form one 240 V
+                        # circuit, and with a Generator Module fitted that pair
+                        # can act as the V2L INPUT instead of the normal
+                        # generator port (user report 2026-09-15,
+                        # DEF-V2L-MERGE-TOPOLOGY). AU is unaffected — accessory
+                        # 302 Smart Circuits V1-AU has v2l_port false. The firmware always returns all 3 Sw
                         # slots; only Sw1 and Sw3 are meaningful to consumers when merged.
                         # We preserve user-set names (Sw1Name, Sw3Name) — renaming is not
                         # supported and would discard user intent. The merged=True flag on
@@ -561,7 +699,7 @@ class DiscoverMixin:
                         # Determine hardware circuit count from catalog
                         # AU SC (302) = 2 circuits, US V1 SC (202) = 2, US V2 SC (204) = 3
                         count = 2  # default
-                        for acc_id, acc_info in catalog.get("accessories", {}).items():
+                        for acc_id, acc_info in (catalog.get("accessories") or {}).items():
                             if (acc_info.get("type") == "smart_circuits"
                                     and acc_info.get("country_id") == snap.site.country_id):
                                 count = acc_info.get("circuit_count", 2)
@@ -580,6 +718,7 @@ class DiscoverMixin:
                         modes=modes,
                         v2l_port=bool(sc_info.get("CarSwConsSupEnable")),
                         v2l_enabled=snap.flags.v2l_enabled,
+                        schedules=self._sc_schedules(sc_info, count),
                     )
             except Exception as e:
                 logger.warning(f"discover: get_smart_circuits_info failed: {e}")
@@ -590,7 +729,7 @@ class DiscoverMixin:
             if not snap.site.grid_profile:
                 gp = await self.get_grid_profile_info()
                 if isinstance(gp, dict):
-                    profiles = gp.get("list", [])
+                    profiles = (gp.get("list") or [])
                     current_id = gp.get("currentId", 0)
                     for p in profiles:
                         if p.get("id") == current_id:
@@ -614,7 +753,7 @@ class DiscoverMixin:
         # 11. Warranty
         try:
             wr = await self.get_warranty_info()
-            result = wr.get("result", {}) if isinstance(wr, dict) else {}
+            result = (wr.get("result") or {}) if isinstance(wr, dict) else {}
             if result:
                 snap.warranty.expiry = result.get("expirationTime", "")
                 snap.warranty.throughput_mwh = result.get("throughput", 0)
@@ -624,7 +763,7 @@ class DiscoverMixin:
                 snap.warranty.installer_email = result.get("installerCompanyEmail", "")
                 snap.warranty.support_phone = result.get("equipmentSupplierPhone", "")
                 snap.warranty.warranty_link = result.get("warrantyLink", "")
-                for dev in result.get("deviceExpirationList", []):
+                for dev in (result.get("deviceExpirationList") or []):
                     snap.warranty.devices.append(WarrantyDevice(
                         serial=dev.get("sn", ""),
                         model=dev.get("model", ""),
@@ -660,20 +799,20 @@ class DiscoverMixin:
         # 13. TOU dispatch status — skip supported_modes if already fetched in Tier 1
         try:
             tou = await self.get_gateway_tou_list()
-            result = tou.get("result", {}) if isinstance(tou, dict) else {}
+            result = (tou.get("result") or {}) if isinstance(tou, dict) else {}
             if result:
                 snap.electrical.tou_status = result.get("status", 0)
-                dispatch = result.get("dispatchList", [])
+                dispatch = (result.get("dispatchList") or [])
                 snap.electrical.tou_dispatch_count = len(dispatch)
                 if not snap.electrical.supported_modes:
-                    snap.electrical.supported_modes = result.get("list", [])
+                    snap.electrical.supported_modes = (result.get("list") or [])
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list (Tier 2) failed: {e}")
 
         # 14. Real-time Grid Limits (PCS constraints)
         try:
             pcs = await self.get_power_control_settings()
-            res = pcs.get("result", {}) if isinstance(pcs, dict) else {}
+            res = (pcs.get("result") or {}) if isinstance(pcs, dict) else {}
             if res:
                 # Prioritize real PCS settings over entrance cache
                 gdm = res.get("globalGridDischargeMax")
@@ -701,11 +840,43 @@ class DiscoverMixin:
     async def _discover_tier3(self, snap, catalog):
         """Tier 3: Network, full firmware, TOU, site detail, programmes deep."""
 
+        # 12b. Generator settings and charge windows — tier 3 only, because it
+        # is one REST call discover() does not otherwise make. Skipped entirely
+        # when no generator was detected, so a site without one pays nothing.
+        if snap.accessories.has_generator:
+            try:
+                g = await self.get_generator_info() or {}
+                snap.accessories.generator = GeneratorConfig(
+                    present=True,
+                    enabled=g.get("genEn"),
+                    state=g.get("genStat"),
+                    # `mode` is the mode field; manuSw is a manual start/stop
+                    # command. Recorded separately — DEF-GEN-MODE-WRITES-MANUSW.
+                    mode=g.get("mode"),
+                    manual_switch=g.get("manuSw"),
+                    # NOT genStartSoc/genStopSoc — those do not exist.
+                    start_below_soc=g.get("genStartElec"),
+                    stop_above_soc=g.get("genCloseElec"),
+                    rated_power=g.get("genRatedPower"),
+                    model=g.get("genModel", "") or "",
+                    charge_windows=[
+                        {
+                            "window": i,
+                            "enabled": bool(g.get(f"charge{i}En")),
+                            "start": g.get(f"charge{i}StartTime"),
+                            "end": g.get(f"charge{i}EndTime"),
+                        }
+                        for i in (1, 2, 3) if f"charge{i}En" in g
+                    ],
+                )
+            except Exception as e:
+                logger.warning(f"discover: get_generator_info failed: {e}")
+
         # 13. Site and device info — skip if already populated from Tier 1
         try:
             if not snap.site.site_id:
                 site_data = await self.get_site_and_device_info()
-                sites = site_data.get("result", []) if isinstance(site_data, dict) else []
+                sites = (site_data.get("result") or []) if isinstance(site_data, dict) else []
                 if sites:
                     site = sites[0]
                     snap.site.site_id = site.get("siteId", 0)
@@ -715,37 +886,80 @@ class DiscoverMixin:
         except Exception as e:
             logger.warning(f"discover: get_site_and_device_info failed: {e}")
 
-        # 14. TOU → NEM type, electric company, PTO date
+        # 14. TOU → VPP enrolment, NEM type, tariff, PTO date
+        #
+        # These come from TWO endpoints carrying DISJOINT field sets. Measured
+        # over the HAR corpus (DEF-DISCOVER-TOU-WRONG-ENDPOINT):
+        #
+        #   getGatewayTouListV2   n=1271:  vppSocVo 98%, todayVppVo 100%,
+        #                                  ptoDate/nemType/template  0%
+        #   getTouDispatchDetail  n=672:   ptoDate 72%, nemType 100%,
+        #                                  template 100%, vpp* 0%
+        #
+        # Everything used to be read from the list endpoint, so four fields —
+        # electric_company, tariff_name, der_schedule and nem_type, as well as
+        # pto_date — could never populate for any user. Swapping wholesale to
+        # the detail endpoint would have fixed those and broken the two VPP
+        # fields that do work, since the sets do not overlap. So: both, each
+        # read from the endpoint that actually carries it, and guarded
+        # separately so one failing does not cost the other.
+
+        # 14a. VPP enrolment and SoC bounds — list endpoint
         try:
             tou = await self.get_gateway_tou_list()
-            result = tou.get("result", {}) if isinstance(tou, dict) else {}
-            if result:
-                template = result.get("template", {})
-                if template:
-                    snap.site.electric_company = template.get("electricCompany", "")
-                    snap.site.tariff_name = template.get("name", "")
-                    der = template.get("derSchdule", "")
-                    snap.site.der_schedule = der or snap.site.der_schedule
-                    # NEM type
-                    nem_type = result.get("nemType", 0)
-                    snap.flags.nem_type = catalog.get("nem_types", {}).get(
-                        str(nem_type), f"Unknown ({nem_type})"
-                    )
-                pto = result.get("ptoDate", "") or result.get("template", {}).get("ptoDate", "")
-                if pto:
-                    snap.site.pto_date = pto
-                # VPP from TOU
-                vpp_soc = result.get("vppSocVo", {})
-                if vpp_soc:
-                    snap.programmes.vpp_soc = vpp_soc.get("vppSoc", 20.0)
-                    snap.programmes.vpp_min_soc = vpp_soc.get("vppMinSoc", 5.0)
-                    snap.programmes.vpp_max_soc = vpp_soc.get("vppMaxSoc", 100.0)
-                vpp_vo = result.get("todayVppVo", {})
-                if vpp_vo and vpp_vo.get("vppFlag", 0) != 0:
-                    snap.flags.vpp_enrolled = True
-                    snap.programmes.enrolled = True
+            result = (tou.get("result") or {}) if isinstance(tou, dict) else {}
+            vpp_soc = (result.get("vppSocVo") or {})
+            if vpp_soc:
+                snap.programmes.vpp_soc = vpp_soc.get("vppSoc", 20.0)
+                snap.programmes.vpp_min_soc = vpp_soc.get("vppMinSoc", 5.0)
+                snap.programmes.vpp_max_soc = vpp_soc.get("vppMaxSoc", 100.0)
+            vpp_vo = (result.get("todayVppVo") or {})
+            if vpp_vo and vpp_vo.get("vppFlag", 0) != 0:
+                snap.flags.vpp_enrolled = True
+                snap.programmes.enrolled = True
         except Exception as e:
             logger.warning(f"discover: get_gateway_tou_list failed: {e}")
+
+        # 14b. Tariff, NEM type and PTO date — dispatch detail endpoint
+        try:
+            detail = await self.get_tou_dispatch_detail()
+            dresult = (detail.get("result") or {}) if isinstance(detail, dict) else {}
+            template = (dresult.get("template") or {})
+            if template:
+                snap.site.electric_company = template.get("electricCompany", "")
+                snap.site.tariff_name = template.get("name", "")
+                der = template.get("derSchdule", "")
+                snap.site.der_schedule = der or snap.site.der_schedule
+            if "nemType" in dresult:
+                # NEM (Net Energy Metering) is a US scheme. The field is
+                # present as 0 on non-US systems, and the catalog maps 0 to
+                # "NEM 2.0" — a Californian tariff that does not exist in
+                # Australia. Corpus evidence: 661 samples of nemType=0, on a
+                # gateway whose country is Australia and whose retailer is
+                # Amber; the only other observed value, 3, occurs solely
+                # alongside US markers and is not in the catalog at all.
+                #
+                # Whether 0 is a genuine "NEM 2.0" or an unset sentinel is
+                # still open (DEF-NEM-TYPE-ZERO-UNRESOLVED). Either way,
+                # labelling an Australian system "NEM 2.0" is wrong, so
+                # outside the US assert nothing and keep the raw value.
+                nem_raw = dresult.get("nemType")
+                snap.flags.nem_type_raw = nem_raw
+                countries = (catalog.get("countries") or {})
+                us_ids = {k for k, v in countries.items()
+                          if isinstance(v, dict) and v.get("code") == "US"}
+                if str(snap.site.country_id) in us_ids:
+                    snap.flags.nem_type = (catalog.get("nem_types") or {}).get(
+                        str(nem_raw), f"Unknown ({nem_raw})"
+                    )
+            # ptoDate sits at the TOP level of result. template.ptoDate exists
+            # but is present-and-null in every captured sample, so the fallback
+            # must tolerate None rather than assume a string.
+            pto = dresult.get("ptoDate") or (template.get("ptoDate") or "")
+            if pto:
+                snap.site.pto_date = pto
+        except Exception as e:
+            logger.warning(f"discover: get_tou_dispatch_detail failed: {e}")
 
     # ── Flag derivation ───────────────────────────────────────────
 

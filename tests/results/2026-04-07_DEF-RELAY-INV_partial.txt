@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-RELAY-INV
  Date:    2026-04-07 14:30:11 AEST
  Branch:  feat/openapi-stubs
- Commit:  cc3c99f (pre-commit)
+ Commit:  b16b86a (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

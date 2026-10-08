@@ -6,7 +6,11 @@ import subprocess
 
 
 def load_personal_terms(repo_root):
-    """Return [(label, compiled_regex)] from env PII_TERMS, .pii_terms or ~/.config/pii_terms."""
+    """Return ([(label, compiled_regex)], allow_set) from env PII_TERMS, .pii_terms or ~/.config/pii_terms.
+
+    "allow:<value>" lines are exact values (e.g. MAC addresses) that are already
+    published and should not fail the scan. They live outside git like the terms.
+    """
     text = os.environ.get("PII_TERMS")
     if not text:
         for path in (os.path.join(repo_root, ".pii_terms"),
@@ -15,17 +19,20 @@ def load_personal_terms(repo_root):
                 with open(path, encoding="utf-8") as fh:
                     text = fh.read()
                 break
-    terms = []
+    terms, allow = [], set()
     for n, raw in enumerate((text or "").splitlines(), 1):
         t = raw.strip()
         if not t or t.startswith("#"):
+            continue
+        if t.startswith("allow:"):
+            allow.add(t[6:].strip().upper())
             continue
         if t.startswith("re:"):
             rx = re.compile(t[3:], re.IGNORECASE)
         else:
             rx = re.compile(r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])", re.IGNORECASE)
         terms.append((f"personal term #{n}", rx))  # label never echoes the term
-    return terms
+    return terms, allow
 
 
 def main():
@@ -42,7 +49,7 @@ def main():
     #   3. ~/.config/pii_terms
     # One term per line. Plain lines match case-insensitively on word boundaries;
     # lines starting "re:" are regular expressions. "#" starts a comment.
-    personal_terms = load_personal_terms(repo_root)
+    personal_terms, allowed_values = load_personal_terms(repo_root)
     if not personal_terms:
         msg = ("No personal PII terms configured (PII_TERMS / .pii_terms / "
                "~/.config/pii_terms): names, addresses and handles are NOT being checked.")
@@ -56,6 +63,10 @@ def main():
     # Home directories name the user. Placeholders and CI runners are fine.
     home_path_regex = re.compile(r'(?:/Users|/home)/(?!<|runner/|user/|you/|username/|\$)[A-Za-z0-9._-]+')
     serial_regex = re.compile(r'100[56][A-Z0-9]{16}')
+    mac_regex = re.compile(r'\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b')
+    # Placeholder MACs are fine; real ones that are already published are listed
+    # as "allow:" lines in the terms source, never here.
+    mac_placeholder_prefixes = ("AA:BB:CC:", "DE:AD:BE:", "00:00:00:", "11:22:33:")
 
     # Allowed emails / version-string false positives
     ignore_emails = [
@@ -144,6 +155,14 @@ def main():
                     if version_string_regex.match(email) or git_ref_regex.search(email):
                         continue
                     print(f"PII Leak [Email {email}]: {rel}:{i+1}")
+                    found += 1
+
+                # ── MAC addresses ─────────────────────────────────────────
+                for match in mac_regex.finditer(line):
+                    mac = match.group(0).upper()
+                    if mac.startswith(mac_placeholder_prefixes) or mac in allowed_values:
+                        continue
+                    print(f"PII Leak [MAC {mac}]: {rel}:{i+1}")
                     found += 1
 
                 # ── Serial numbers ────────────────────────────────────────

@@ -2,7 +2,7 @@
  TEST RESULTS — baseline
  Date:    2026-05-31 14:25:43 AEST
  Branch:  main
- Commit:  f79e74e (pre-commit)
+ Commit:  e5b6ce0 (pre-commit)
  Result:  PASS ✅
 ═══════════════════════════════════════════════════════════
 

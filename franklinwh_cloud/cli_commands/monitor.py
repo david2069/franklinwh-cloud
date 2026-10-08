@@ -144,7 +144,7 @@ def render_full(stats, mode_desc: str, elapsed: float, interval: int,
         pop = edge_snapshot.get('current_pop', '?')
         cache_rate = edge_snapshot.get('cache_hit_rate', 0)
         transitions = edge_snapshot.get('edge_transitions', 0)
-        dist_ids = edge_snapshot.get('distribution_ids', [])
+        dist_ids = (edge_snapshot.get('distribution_ids') or [])
         # cache_rate can be float (0.85) or str ("85%") depending on edge tracker
         if isinstance(cache_rate, (int, float)):
             cache_str = f"{cache_rate:.0%}"

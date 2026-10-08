@@ -3,6 +3,7 @@
 import json
 import logging
 import sys
+from datetime import datetime
 
 
 # ANSI colour codes (disabled when not a TTY or --no-color)
@@ -36,11 +37,20 @@ def c(code: str, text: str) -> str:
 
 # ── Section formatting ────────────────────────────────────────────────
 
-def print_header(title: str):
-    """Print a prominent header line."""
+def print_header(title: str, timestamp: bool = True):
+    """Print a prominent header line.
+
+    Includes a local wall-clock timestamp by default. Live readings are
+    snapshots, and consecutive runs are otherwise indistinguishable once pasted
+    into a ticket or a log — the reader cannot tell whether two outputs are
+    minutes or days apart.
+    """
     width = 60
     print(c("bold", "=" * width))
     print(c("bold", f"  {title}"))
+    if timestamp:
+        now = datetime.now().astimezone()
+        print(c("dim", f"  {now.strftime('%Y-%m-%d %H:%M:%S %Z')}"))
     print(c("bold", "=" * width))
 
 

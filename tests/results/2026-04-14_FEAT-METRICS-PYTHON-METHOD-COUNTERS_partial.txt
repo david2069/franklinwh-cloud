@@ -2,7 +2,7 @@
  TEST RESULTS — FEAT-METRICS-PYTHON-METHOD-COUNTERS
  Date:    2026-04-14 00:05:17 AEST
  Branch:  feat/openapi-stubs
- Commit:  e931518 (pre-commit)
+ Commit:  ae89b1a (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

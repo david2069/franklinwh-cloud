@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-GRID-STATE-ENUM-DUAL-GATE
  Date:    2026-04-10 15:03:22 AEST
  Branch:  feat/openapi-stubs
- Commit:  189e700 (pre-commit)
+ Commit:  83d6b50 (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

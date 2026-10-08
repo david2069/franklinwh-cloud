@@ -247,7 +247,7 @@ def _render_flags(snap):
     ])
 
     # MAC-1 flag
-    api_nulls = snap.region_quirks.get("api_null_fields", [])
+    api_nulls = (snap.region_quirks.get("api_null_fields") or [])
     is_us = snap.site.country_id == 2
     if f.mac1_detected:
         flags.append(("MAC-1 (MSA)", True, "Detected"))
@@ -257,12 +257,29 @@ def _render_flags(snap):
     # Programme flags (region-filtered via catalog)
     if "nemType" not in api_nulls:
         flags.append(("NEM Type", bool(f.nem_type), f.nem_type or "—"))
+    # These three read `*Entrance` fields and used to print "Enrolled". The
+    # field name suggests an entry point being OFFERED, and nothing establishes
+    # that it means joined — so claiming enrolment is the same class of
+    # unverified assertion as nemType 0 rendering "NEM 2.0". The asymmetry
+    # decides the wording: 0 safely implies not enrolled, while 1 does not
+    # safely imply enrolled. DEF-PROGRAMME-ENTRANCE-OVERCLAIM.
+    def _entrance(flag):
+        return "Available or enrolled" if flag else "Not enrolled"
+
     if "sgipEntrance" not in api_nulls:
-        flags.append(("SGIP (CA)", f.sgip, "Enrolled" if f.sgip else "Not enrolled"))
+        flags.append(("SGIP (CA)", f.sgip, _entrance(f.sgip)))
     if "bbEntrance" not in api_nulls:
-        flags.append(("BB (Hawaii)", f.bb, "Enrolled" if f.bb else "Not enrolled"))
+        flags.append(("BB (Hawaii)", f.bb, _entrance(f.bb)))
     if "ja12Entrance" not in api_nulls:
-        flags.append(("JA12 (CA)", f.ja12, "Enrolled" if f.ja12 else "Not applicable"))
+        # JA12 alone has a separate join field. When the gateway reports it,
+        # it answers the enrolment question directly and outranks the guess.
+        if f.ja12_joined is not None:
+            detail = "Enrolled" if f.ja12_joined else (
+                "Available, not joined" if f.ja12 else "Not enrolled")
+            flags.append(("JA12 (CA)", f.ja12 or f.ja12_joined, detail))
+        else:
+            flags.append(("JA12 (CA)", f.ja12,
+                          _entrance(f.ja12) if f.ja12 else "Not applicable"))
     
     flags.append(("VPP Programme", f.vpp_enrolled,
                    "Enrolled" if f.vpp_enrolled else "Not enrolled"))
@@ -306,11 +323,11 @@ def _render_accessories(snap):
     print_section("🔌", f"Accessories ({len(acc.items)} registered)")
     from franklinwh_cloud.mixins.discover import get_catalog
     catalog = get_catalog()
-    quirks = catalog.get("accessory_quirks", {})
+    quirks = (catalog.get("accessory_quirks") or {})
     for item in acc.items:
         # Look up model/SKU from catalog by type
         model_info = ""
-        for acc_id, acc_data in catalog.get("accessories", {}).items():
+        for acc_id, acc_data in (catalog.get("accessories") or {}).items():
             if acc_data.get("type") == item.type_name and acc_data.get("country_id") == snap.site.country_id:
                 model_info = f"  Model: {acc_data.get('name', '')}  SKU: {acc_data.get('sku', '')}"
                 break
@@ -426,7 +443,7 @@ def _render_warranty(snap):
 def _render_programmes(snap):
     """Render programme info (Tier 2+)."""
     # If the region doesn't support programme lists, skip rendering completely
-    if "programmeList" in snap.region_quirks.get("api_null_fields", []):
+    if "programmeList" in (snap.region_quirks.get("api_null_fields") or []):
         return
         
     p = snap.programmes

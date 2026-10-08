@@ -2,7 +2,7 @@
  TEST RESULTS — FEAT-MAC1-DISCOVERY
  Date:    2026-05-04 02:03:34 AEST
  Branch:  main
- Commit:  682f21c (pre-commit)
+ Commit:  b9dce89 (pre-commit)
  Result:  PASS ✅
 ═══════════════════════════════════════════════════════════
 

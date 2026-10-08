@@ -3,13 +3,67 @@
 Used for device discovery and HA config flow integration.
 """
 
-# Network connectivity options
+# Network connectivity options.
+#
+# This is the encoding used by commSetPara.currentNetType (cmdType 317) and by
+# the extended cmdType 339 payload.
+#
+# runtimeData.connType (cmdType 203), surfaced as Current.network_connection,
+# uses THIS SAME encoding. A long-standing comment claimed it was
+# 0=4G, 1=WiFi, 2=Ethernet and that the two were incompatible. That claim was
+# never sourced and is contradicted by the corpus: across 20,471 runtimeData
+# samples, connType is observed only as {2: 559, 3: 19797, 4: 115}. Values 0
+# and 1 never occur, and 3 dominating matches a gateway that lives on WiFi.
+# See DEF-CONNTYPE-ENCODING-WRONG.
+# Labels are keyed to the API field name, NOT to the vendor's physical port
+# numbering, because the two do not line up and the collision is dangerous.
+#
+# Vendor port naming is REVISION-DEPENDENT and reverses meaning between
+# documents, so it must never be mapped onto these ids:
+#
+#   FranklinWH System Installation Guide p.62 : household cable -> "Eth1"
+#   Commissioning Guide p.7, aGate X 1.1      : household cable -> "Eth2",
+#                                               and "Eth1 (Debug)"
+#   Commissioning Guide p.7, aGate X 1.3/1.3.1: a single port, "ETH"
+#
+# So "Eth1" is the internet port in one document and the DEBUG port in another.
+# Anyone reasoning from vendor port labels can get it exactly backwards, which
+# is why these labels are keyed to the API field name and assert nothing else.
+#
+# What IS consistent: exactly one Ethernet port reaches the internet, and on
+# two-port revisions the other is a debug port. Which API field that is remains
+# unestablished — on the reference gateway eth0 is static on 172.16.1.1, a
+# segment unrelated to the household LAN, and eth1 is DHCP, but that is one
+# gateway with both ports unplugged. See DEF-ETH-PORT-IDENTITY-UNCONFIRMED.
 NETWORK_TYPES = {
-    1: "Ethernet 1",
-    2: "Ethernet 2",
+    1: "Ethernet (eth0)",
+    2: "Ethernet (eth1)",
     3: "WiFi",
     4: "4G Mobile"
 }
+
+
+# currentNetType -> the interface key used by get_network_info() / get_network_state()
+NETWORK_TYPE_KEYS = {
+    1: "eth0",
+    2: "eth1",
+    3: "wifi",
+    4: "4g",
+}
+
+# currentNetType -> the corresponding switch key in the cmdType 341 payload
+NETWORK_SWITCH_KEYS = {
+    1: "ethernet0NetSwitch",
+    2: "ethernet1NetSwitch",
+    3: "wifiNetSwitch",
+    4: "4GNetSwitch",
+}
+
+# An IPv4 value the aGate reports when an interface has no DHCP lease.
+# Observed live: WiFi associated with an SSID but holding 0.0.0.0 (see
+# docs/troubleshooting/2026-03-21_wifi_dhcp_failure.md). "Associated" is not
+# "connected" — always check the address too.
+UNASSIGNED_IPS = (None, "", "0.0.0.0")
 
 # aGate Health Status
 # Note: 1=Normal verified against live system (deviceStatus=1 with healthy operation)

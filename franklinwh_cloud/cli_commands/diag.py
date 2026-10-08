@@ -26,6 +26,50 @@ from franklinwh_cloud.cli_output import (
 )
 
 
+def _fallback_summary(net_state, conn_overview):
+    """Render the "Backup Links" value — which transports could take over.
+
+    DEF-DIAG-BACKUP-FALSE-NEGATIVE. Prefers ``get_network_state()``, whose
+    ``available_transports`` answers the question that actually matters: would
+    this transport carry traffic if the one in use stopped? The two families
+    are judged differently, because they fail differently — 4G needs an active
+    SIM plus reception and holds no IP while idle, whereas WiFi and Ethernet
+    must hold an address. See NETWORK_CONNECTIVITY_DESIGN.md section 3.
+
+    The legacy derivation below keyed 4G viability on
+    ``signals.mobile_signal``, which comes from 203/runtimeData and reads 0.0
+    on hardware where 317 ``operatorRSSI`` reports 22/52 with the SIM active.
+    That reported "None viable" on a gateway holding a working cellular
+    lifeline — understating fallback availability, which is the same class of
+    error the 2026-08-08 preflight correction fixed.
+
+    Falls back to the legacy logic only when network state is unavailable, so
+    a failed extra call cannot make this row worse than it was.
+    """
+    if net_state is not None:
+        active_key = (net_state.get("active") or {}).get("key")
+        labels = {i.get("key"): i.get("label")
+                  for i in net_state.get("interfaces") or []}
+        fallbacks = [k for k in net_state.get("available_transports") or []
+                     if k != active_key]
+        if fallbacks:
+            return ", ".join(labels.get(k) or k for k in fallbacks)
+        return c("dim", "None viable")
+
+    # ── legacy derivation (network state unavailable) ────────────────
+    backups = (conn_overview.get("backups") or [])
+    viable = [
+        b for b in backups
+        if b.get("ip") not in (None, "", "0.0.0.0")
+        or b.get("id") == 4  # 4G: viability checked separately via signal
+    ]
+    mobile_pct = (conn_overview.get("signals") or {}).get("mobile_signal", 0)
+    viable = [b for b in viable if not (b.get("id") == 4 and not mobile_pct)]
+    if viable:
+        return ", ".join(b.get("name") for b in viable)
+    return c("dim", "None viable")
+
+
 async def run(client, *, json_output: bool = False):
     """Execute the diagnostic command."""
     import franklinwh_cloud
@@ -65,7 +109,9 @@ async def run(client, *, json_output: bool = False):
         conn_info["authenticated"] = True
         conn_info["response_time_s"] = round(elapsed, 3)
 
-        gateways = gw_res.get("result", [])
+        # `.get(k, default)` returns the default only when the key is ABSENT.
+        # A key present with a null value yields None — DEF-DIAG-GATEWAY-NONE-GUARD.
+        gateways = gw_res.get("result") or []
         conn_info["gateways_found"] = len(gateways)
         conn_info["gateway_sns"] = [g.get("id", "?") for g in gateways]
         checks_passed += 1
@@ -107,7 +153,7 @@ async def run(client, *, json_output: bool = False):
             "current_pop": et.get("current_pop"),
             "total_requests": et.get("total_cf_requests", 0),
             "cache_hit_rate": et.get("cache_hit_rate", "—"),
-            "distribution_ids": et.get("distribution_ids", []),
+            "distribution_ids": (et.get("distribution_ids") or []),
             "edge_transitions": et.get("edge_transitions", 0),
         }
         checks_passed += 1
@@ -135,9 +181,9 @@ async def run(client, *, json_output: bool = False):
     device_info = {}
     try:
         res = await client.get_device_info()
-        result = res.get("result", {})
+        result = (res.get("result") or {})
 
-        apower_list = result.get("apowerList", [])
+        apower_list = (result.get("apowerList") or [])
         batteries = []
         for ap in apower_list:
             batteries.append({
@@ -180,7 +226,7 @@ async def run(client, *, json_output: bool = False):
                 flags.append("Off-Grid")
             print_kv("Features", ", ".join(flags) if flags else "None detected")
 
-            for bat in device_info.get("batteries", []):
+            for bat in (device_info.get("batteries") or []):
                 sn = bat["serial"]
                 sn_short = sn[-6:] if len(str(sn)) > 6 else sn
                 print_kv(f"aPower {sn_short}", f'{bat["rated_power_w"]}W / {bat["capacity_wh"]}Wh')
@@ -190,8 +236,13 @@ async def run(client, *, json_output: bool = False):
     gateway_info = {}
     try:
         res = await client.get_device_composite_info()
-        data = res.get("result", {})
-        solar_vo = data.get("solarHaveVo", {})
+        # Every nested lookup here uses `or {}` rather than a .get() default:
+        # the API returns these keys PRESENT WITH A NULL VALUE on some
+        # gateways, and .get(k, {}) hands back None in that case, not {}.
+        # That crashed this whole section with "'NoneType' object has no
+        # attribute 'get'" — DEF-DIAG-GATEWAY-NONE-GUARD.
+        data = res.get("result") or {}
+        solar_vo = data.get("solarHaveVo") or {}
 
         is_three_phase = solar_vo.get("isThreePhaseInstall", False)
         if is_three_phase:
@@ -203,8 +254,8 @@ async def run(client, *, json_output: bool = False):
         for g in gateways:
             if g.get("id") == client.gateway:
                 from franklinwh_cloud.const import FRANKLINWH_MODELS, COUNTRY_ID
-                hw_ver = int(g.get("sysHdVersion", 0))
-                model_info = FRANKLINWH_MODELS.get(hw_ver, {})
+                hw_ver = int(g.get("sysHdVersion") or 0)
+                model_info = FRANKLINWH_MODELS.get(hw_ver) or {}
                 gw_detail = {
                     "name": g.get("name", "?"),
                     "model": model_info.get("model", f"HW v{hw_ver}"),
@@ -224,13 +275,13 @@ async def run(client, *, json_output: bool = False):
         }
 
         from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
-        rt = data.get("runtimeData", {})
-        work_mode = data.get("currentWorkMode", 0)
-        run_status_code = rt.get("run_status", 0)
+        rt = data.get("runtimeData") or {}
+        work_mode = data.get("currentWorkMode") or 0
+        run_status_code = rt.get("run_status") or 0
 
         gateway_info["operating_mode"] = OPERATING_MODES.get(work_mode, f"Unknown ({work_mode})")
         gateway_info["run_status"] = RUN_STATUS.get(int(run_status_code), f"Unknown ({run_status_code})")
-        gateway_info["soc"] = rt.get("soc", 0)
+        gateway_info["soc"] = rt.get("soc") or 0
 
         checks_passed += 1
     except Exception as e:
@@ -254,6 +305,13 @@ async def run(client, *, json_output: bool = False):
                 print_kv("Country", gateway_info["country"])
             if gateway_info.get("timezone"):
                 print_kv("Timezone", gateway_info["timezone"])
+            # device_time was collected at the Device step but never rendered.
+            # Shown next to the zone it belongs with: the pair is what makes a
+            # gateway's clock interpretable from another time zone.
+            # See docs/TIME_AND_TIMEZONES.md.
+            if device_info.get("device_time"):
+                print_kv("Gateway Time", f'{device_info["device_time"]}'
+                                         f'  ({gateway_info.get("timezone") or "zone unknown"})')
 
             phase_color = "cyan" if gateway_info.get("three_phase_flag") else "dim"
             print_kv("Phase Config", c(phase_color, gateway_info.get("phase", "Unknown")))
@@ -292,7 +350,7 @@ async def run(client, *, json_output: bool = False):
 
     if not json_output and "error" not in gateway_info:
         try:
-            solar_vo = data.get("solarHaveVo", {})
+            solar_vo = (data.get("solarHaveVo") or {})
             if solar_vo:
                 solar_ports = []
                 if solar_vo.get("installProximalsolar"):
@@ -338,26 +396,34 @@ async def run(client, *, json_output: bool = False):
 
     results["network"] = net_info
 
-    NET_TYPES = {
-        0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi+Ethernet",
-        4: "4G/LTE", 5: "WiFi+4G", 6: "Ethernet+4G",
-        13: "WiFi+Ethernet+4G",
-    }
+    # DEF-DIAG-NETTYPE-ENUM. This previously used a local bitmask-style table
+    # (0=None, 1=WiFi, 2=Ethernet, 3=WiFi+Ethernet, ...) indexed with
+    # currentNetType, which is POSITIONAL (1=Eth0, 2=Eth1, 3=WiFi, 4=4G). So a
+    # gateway on WiFi (currentNetType 3) rendered as "WiFi+Ethernet". Wrong for
+    # ids 1 and 3, coincidentally near-right for 2 and 4, which is how it
+    # survived. Gotcha G2 in NETWORK_CONNECTIVITY_DESIGN.md: never mix the two
+    # network enums. The bitmask table matched no field this code reads.
+    #
+    # Note the near-identical table in cli_commands/support.py is indexed with
+    # runtimeData.connType, a THIRD encoding (0=4G, 1=WiFi, 2=Ethernet) — see
+    # DEF-SUPPORT-CONNTYPE-ENUM. Do not unify them without checking the field.
+    from franklinwh_cloud.const.devices import NETWORK_TYPES
 
     if not json_output:
         print_section("📶", "Network Configuration")
         if "error" in net_info:
             print_kv("Status", c("yellow", f'⚠ {net_info["error"]}'))
         else:
-            net_type = net_info.get("currentNetType", 0)
-            print_kv("Active Network", c("cyan", NET_TYPES.get(net_type, f"Type {net_type}")))
+            net_type = net_info.get("currentNetType")
+            print_kv("Active Network",
+                     c("cyan", NETWORK_TYPES.get(net_type, f"Unknown ({net_type})")))
 
             aws = net_info.get("awsStatus", 0)
             aws_text = c("green", "● Connected") if aws else c("red", "○ Disconnected")
             print_kv("AWS/Cloud", aws_text)
 
             for iface, label in [("wifi", "WiFi"), ("eth0", "Ethernet 0"), ("eth1", "Ethernet 1")]:
-                idata = net_info.get(iface, {})
+                idata = (net_info.get(iface) or {})
                 mac = idata.get("mac")
                 if mac:
                     dhcp = c("green", "DHCP") if idata.get("dhcp") else c("dim", "Static")
@@ -366,11 +432,13 @@ async def run(client, *, json_output: bool = False):
                     dns = idata.get("dns", "—")
                     print_kv(f"{label}", f'{mac}  {dhcp}  IP: {ip}  GW: {gw}  DNS: {dns}')
 
-            op = net_info.get("operator", {})
+            op = (net_info.get("operator") or {})
             if op.get("mac"):
                 rssi = op.get("rssi", "?")
                 dns = op.get("dns", "—")
-                print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi} dBm  DNS: {dns}')
+                # operatorRSSI is a 0-52 vendor scale, NOT dBm — gotcha G3.
+                # DEF-DIAG-RSSI-DBM.
+                print_kv("Cellular", f'{op["mac"]}  RSSI: {rssi}/52 (vendor scale)  DNS: {dns}')
 
     # ── 5e. Connectivity Overview (Deep Scan) ────────────────────────
 
@@ -384,41 +452,61 @@ async def run(client, *, json_output: bool = False):
 
     results["connectivity_overview"] = conn_overview
 
+    # DEF-DIAG-BACKUP-FALSE-NEGATIVE — fallback viability is taken from
+    # get_network_state(), which encodes the per-transport availability rule
+    # that live data corrected twice (see NETWORK_CONNECTIVITY_DESIGN.md §3).
+    # The previous derivation keyed on runtimeData signal, which reads 0.0 on
+    # hardware where cellular is demonstrably available, and reported
+    # "None viable" on a gateway holding a working 4G lifeline.
+    net_state = None
+    try:
+        net_state = await client.get_network_state()
+    except Exception as e:
+        # Never make diag worse than it was: fall back to the legacy
+        # derivation below rather than dropping the row entirely.
+        results["network_state_error"] = str(e)
+    if net_state is not None:
+        results["network_state"] = net_state
+
     if not json_output:
         print_section("🌐", "Connectivity Overview")
         if "error" in conn_overview:
             print_kv("Status", c("yellow", f'⚠ {conn_overview["error"]}'))
         else:
-            primary = conn_overview.get("primary", {})
-            print_kv("Primary Link", primary.get("name"))
+            primary = (conn_overview.get("primary") or {})
+            # "Active", never "Primary": the aGate selects its own transport and
+            # 17 of 19 observed changes followed no command at all (gotcha G9).
+            # Calling it "primary" implies a setting the user chose. There is
+            # none. DEF-DIAG-PRIMARY-LINK-WORDING.
+            print_kv("Active Link", primary.get("name"))
             print_kv("Device IP", primary.get("ip") or "—")
             print_kv("Network Gateway", primary.get("gateway") or "—")
 
-            backups = conn_overview.get("backups", [])
-            viable_backups = [
-                b for b in backups
-                if b.get("ip") not in (None, "", "0.0.0.0")
-                or b.get("id") == 4  # 4G: viability checked separately via signal
-            ]
-            # Drop 4G only if there is genuinely no signal at all
-            sig = conn_overview.get("signals", {})
-            mobile_pct = sig.get("mobile_signal", 0)
-            viable_backups = [
-                b for b in viable_backups
-                if not (b.get("id") == 4 and not mobile_pct)
-            ]
-            if viable_backups:
-                print_kv("Backup Links", ", ".join(b.get("name") for b in viable_backups))
-            else:
-                print_kv("Backup Links", c("dim", "None viable"))
+            print_kv("Backup Links", _fallback_summary(net_state, conn_overview))
 
+            sig = (conn_overview.get("signals") or {})
             if "wifi_signal" in sig:
-                print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%")
-            if "mobile_signal" in sig:
+                src = sig.get("wifi_signal_source")
+                suffix = "" if src == "339" else c("dim", f"  (via {src})")
+                print_kv("WiFi Signal", f"{sig.get('wifi_signal')}%{suffix}")
+            # 4G is reported on a 0-52 vendor scale, not as a percentage
+            # (DEF-DIAG-SIGNAL-SOURCE). Prefer the raw reading and only fall
+            # back to the runtimeData percentage, which reads 0.0 on hardware
+            # where the SIM is demonstrably active.
+            raw = sig.get("mobile_signal_raw")
+            if raw is not None:
+                print_kv("4G/Mobile Signal", f"{raw}/52 (vendor scale)")
+            elif "mobile_signal" in sig:
                 print_kv("4G/Mobile Signal", f"{sig.get('mobile_signal')}%")
 
-            span = conn_overview.get("span_connected", False)
-            span_text = c("green", "● Active") if span else c("dim", "○ Inactive")
+            # "Configured", not "connected" — the flag is an installer setting,
+            # and a panel can be cabled while it reads 0.
+            span = conn_overview.get("span_configured",
+                                     conn_overview.get("span_connected", False))
+            # "Active"/"Inactive" overclaimed: the flag says an installer
+            # configured the integration, not that the panel is answering.
+            span_text = (c("green", "● Configured") if span
+                         else c("dim", "○ Not configured"))
             print_kv("SPAN Panel", span_text)
 
             modbus = conn_overview.get("modbus_tcp_502_open", False)

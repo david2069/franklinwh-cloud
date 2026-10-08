@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-GRID-STATUS-SEMANTIC
  Date:    2026-04-10 13:52:13 AEST
  Branch:  feat/openapi-stubs
- Commit:  27cfaf4 (pre-commit)
+ Commit:  2f560d9 (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

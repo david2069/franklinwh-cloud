@@ -74,11 +74,63 @@ franklinwh-cli raw get_stats --headers
 | `get_smart_circuits_info` | — | Smart circuit configuration |
 | `get_bms_info` | `serial_no` | BMS info for a specific aPower |
 | `get_connectivity_overview` | — | Unified view of primary/backup connections |
+| `get_network_state` | — | **Which transport the aGate is on right now** — composes cmdType 317+339+341 |
+| `scan_wifi_networks_ranked` | `scan_time`, `min_rssi`, `dedupe`, `usable_rssi` | Scan sorted by signal, SSIDs deduped |
 | `get_network_info` | — | aGate network config (via `sendMqtt`) |
 | `get_wifi_config` | — | WiFi SSID, AP config (via `sendMqtt`) |
-| `scan_wifi_networks` | — | Scan WiFi networks (via `sendMqtt`) |
+| `scan_wifi_networks` | — | Raw scan trigger (via `sendMqtt`) — prefer `scan_wifi_networks_ranked` |
 | `get_connection_status` | — | Router/AWS connectivity (via `sendMqtt`) |
 | `get_network_switches` | — | Interface on/off: WiFi/Eth/4G (via `sendMqtt`) |
+
+**Reading connectivity.** `get_network_state()` is the one to call — it returns the active
+transport, every interface with its link state and address, cloud reachability, and
+both transport sets used for write-safety checks:
+
+```python
+state = await client.get_network_state()
+state["active"]["label"]          # 'WiFi'
+state["active"]["ip"]             # '192.168.0.110'
+state["linked_transports"]        # ['wifi']        — carrying traffic right now
+state["available_transports"]     # ['wifi', '4g']  — enabled AND able to take over
+state["redundant"]                # True
+```
+
+The two differ because the aGate **parks the transports it is not using**: cellular can sit
+with an active SIM and good reception while reporting no link.
+
+`available` answers "would this carry traffic if the one in use stopped?", and the two
+families are judged differently:
+
+| Transport | Available when |
+|---|---|
+| **4G** | enabled + SIM Active + reception. It is the by-design fallback and holds no IP while idle. |
+| **WiFi / Ethernet** | enabled + linked + holding an address (static or DHCP). Signal or a plugged cable is *not* enough. |
+
+WiFi associated with good signal but no DHCP lease is a **candidate to switch to** (see
+`scan_wifi_networks_ranked`), never a fallback to rely on — that exact state has twice left
+the aGate with no working path.
+
+Any write-safety check must use `available_transports`, and must subtract the interface
+being modified — not the active one:
+
+```python
+survivors = set(state["available_transports"]) - {"wifi"}   # rewriting WiFi
+if not survivors:
+    raise RuntimeError("no fallback would survive this write")
+```
+
+> ⚠️ `active` is the transport the **aGate selected for itself**, not a user-configured
+> primary. The gateway re-selects autonomously — observed live moving 4G → WiFi with no
+> command issued. Never present it as "configured primary", and never treat a change in it
+> as proof a write succeeded. See
+> [Network Connectivity & WiFi Switching](NETWORK_CONNECTIVITY_DESIGN.md).
+
+**Setters.** There are no network *write* methods yet. This is a gap in this SDK, not in the
+FranklinWH API — the setters exist on the wire as the same cmdTypes with the opt flag
+flipped (`337 opt=1` sets SSID/password, `317 optType=1` writes interface config). See
+[§2.5 of the design doc](NETWORK_CONNECTIVITY_DESIGN.md) for the confirmed payloads and
+[the MQTT catalog](MQTT_CMD_CATALOG.md) for the command table. Implementation is Phase 2 and
+is gated on live validation because a bad write can strand the gateway.
 
 ### Account & Site
 

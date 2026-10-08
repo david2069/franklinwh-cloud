@@ -17,13 +17,50 @@ class MqttCmd(IntEnum):
     POWER_AND_RELAYS = 211      # cmdType 211: Electrical voltage/freq/relays (type 1) or BMS (type 2,3)
     SMART_CIRCUIT_TOGGLE = 310  # cmdType 310: Toggle smart circuits, auto-shed limits
     SMART_CIRCUIT_INFO = 311    # cmdType 311: Smart circuit names & statuses
+    SYSTEM_CONTROL = 315        # cmdType 315: aGate reboot / alarm clear / factory reset
     NETWORK_INTERFACES = 317    # cmdType 317: Verbose eth/wifi interface IP and DHCP
     AESTHETICS = 327            # cmdType 327: aPower RGB LEDs
-    WIFI_SCAN = 335             # cmdType 335: Trigger active 2.4/5GHz AP discovery
+    # Discovery spans both bands, but the aGate can only JOIN 2.4 GHz
+    # (FranklinWH System Installation Guide p.59, Method 2). A 5 GHz SSID
+    # can therefore be scanned, ranked and written, and will simply never
+    # associate. See scan_wifi_networks_ranked().
+    WIFI_SCAN = 335             # cmdType 335: active AP discovery, both bands
     WIFI_CONFIG = 337           # cmdType 337: Connected SSID & local AP limits
-    CLOUD_CONNECTIVITY = 339    # cmdType 339: AWS Cloud/Internet reachability 
+    CLOUD_CONNECTIVITY = 339    # cmdType 339: AWS Cloud/Internet reachability
     NETWORK_SWITCHES = 341      # cmdType 341: Boolean toggles for eth0/eth1/4G/wifi
     ACCESSORY_LOADS = 353       # cmdType 353: SC/V2L/Generator current draw
+
+
+class MqttResponse(IntEnum):
+    """Response cmdType observed for each request in :class:`MqttCmd`.
+
+    Useful for asserting that a response belongs to the command that was issued.
+
+    The gateway answers request cmdType N with response N+1 — **except STATUS,
+    where 203 answers with 201.** Do not assume N+1; use this mapping.
+
+    Every value below is confirmed by matched request/response pairs in the HAR
+    corpus (counts as of the 44-capture survey):
+
+        203 -> 201  (780x)   211 -> 212  (137x)   311 -> 312  (283x)
+        315 -> 316    (2x)   317 -> 318  (484x)   327 -> 328  (418x)
+        335 -> 336   (39x)   337 -> 338  (388x)   339 -> 340   (67x)
+        341 -> 342   (38x)   353 -> 354 (1267x)
+
+    ``MqttCmd.SMART_CIRCUIT_TOGGLE`` (310) is deliberately absent: it has never
+    been observed as a request in any capture, so its response code is unknown.
+    """
+    STATUS = 201                # NOT 204 — the one exception to the N+1 rule
+    POWER_AND_RELAYS = 212
+    SMART_CIRCUIT_INFO = 312
+    SYSTEM_CONTROL = 316
+    NETWORK_INTERFACES = 318
+    AESTHETICS = 328
+    WIFI_SCAN = 336
+    WIFI_CONFIG = 338
+    CLOUD_CONNECTIVITY = 340
+    NETWORK_SWITCHES = 342
+    ACCESSORY_LOADS = 354
 
 
 class GridConnectionState(str, Enum):
@@ -120,7 +157,11 @@ class Current:
     # ── Connectivity ─────────────────────────────────────────────────────────
     mobile_signal: float             # runtimeData.signal  (RSSI dBm or %)
     wifi_signal: float               # runtimeData.wifiSignal
-    network_connection: int          # runtimeData.connType  (0=4G, 1=WiFi, 2=Ethernet)
+    # Same encoding as NETWORK_TYPES / currentNetType: 1=Eth0, 2=Eth1, 3=WiFi,
+    # 4=4G. The previous annotation here said 0=4G, 1=WiFi, 2=Ethernet; that was
+    # unsourced and is contradicted by 20,471 corpus samples, in which connType
+    # is only ever {2, 3, 4}. DEF-CONNTYPE-ENCODING-WRONG.
+    network_connection: int          # runtimeData.connType — see NETWORK_TYPES
 
     # ── V2L / Vehicle-to-Load ────────────────────────────────────────────────
     # US hardware only. Only operational when off-grid (relay OPEN).
@@ -132,11 +173,20 @@ class Current:
     generator_enabled: int           # runtimeData.genEn   (None if not installed)
     generator_status: int            # runtimeData.genStat
 
-    # ── Power flow breakdown (kW) ────────────────────────────────────────────
-    grid_charging_battery: float     # runtimeData.gridChBat
-    solar_export_to_grid: float      # runtimeData.soOutGrid
-    solar_charging_battery: float    # runtimeData.soChBat
-    battery_export_to_grid: float    # runtimeData.batOutGrid
+    # ── Power flow breakdown — TODAY'S ENERGY in kWh, despite the names ──────
+    #
+    # CONFIRMED 2026-09-18: with instantaneous solar at 0.00 kW, soOutGrid read
+    # 21.25 — not a power reading. Two sums confirm the unit:
+    #   soOutGrid + batOutGrid = 28.21  vs today's grid_export    28.45 kWh
+    #   soChBat   + gridChBat  =  4.19  vs today's battery_charge  4.17 kWh
+    #
+    # The attribute names carry no unit, so they are not themselves wrong; the
+    # comment that said kW was. Renaming to *_kwh would break consumers and
+    # needs sign-off — DEF-POWER-FLOW-KWH-LABELLED-KW.
+    grid_charging_battery: float     # runtimeData.gridChBat  (kWh today)
+    solar_export_to_grid: float      # runtimeData.soOutGrid  (kWh today)
+    solar_charging_battery: float    # runtimeData.soChBat    (kWh today)
+    battery_export_to_grid: float    # runtimeData.batOutGrid (kWh today)
 
     # ── APbox / Remote Solar (MPPT) ──────────────────────────────────────────
     apbox_remote_solar: float        # runtimeData.apbox20Pv  (APbox 20A PV input kW)
@@ -317,8 +367,13 @@ class SmartCircuitDetail:
     name: str
     mode: int
     is_on: bool
-    soc_cutoff_enabled: bool
-    soc_cutoff_limit: int
+    # SOC Auto Cut-off is OFF-GRID ONLY: it sheds circuits in sequence as the
+    # battery falls during a grid outage. CONFIRMED — franklinwh.com support,
+    # Smart Circuits overview: "automatically disconnects circuits in sequence
+    # based on battery SOC during a grid outage". It does not act while
+    # grid-tied, so a configured threshold can look inert on a healthy grid.
+    soc_cutoff_enabled: bool     # Sw{n}AtuoEn
+    soc_cutoff_limit: int        # Sw{n}SocLowSet
     pro_load_type: int
     
     # Optional V1 scheduling formats (Legacy)

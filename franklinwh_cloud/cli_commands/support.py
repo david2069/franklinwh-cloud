@@ -23,6 +23,7 @@ import socket
 import sys
 from datetime import datetime, timezone
 
+from franklinwh_cloud.ac_topology import leg_caveat, legs_are_real
 from franklinwh_cloud.cli_output import (
     print_header, print_section, print_kv, print_json_output,
     print_warning, print_success, print_error, c,
@@ -53,7 +54,7 @@ def _fetch_apple_app_version(timeout: float = 5.0) -> dict | None:
         req = urllib.request.Request(url, headers={"User-Agent": "franklinwh-cloud-client"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
-        for result in data.get("results", []):
+        for result in (data.get("results") or []):
             if result.get("trackId") == APPLE_TRACK_ID:
                 return {
                     "version": result.get("version"),
@@ -138,7 +139,7 @@ def compute_schema_fingerprint(snapshot: dict) -> dict:
     for section in ("identity", "versions", "network", "connectivity",
                     "wifi_config", "switches", "batteries", "power",
                     "totals", "relays", "electrical"):
-        data = snapshot.get(section, {})
+        data = (snapshot.get(section) or {})
         if isinstance(data, dict) and "error" not in data:
             section_keys = _collect_keys(data, section)
             all_keys.extend(section_keys)
@@ -228,25 +229,25 @@ def redact_snapshot(data: dict, mode: str = "partial") -> dict:
     d = copy.deepcopy(data)
 
     # Identity
-    identity = d.get("identity", {})
+    identity = (d.get("identity") or {})
     if "serial" in identity:
         identity["serial"] = _redact_serial(identity["serial"], mode)
     if "email" in identity:
         identity["email"] = _redact_email(identity["email"], mode)
     if "address" in identity:
         identity["address"] = "[REDACTED]" if identity["address"] else identity["address"]
-    for gw in identity.get("gateway_sns", []):
+    for gw in (identity.get("gateway_sns") or []):
         pass  # Already redacted via serial
 
     # Versions
-    versions = d.get("versions", {})
+    versions = (d.get("versions") or {})
     if "msaSn" in versions and versions["msaSn"]:
         versions["msaSn"] = _redact_serial(versions["msaSn"], mode)
 
     # Network
-    net = d.get("network", {})
+    net = (d.get("network") or {})
     for iface in ("wifi", "eth0", "eth1", "operator"):
-        idata = net.get(iface, {})
+        idata = (net.get(iface) or {})
         if "mac" in idata:
             idata["mac"] = _redact_mac(idata.get("mac", ""), mode)
         if "ip" in idata:
@@ -255,7 +256,7 @@ def redact_snapshot(data: dict, mode: str = "partial") -> dict:
             idata["gateway"] = _redact_ip(idata.get("gateway", ""), mode)
 
     # WiFi config
-    wifi_cfg = d.get("wifi_config", {})
+    wifi_cfg = (d.get("wifi_config") or {})
     if "wifi_ssid" in wifi_cfg:
         wifi_cfg["wifi_ssid"] = _redact_ssid(wifi_cfg.get("wifi_ssid", ""), mode)
     if "wifi_password" in wifi_cfg:
@@ -296,11 +297,11 @@ async def collect_snapshot(client) -> dict:
     # ── Identity ─────────────────────────────────────────────────
     try:
         gw_res = await client.get_home_gateway_list()
-        gateways = gw_res.get("result", [])
+        gateways = (gw_res.get("result") or [])
         gw = next((g for g in gateways if g.get("id") == client.gateway), {})
         from franklinwh_cloud.const import FRANKLINWH_MODELS, COUNTRY_ID
         hw_ver = int(gw.get("sysHdVersion", 0))
-        model_info = FRANKLINWH_MODELS.get(hw_ver, {})
+        model_info = (FRANKLINWH_MODELS.get(hw_ver) or {})
         # Convert epoch ms timestamps to ISO dates
         active_time = gw.get("activeTime")
         create_time = gw.get("createTime")
@@ -331,7 +332,7 @@ async def collect_snapshot(client) -> dict:
     # ── Versions ─────────────────────────────────────────────────
     try:
         agate = await client.get_agate_info()
-        result = agate.get("result", {})
+        result = (agate.get("result") or {})
         snapshot["versions"]["ibgVersion"] = result.get("ibgVersion")
         snapshot["versions"]["awsVersion"] = result.get("awsVersion")
         snapshot["versions"]["appVersion"] = result.get("appVersion")
@@ -413,8 +414,13 @@ async def collect_snapshot(client) -> dict:
                 "battery_export_to_grid_kw": cur.battery_export_to_grid,
             },
             # ─ Signal quality
+            # runtimeData.signal is a 0-100 percentage, not dBm (verified over
+            # 20,471 HAR samples: range 0-99, never negative). The misnamed
+            # "mobile_signal_dbm" key is retained for backward compatibility and
+            # will be dropped in a future major release — prefer _pct.
             "wifi_signal_pct":    cur.wifi_signal,
-            "mobile_signal_dbm":  cur.mobile_signal,
+            "mobile_signal_pct":  cur.mobile_signal,
+            "mobile_signal_dbm":  cur.mobile_signal,  # DEPRECATED alias — value is %, not dBm
             # ─ Per-pack aPower state
             "apower_serials":     cur.apower_serial_numbers,
             "apower_soc":         cur.apower_soc,
@@ -450,9 +456,9 @@ async def collect_snapshot(client) -> dict:
     _rt = {}
     try:
         comp = await client.get_device_composite_info()
-        _comp_result = comp.get("result", {})
-        _rt = _comp_result.get("runtimeData", {})
-        main_sw = _rt.get("main_sw", [])
+        _comp_result = (comp.get("result") or {})
+        _rt = (_comp_result.get("runtimeData") or {})
+        main_sw = (_rt.get("main_sw") or [])
         snapshot["relays"] = {
             "grid_relay":      main_sw[0] if len(main_sw) > 0 else None,
             "generator_relay": main_sw[1] if len(main_sw) > 1 else None,
@@ -473,7 +479,7 @@ async def collect_snapshot(client) -> dict:
 
         try:
             raw_equip = await client.get_accessories(0)
-            equip_list = raw_equip.get("result", []) if isinstance(raw_equip, dict) else []
+            equip_list = (raw_equip.get("result") or []) if isinstance(raw_equip, dict) else []
         except Exception:
             equip_list = []
 
@@ -518,8 +524,18 @@ async def collect_snapshot(client) -> dict:
     try:
         pwr = await client.get_power_info()
         snapshot["electrical"] = {
+            # Keys retained unchanged — downstream consumers read them.
+            # ac_legs_are_real says whether they are two conductors or an API
+            # artifact on a non-split-phase site. DEF-AC-TOPOLOGY-INCONSISTENT.
             "grid_voltage_l1_v":   pwr.get("gridVol1"),
             "grid_voltage_l2_v":   pwr.get("gridVol2"),
+            # identity carries countryId but not isThreePhaseInstall, so only
+            # country is passed. That is sufficient for AU (never split-phase
+            # either way) and yields None elsewhere, which callers must treat
+            # as "undetermined" rather than "split".
+            "ac_legs_are_real":    legs_are_real(
+                country_id=(snapshot.get("identity") or {}).get("countryId"),
+            ),
             "grid_current_l1_a":   pwr.get("gridCurr1"),
             "grid_current_l2_a":   pwr.get("gridCurr2"),
             "load_current_l1_a":   pwr.get("loadCurr1"),
@@ -539,7 +555,7 @@ async def collect_snapshot(client) -> dict:
     try:
         from datetime import date as _date, datetime as _dt
         w_res = await client.get_warranty_info()
-        w = w_res.get("result", {})
+        w = (w_res.get("result") or {})
         today = _date.today()
 
         # ─ Rated / remaining throughput (API returns MWh, convert to kWh)
@@ -557,12 +573,12 @@ async def collect_snapshot(client) -> dict:
                 return None
 
         expiry_date  = _parse_d(w.get("expirationTime"))
-        install_date = _parse_d(snapshot.get("identity", {}).get("installedDate"))
+        install_date = _parse_d((snapshot.get("identity") or {}).get("installedDate"))
         # ptoDate lives in tou_status — fetch it directly here rather than relying
         # on tou_status being populated (execution order may vary).
         try:
             _tou_r = await client.get_tou_dispatch_detail()
-            _pto_raw = _tou_r.get("result", {}).get("ptoDate")
+            _pto_raw = (_tou_r.get("result") or {}).get("ptoDate")
         except Exception:
             _pto_raw = None
         pto_date = _parse_d(_pto_raw)
@@ -601,7 +617,7 @@ async def collect_snapshot(client) -> dict:
             "daily_kwh_forecast":      daily_kwh_forecast,
             "daily_rem_needed":        daily_rem_needed,
         }
-        devices = w.get("deviceExpirationList", [])
+        devices = (w.get("deviceExpirationList") or [])
         if devices:
             snapshot["warranty"]["devices"] = [
                 {"sn": d.get("sn"), "model": d.get("model"), "expires": d.get("expirationTime")}
@@ -613,8 +629,8 @@ async def collect_snapshot(client) -> dict:
     # ── TOU / Grid status ────────────────────────────────────────
     try:
         tou_res = await client.get_tou_dispatch_detail()
-        tou = tou_res.get("result", {})
-        template = tou.get("template", {})
+        tou = (tou_res.get("result") or {})
+        template = (tou.get("template") or {})
         snapshot["tou_status"] = {
             "ptoDate": tou.get("ptoDate"),
             "onlineFlag": tou.get("onlineFlag"),
@@ -648,13 +664,13 @@ async def collect_snapshot(client) -> dict:
     snapshot["operating_modes"] = {}
     try:
         _ml_res  = await client.get_gateway_tou_list()
-        _ml      = _ml_res.get("result", {}) if isinstance(_ml_res, dict) else {}
-        _ml_list = _ml.get("list", []) or []
+        _ml      = (_ml_res.get("result") or {}) if isinstance(_ml_res, dict) else {}
+        _ml_list = (_ml.get("list") or []) or []
         _configured_wm = {int(m.get("workMode", 0)): m for m in _ml_list if m.get("workMode") is not None}
 
         # Flags from programmes (already captured above, but re-read safely here)
-        _solar_ok  = bool(snapshot.get("programmes", {}).get("solar_connected", True))
-        _tariff_ok = bool(snapshot.get("tou_status", {}).get("tariffSettingFlag", False))
+        _solar_ok  = bool((snapshot.get("programmes") or {}).get("solar_connected", True))
+        _tariff_ok = bool((snapshot.get("tou_status") or {}).get("tariffSettingFlag", False))
 
         KNOWN_MODES = [
             (1, "Time-Of-Use",      _tariff_ok,  "TOU schedule not configured (tariffSettingFlag=False)"),
@@ -694,7 +710,7 @@ async def collect_snapshot(client) -> dict:
     # + vppSocVo / todayVppVo / nemType from tou_dispatch_detail (already fetched above).
     # Country-aware: NEM type is a US (country_id=2) / CA state concept only.
     try:
-        _country_id = snapshot.get("identity", {}).get("countryId", 0)
+        _country_id = (snapshot.get("identity") or {}).get("countryId", 0)
         _is_us = (_country_id == 2)
         _is_au = (_country_id == 3)
 
@@ -703,7 +719,7 @@ async def collect_snapshot(client) -> dict:
         try:
             _gp = await client.get_grid_profile_info(requestType=1)
             if isinstance(_gp, dict):
-                _profiles = _gp.get("list", [])
+                _profiles = (_gp.get("list") or [])
                 _current_id = _gp.get("currentId", 0)
                 for _p in _profiles:
                     if _p.get("id") == _current_id:
@@ -734,13 +750,13 @@ async def collect_snapshot(client) -> dict:
         _tou_disp = {}
         try:
             _td = await client.get_tou_dispatch_detail()
-            _tou_disp = _td.get("result", {}) if isinstance(_td, dict) else {}
+            _tou_disp = (_td.get("result") or {}) if isinstance(_td, dict) else {}
         except Exception:
             pass
 
-        _template = _tou_disp.get("template", {}) or {}
-        _vpp_soc_vo = _tou_disp.get("vppSocVo", {}) or {}
-        _today_vpp = _tou_disp.get("todayVppVo", {}) or {}
+        _template = (_tou_disp.get("template") or {}) or {}
+        _vpp_soc_vo = (_tou_disp.get("vppSocVo") or {}) or {}
+        _today_vpp = (_tou_disp.get("todayVppVo") or {}) or {}
         _nem_raw = _tou_disp.get("nemType", None)
         _der_schedule = _template.get("derSchdule", None)
 
@@ -755,7 +771,7 @@ async def collect_snapshot(client) -> dict:
         _pcs_raw = {}
         try:
             _pcs_res = await client.get_power_control_settings()
-            _pcs_raw = _pcs_res.get("result", {}) if isinstance(_pcs_res, dict) else {}
+            _pcs_raw = (_pcs_res.get("result") or {}) if isinstance(_pcs_res, dict) else {}
         except Exception:
             pass
 
@@ -839,11 +855,16 @@ def sign_snapshot(data: dict) -> str:
 
 # ── Connectivity analysis ────────────────────────────────────────────
 
-NET_TYPES = {
-    0: "None", 1: "WiFi", 2: "Ethernet", 3: "WiFi",
-    4: "4G/LTE", 5: "WiFi+4G", 6: "Ethernet+4G",
-    13: "WiFi+Ethernet+4G",
-}
+# DEF-SUPPORT-NETTYPE-ENUM. This was a local bitmask-style table
+# (0=None, 1=WiFi, 2=Ethernet, 3=WiFi+Ethernet, ...) indexed with
+# currentNetType, which is positional. All three call sites below read
+# currentNetType — the variable and key names saying "connType" are a misnomer
+# and are what disguised the defect. Index 3 had already been hand-patched from
+# "WiFi+Ethernet" to "WiFi", fixing one symptom of the wrong table.
+#
+# For runtimeData.connType, which is a genuinely different encoding, use
+# const.devices.CONN_TYPE_NAMES.
+from franklinwh_cloud.const.devices import NETWORK_TYPES as NET_TYPES
 
 
 def analyze_connectivity(snapshot: dict) -> list[dict]:
@@ -853,18 +874,18 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
     severity: "critical", "warning", "info", "ok"
     """
     findings = []
-    net = snapshot.get("network", {})
-    conn = snapshot.get("connectivity", {})
-    switches = snapshot.get("switches", {})
-    wifi_cfg = snapshot.get("wifi_config", {})
+    net = (snapshot.get("network") or {})
+    conn = (snapshot.get("connectivity") or {})
+    switches = (snapshot.get("switches") or {})
+    wifi_cfg = (snapshot.get("wifi_config") or {})
 
     # AWS cloud status
     # Cross-check: if other snapshot sections have real data, the cloud API
     # is clearly working.  The sendMqtt cmdType-339 status self-report from
     # the aGate can return all-zeros even when connectivity is fine.
     api_reachable = bool(
-        snapshot.get("versions", {}).get("ibgVersion")
-        or snapshot.get("power", {}).get("solar_kw") is not None
+        (snapshot.get("versions") or {}).get("ibgVersion")
+        or (snapshot.get("power") or {}).get("solar_kw") is not None
     )
 
     if "error" not in conn:
@@ -901,7 +922,7 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
 
     # WiFi checks
     if "error" not in net:
-        wifi = net.get("wifi", {})
+        wifi = (net.get("wifi") or {})
         wifi_mac = wifi.get("mac", "")
         wifi_ip = wifi.get("ip", "")
 
@@ -915,7 +936,7 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
 
         # Ethernet checks
         for iface, label in [("eth0", "Ethernet 0"), ("eth1", "Ethernet 1")]:
-            idata = net.get(iface, {})
+            idata = (net.get(iface) or {})
             eth_mac = idata.get("mac", "")
             eth_ip = idata.get("ip", "")
             if eth_mac and eth_ip in ("0.0.0.0", ""):
@@ -926,21 +947,25 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
                                  "detail": f"IP {eth_ip}"})
 
         # Cellular
-        op = net.get("operator", {})
+        op = (net.get("operator") or {})
         if op.get("mac"):
+            # operatorRSSI is a 0-52 vendor scale, NOT dBm — gotcha G3.
+            # DEF-SUPPORT-RSSI-DBM.
             rssi = op.get("rssi", "?")
             findings.append({"severity": "info", "check": "Cellular",
-                             "detail": f"Available (RSSI: {rssi} dBm) — backup ready"})
+                             "detail": f"Available (RSSI: {rssi}/52 vendor scale) — backup ready"})
 
         # 4G fallback detection
         conn_type = net.get("currentNetType", 0)
-        if conn_type in (4, 5, 6, 13) and wifi_mac:
+        # Only 4 is cellular under this encoding; 5/6/13 were bitmask values
+        # that can never occur here and were dead branches.
+        if conn_type == 4 and wifi_mac:
             findings.append({"severity": "warning", "check": "4G Fallback",
-                             "detail": f"Active (connType {conn_type}: {NET_TYPES.get(conn_type, '?')}) — WiFi/Ethernet may have failed"})
+                             "detail": f"Active (currentNetType {conn_type}: {NET_TYPES.get(conn_type, '?')}) — WiFi/Ethernet may have failed"})
 
         # DNS checks
         wifi_dns = wifi.get("dns", "")
-        eth0_dns = net.get("eth0", {}).get("dns", "")
+        eth0_dns = (net.get("eth0") or {}).get("dns", "")
         if wifi_dns and eth0_dns and wifi_dns != eth0_dns and eth0_dns not in ("", "0.0.0.0"):
             findings.append({"severity": "info", "check": "DNS mismatch",
                              "detail": f"WiFi DNS {wifi_dns} ≠ Ethernet DNS {eth0_dns}"})
@@ -969,7 +994,7 @@ def analyze_connectivity(snapshot: dict) -> list[dict]:
         agate_ip = None
         if "error" not in net:
             for iface in ("wifi", "eth0", "eth1"):
-                ip = net.get(iface, {}).get("ip", "")
+                ip = (net.get(iface) or {}).get("ip", "")
                 if ip and ip != "0.0.0.0":
                     # We can't know the aGate's LAN IP from the cloud API,
                     # but we can note we tried
@@ -1006,8 +1031,8 @@ def compare_snapshots(old: dict, new: dict, scope: str = "all") -> list[dict]:
     sections = scope_keys or [k for k in new_data if k not in ("_redacted",)]
 
     for section in sections:
-        old_section = old_data.get(section, {})
-        new_section = new_data.get(section, {})
+        old_section = (old_data.get(section) or {})
+        new_section = (new_data.get(section) or {})
 
         if not isinstance(old_section, dict) or not isinstance(new_section, dict):
             if old_section != new_section:
@@ -1105,7 +1130,7 @@ async def _test_device_data(client) -> dict:
         t0 = time.monotonic()
         res = await client.get_device_composite_info()
         elapsed = (time.monotonic() - t0) * 1000
-        result = res.get("result", {})
+        result = (res.get("result") or {})
         # result is a dict with runtimeData, not a list
         ok = res.get("success", res.get("code") == 200)
         detail = f"{elapsed:.0f}ms"
@@ -1115,7 +1140,7 @@ async def _test_device_data(client) -> dict:
             soc = rd.get("soc")
             if soc is not None:
                 detail += f" — SoC {soc:.0f}%"
-            fhp_sns = rd.get("fhpSn", [])
+            fhp_sns = (rd.get("fhpSn") or [])
             if fhp_sns and isinstance(fhp_sns, list) and fhp_sns[0]:
                 apower_serial = fhp_sns[0]
         hop = {"hop": "Device Data", "ok": bool(ok), "ms": round(elapsed, 1), "detail": detail}
@@ -1198,19 +1223,22 @@ async def _collect_nettest_config(client) -> dict:
         # get_network_info returns flat dict: {currentNetType, wifi, eth0, eth1, operator}
         r = await client.get_network_info()
         if isinstance(r, dict) and "error" not in r:
+            # Key names kept for snapshot-format compatibility, but the value
+            # is currentNetType, not connType. Misnomer, not a bug.
             config["connType"] = r.get("currentNetType", 0)
-            config["connTypeName"] = NET_TYPES.get(config["connType"], f"Type {config['connType']}")
+            config["connTypeName"] = NET_TYPES.get(
+                config["connType"], f"Unknown ({config['connType']})")
 
-            wifi = r.get("wifi", {})
+            wifi = (r.get("wifi") or {})
             if wifi.get("ip") and wifi["ip"] != "0.0.0.0":
                 config["primary"] = f"WiFi (DHCP)  IP: {wifi['ip']}"
-            eth0 = r.get("eth0", {})
+            eth0 = (r.get("eth0") or {})
             if eth0.get("ip") and eth0["ip"] != "0.0.0.0":
                 config["primary"] = f"Ethernet (IP: {eth0['ip']})"
 
-            op = r.get("operator", {})
+            op = (r.get("operator") or {})
             if op.get("mac"):
-                config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')} dBm"
+                config["backup"] = f"4G/LTE  RSSI: {op.get('rssi', '?')}/52 (vendor scale)"
     except Exception:
         pass
 
@@ -1490,7 +1518,7 @@ def _display_nettest_config(net_config: dict):
         sim = "SIM: Active" if net_config.get("sim_active") else ""
         print_kv("Backup", f"{backup}  {sim}")
     conn_name = net_config.get("connTypeName", "?")
-    print_kv("connType", f"{net_config.get('connType', '?')} ({conn_name})")
+    print_kv("currentNetType", f"{net_config.get('connType', '?')} ({conn_name})")
     # Source IP (this machine)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1521,7 +1549,7 @@ def _display_nettest_hops(hops: list, fem: dict | None = None):
 
     if fem and fem["ok"]:
         print_section("🏠", f"FEM ({fem.get('detail', '')})")
-        for name, test in fem.get("sub_tests", {}).items():
+        for name, test in (fem.get("sub_tests") or {}).items():
             icon = c("green", "✓") if test.get("ok") else c("red", "✗")
             ms_str = f"{test.get('ms', 0):.0f}ms" if test.get("ms") else ""
             detail = test.get("detail", "")
@@ -1597,7 +1625,8 @@ def mock_snapshot() -> dict:
                 "apower_bms_mode": [6, 6, 6],
                 "ambient_temp_c": 22.5,
                 "wifi_signal_pct": 78,
-                "mobile_signal_dbm": -85,
+                "mobile_signal_pct": 45,
+                "mobile_signal_dbm": 45,  # DEPRECATED alias — value is %, not dBm
                 "grid_charging_battery_kw": 2.5,
                 "solar_export_to_grid_kw": 0.0,
                 "solar_charging_battery_kw": 5.1,
@@ -1902,14 +1931,14 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
     # ── Fetch account-level data ──────────────────────────────────────
     try:
         site_info_res = await client.get_site_and_device_info()
-        sites_data = site_info_res.get("result", [])
+        sites_data = (site_info_res.get("result") or [])
     except Exception as e:
         print_error(f"Failed to fetch site list: {e}")
         return
 
     try:
         gw_res = await client.get_home_gateway_list()
-        gw_meta_list = gw_res.get("result", [])
+        gw_meta_list = (gw_res.get("result") or [])
         # Keyed by gateway id for O(1) lookup
         gateways = {g.get("id"): g for g in gw_meta_list if g.get("id")}
     except Exception:
@@ -1947,11 +1976,11 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
             print(f"{site_prefix} {c('yellow', site_label)}")
 
         # ── Group-aware gateway bucketing ─────────────────────────────
-        gws = site.get("basicDeviceInfoVOList", [])
+        gws = (site.get("basicDeviceInfoVOList") or [])
 
         # Check whether any gateway in this site belongs to a named group
         has_groups = any(
-            gateways.get(gw.get("gatewayId"), {}).get("groupFlag") == 1
+            (gateways.get(gw.get("gatewayId")) or {}).get("groupFlag") == 1
             for gw in gws
         )
 
@@ -1961,7 +1990,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
 
         for gw in gws:
             gid = gw.get("gatewayId", "?")
-            meta = gateways.get(gid, {})
+            meta = (gateways.get(gid) or {})
             grp  = meta.get("groupId") if meta.get("groupFlag") == 1 else None
             if grp not in group_buckets:
                 group_buckets[grp] = []
@@ -2005,10 +2034,10 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                 gw_id   = gw.get("gatewayId", "?")
                 gw_name = gw.get("gatewayName", "FHP")
 
-                meta    = gateways.get(gw_id, {})
+                meta    = (gateways.get(gw_id) or {})
                 hw_ver  = meta.get("sysHdVersion") or gw.get("sysHdVersion")
                 try:
-                    agate_model = FRANKLINWH_MODELS.get(int(hw_ver), {}).get("model", "aGate") if hw_ver else "aGate"
+                    agate_model = (FRANKLINWH_MODELS.get(int(hw_ver)) or {}).get("model", "aGate") if hw_ver else "aGate"
                 except (ValueError, TypeError):
                     agate_model = "aGate"
 
@@ -2059,7 +2088,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                     # ── TOU sync flags ──────────────────────────────
                     try:
                         modes_res  = await client.get_gateway_tou_list()
-                        m_res      = modes_res.get("result", {})
+                        m_res      = (modes_res.get("result") or {})
                         tou_send   = m_res.get("touSendStatus")
                         stop_mode  = m_res.get("stopMode")
                         alert_msg  = m_res.get("touAlertMessage")
@@ -2082,9 +2111,9 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                     solar_vo = {}
                     try:
                         comp    = await client.get_device_composite_info()
-                        result  = comp.get("result", {})
-                        rt      = result.get("runtimeData", {})
-                        solar_vo = result.get("solarHaveVo", {}) or {}
+                        result  = (comp.get("result") or {})
+                        rt      = (result.get("runtimeData") or {})
+                        solar_vo = (result.get("solarHaveVo") or {}) or {}
                     except Exception:
                         pass
 
@@ -2173,7 +2202,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                     # Per-unit: aPower S has non-empty mpptAppVer in get_power_cap_config_list
                     try:
                         pcap_res      = await client.get_power_cap_config_list()
-                        apower_configs = pcap_res.get("result", [])
+                        apower_configs = (pcap_res.get("result") or [])
                     except Exception:
                         apower_configs = []
 
@@ -2184,7 +2213,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                         ver = cfg.get("peHwVersion") or (cfg.get("peHwVerList") or [None])[0]
                         if sn and ver:
                             try:
-                                apower_models[sn] = FRANKLINWH_MODELS.get(int(ver), {}).get("model", "aPower")
+                                apower_models[sn] = (FRANKLINWH_MODELS.get(int(ver)) or {}).get("model", "aPower")
                             except (ValueError, TypeError):
                                 apower_models[sn] = "aPower"
                         # Derating: maxChargingPower or chargingPowerLimited
@@ -2201,7 +2230,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                     # ── Smart Circuits + Generator (from accessories) ─
                     try:
                         acc_res     = await client.get_accessories(0)
-                        accessories = acc_res.get("result", [])
+                        accessories = (acc_res.get("result") or [])
                     except Exception:
                         accessories = []
 
@@ -2293,7 +2322,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                         gw_node["derating"] = {"active": True, "max_charge_kw": derate_kw}
 
                     # ── aPower batteries ─────────────────────────────
-                    apowers = rt.get("fhpSn", [])
+                    apowers = (rt.get("fhpSn") or [])
                     for ap in apowers:
                         model_name = apower_models.get(ap, "aPower")
                         items.append(f"{model_name} (Serial: {ap})")
@@ -2302,13 +2331,13 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                     # ── Lifecycle ────────────────────────────────────
                     try:
                         tou_res = await client.get_tou_dispatch_detail()
-                        pto     = tou_res.get("result", {}).get("ptoDate")
+                        pto     = (tou_res.get("result") or {}).get("ptoDate")
                     except Exception:
                         pto = None
 
                     try:
                         w_res   = await client.get_warranty_info()
-                        expires = w_res.get("result", {}).get("expirationTime")
+                        expires = (w_res.get("result") or {}).get("expirationTime")
                     except Exception:
                         expires = None
 
@@ -2331,7 +2360,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                         gp = await client.get_grid_profile_info()
                         grid_profile = "Unknown"
                         if isinstance(gp, dict):
-                            for p in gp.get("list", []):
+                            for p in (gp.get("list") or []):
                                 if p.get("id") == gp.get("currentId", -1):
                                     grid_profile = p.get("name", "Unknown")
                                     break
@@ -2346,7 +2375,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                     from franklinwh_cloud.const import AGATE_STATE
                     dev_status = 0
                     try:
-                        dev_status = int(comp.get("result", {}).get("deviceStatus", 0))
+                        dev_status = int((comp.get("result") or {}).get("deviceStatus", 0))
                     except Exception:
                         pass
                     agate_ok    = dev_status == 1   # 1=Normal, 0=uninitialised
@@ -2412,7 +2441,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                         from franklinwh_cloud.mixins.discover import get_catalog
                         _cat = get_catalog()
                         hw_ver_int = int(meta.get("sysHdVersion") or gw.get("sysHdVersion") or 0)
-                        sc_gen = _cat.get("agate_models", {}).get(str(hw_ver_int), {}).get("generation", 1)
+                        sc_gen = ((_cat.get("agate_models") or {}).get(str(hw_ver_int)) or {}).get("generation", 1)
                     except Exception:
                         sc_gen = 1
                     sc_version = 2 if sc_gen == 2 else 1
@@ -2479,7 +2508,7 @@ async def run_info(client, json_output: bool = False, diag: bool = False):
                         ("apbox",       "BFPV/aPBox Relay"),
                     ]
                     relay_vals = {}
-                    main_sw = rt.get("main_sw", [])
+                    main_sw = (rt.get("main_sw") or [])
                     for i, k in enumerate(["grid_1", "generator", "solar_pv_1"]):
                         if i < len(main_sw):
                             relay_vals[k] = not bool(main_sw[i])
@@ -2532,7 +2561,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
     envelope = {
         "snapshot_version": SNAPSHOT_VERSION,
         "timestamp": ts,
-        "gateway": data.get("identity", {}).get("serial", "?"),
+        "gateway": (data.get("identity") or {}).get("serial", "?"),
         "label": label,
         "checksum": f"sha256:{checksum}",
         "data": data,
@@ -2608,7 +2637,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
 
     # ── Save mode ────────────────────────────────────────────────
     if save:
-        serial_short = (data.get("identity", {}).get("serial", "unknown"))[-8:]
+        serial_short = ((data.get("identity") or {}).get("serial", "unknown"))[-8:]
         ts_file = datetime.now().strftime("%Y%m%d_%H%M%S")
         label_part = f"_{label}" if label else ""
         redact_part = "_redacted" if redact else ""
@@ -2639,7 +2668,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             print_kv("Redaction", redact)
 
         # Identity
-        identity = data.get("identity", {})
+        identity = (data.get("identity") or {})
         if "error" not in identity:
             print_section("🏠", "Identity")
             print_kv("Model", f'{identity.get("model", "?")} ({identity.get("sku", "?")})')
@@ -2657,7 +2686,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                     print_kv(date_label, val)
 
         # Versions
-        versions = data.get("versions", {})
+        versions = (data.get("versions") or {})
         if "error" not in versions:
             print_section("📦", "Software Versions")
             for key in ("ibgVersion", "awsVersion", "appVersion", "slVersion",
@@ -2666,7 +2695,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 if val:
                     print_kv(key, val)
             # Mobile app versions
-            mobile = versions.get("mobileApp", {})
+            mobile = (versions.get("mobileApp") or {})
             if mobile:
                 ios_ver = mobile.get("ios", "?")
                 android_ver = mobile.get("android", "?")
@@ -2674,24 +2703,24 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv("Mobile App (Android)", android_ver)
 
         # Network summary
-        net = data.get("network", {})
+        net = (data.get("network") or {})
         if "error" not in net:
             conn_type = net.get("currentNetType", 0)
             print_section("📶", "Network")
-            print_kv("Active", NET_TYPES.get(conn_type, f"Type {conn_type}"))
+            print_kv("Active", NET_TYPES.get(conn_type, f"Unknown ({conn_type})"))
             for iface, label_name in [("wifi", "WiFi"), ("eth0", "Eth0"), ("eth1", "Eth1")]:
-                idata = net.get(iface, {})
+                idata = (net.get(iface) or {})
                 if idata.get("mac"):
                     dhcp = "DHCP" if idata.get("dhcp") else "Static"
                     print_kv(label_name, f'{idata["mac"]}  {dhcp}  IP: {idata.get("ip", "—")}')
             # Cellular/4G
-            op = net.get("operator", {})
+            op = (net.get("operator") or {})
             if op.get("mac"):
                 rssi = op.get("rssi", "?")
-                rssi_label = f"RSSI: {rssi} dBm" if rssi != "?" else ""
+                rssi_label = f"RSSI: {rssi}/52 (vendor scale)" if rssi != "?" else ""
                 print_kv("Cellular", f'{op["mac"]}  {rssi_label}')
             # SIM subscription status
-            sim = data.get("identity", {}).get("simCardStatus")
+            sim = (data.get("identity") or {}).get("simCardStatus")
             if sim is not None:
                 sim_colors = {0: "dim", 1: "red", 2: "green", 3: "red"}
                 from franklinwh_cloud.const import SIM_STATUS as SIM_MAP_NET
@@ -2699,12 +2728,12 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv("SIM", c(sim_colors.get(sim, ""), sim_text))
 
         # Connectivity (from FranklinWH mobile app self-test)
-        conn = data.get("connectivity", {})
+        conn = (data.get("connectivity") or {})
         if "error" not in conn:
             print_section("🔗", "App Connectivity Test")
             # Detect stale all-zero from sendMqtt cmdType 339
             all_zero = all(conn.get(k, 0) == 0 for k in ("routerStatus", "netStatus", "awsStatus"))
-            api_ok = data.get("api_health", {}).get("total_errors", 1) == 0
+            api_ok = (data.get("api_health") or {}).get("total_errors", 1) == 0
             if all_zero and api_ok:
                 # API is working — connection status is stale
                 print_kv("Router", c("yellow", "⚠ Stale (re-run from FranklinWH mobile app)"))
@@ -2717,7 +2746,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                     print_kv(label_name, status)
 
         # Power
-        power = data.get("power", {})
+        power = (data.get("power") or {})
         if "error" not in power:
             print_section("⚡", "Power")
             print_kv("Solar", f'{power.get("solar_kw", 0):.1f} kW')
@@ -2739,21 +2768,33 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             if temp is not None and temp != 0.0:
                 print_kv("Ambient Temp", f"{temp:.1f} °C")
             # Power flow breakdown
-            pf = power.get("power_flow", {})
+            pf = (power.get("power_flow") or {})
             if pf and any(v for v in pf.values() if v):
-                print_kv("→ Grid→Bat", f'{pf.get("grid_charging_battery_kw", 0):.2f} kW')
-                print_kv("→ Sol→Grid", f'{pf.get("solar_export_to_grid_kw", 0):.2f} kW')
-                print_kv("→ Sol→Bat", f'{pf.get("solar_charging_battery_kw", 0):.2f} kW')
-                print_kv("→ Bat→Grid", f'{pf.get("battery_export_to_grid_kw", 0):.2f} kW')
+                # These are TODAY'S CUMULATIVE ENERGY, not instantaneous power.
+                # Measured 2026-09-18 with solar at 0.00 kW: soOutGrid read
+                # 21.25, which cannot be a power reading. Two independent sums
+                # settle it — soOutGrid + batOutGrid = 28.21 against today's
+                # grid_export of 28.45 kWh, and soChBat + gridChBat = 4.19
+                # against today's battery_charge of 4.17 kWh.
+                # The JSON keys still end _kw; renaming them breaks consumers,
+                # so that needs sign-off. DEF-POWER-FLOW-KWH-LABELLED-KW.
+                print_kv("→ Grid→Bat", f'{pf.get("grid_charging_battery_kw", 0):.2f} kWh today')
+                print_kv("→ Sol→Grid", f'{pf.get("solar_export_to_grid_kw", 0):.2f} kWh today')
+                print_kv("→ Sol→Bat", f'{pf.get("solar_charging_battery_kw", 0):.2f} kWh today')
+                print_kv("→ Bat→Grid", f'{pf.get("battery_export_to_grid_kw", 0):.2f} kWh today')
             # Signals
             wifi = power.get("wifi_signal_pct")
-            mob = power.get("mobile_signal_dbm")
+            # Read the correctly-named key. mobile_signal_dbm is a DEPRECATED
+            # alias carrying the same percentage, kept only for output
+            # compatibility — consuming it here is what produced "4G 45 dBm"
+            # for a value that is a percentage. DEF-SUPPORT-RSSI-DBM.
+            mob = power.get("mobile_signal_pct", power.get("mobile_signal_dbm"))
             if wifi is not None or mob is not None:
                 sig_parts = []
                 if wifi is not None:
                     sig_parts.append(f"WiFi {wifi}%")
                 if mob is not None:
-                    sig_parts.append(f"4G {mob} dBm")
+                    sig_parts.append(f"4G {mob}%")
                 print_kv("Signal", "  ".join(sig_parts))
             # Per-pack aPower state
             from franklinwh_cloud.const.states import BMS_STATE as _BMS_STATE
@@ -2789,7 +2830,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                     print_kv("  BMS", bms_vals)
 
         # Daily Totals
-        totals = data.get("totals", {})
+        totals = (data.get("totals") or {})
         if "error" not in totals and totals:
             print_section("📊", "Today's Totals")
             print_kv("Solar", f'{totals.get("solar_kwh", 0):.2f} kWh')
@@ -2802,7 +2843,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             print_kv("Home Use", f'{totals.get("home_use_kwh", 0):.2f} kWh')
 
         # Electrical (211)
-        elec = data.get("electrical", {})
+        elec = (data.get("electrical") or {})
         if "error" not in elec and elec:
             print_section("🔌", "Electrical (211)")
             v1 = elec.get("grid_voltage_l1_v")
@@ -2811,6 +2852,13 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 vstr = f"{v1:.0f} V"
                 if v2 is not None and v2 != 0:
                     vstr += f" / {v2:.0f} V"
+                # Two "legs" on a single-phase supply are an API artefact,
+                # not two conductors — ac_topology.legs_are_real(). The JSON
+                # payload has carried ac_legs_are_real all along while the
+                # terminal printed 122 V / 122 V unqualified on an AU gateway.
+                caveat = leg_caveat(elec.get("ac_legs_are_real"))
+                if v2 is not None and v2 != 0 and caveat:
+                    vstr += f"  ({caveat})"
                 print_kv("Grid Voltage", vstr)
             lv = elec.get("grid_line_voltage_v")
             if lv is not None and lv != 0:
@@ -2845,7 +2893,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv(f["check"], c("yellow", f'🟡 {f["detail"]}'))
 
         # Warranty
-        warranty = data.get("warranty", {})
+        warranty = (data.get("warranty") or {})
         if "error" not in warranty and warranty.get("expirationTime"):
             print_section("📋", "Warranty")
 
@@ -2921,11 +2969,11 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv("Remaining/day", c(needed_color, f"{needed:.2f} kWh/day  ({rem:,.0f} kWh remaining ÷ {_days_human(days_left)} to expiry)"))
 
             # ─ Per-device
-            for dev in warranty.get("devices", []):
+            for dev in (warranty.get("devices") or []):
                 print_kv(f"  {dev.get('model', '?')}", f"Expires: {dev.get('expires', '?')}")
 
         # Programmes, Schemes & VPP
-        prog = data.get("programmes", {})
+        prog = (data.get("programmes") or {})
         if "error" not in prog and prog:
             print_section("🔌", "Grid & Schemes")
 
@@ -2960,17 +3008,33 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             if der and der not in ("", "Other", "None", None):
                 print_kv("DER Schedule", der)
 
-            # Scheme eligibility flags — only print those that are True
+            # Scheme flags. The comment above this block used to say
+            # "eligibility" while the line below printed "Enrolled" — the two
+            # readings cannot both be right, and nothing establishes which.
+            # AP-14: report the flag, do not assert what it means.
+            #
+            # These are US-utility programmes. A gateway outside the US can
+            # carry them set, which is itself evidence the flags are not
+            # enrolment. DEF-PROGRAMME-ENTRANCE-OVERCLAIM.
             _scheme_flags = [
+                # ASSUMED expansions where the vendor has not stated one.
                 ("sgip",       "SGIP",          "Self-Generation Incentive Program (CA)"),
-                ("bb",         "Backup Battery", "Backup Battery scheme"),
-                ("ja12",       "JA12",           "JA12 grid compliance"),
-                ("sdcp",       "SDCP",           "Smart Device Control Program"),
+                # CONFIRMED: discovery.py documents bb as Hawaii Battery Bonus.
+                # It is NOT "backup battery" — see DEF-BB-GROUP-MISLABEL.
+                ("bb",         "Battery Bonus", "Hawaiian Electric Battery Bonus"),
+                ("ja12",       "JA12",           "CA Title 24 JA12 grid compliance"),
+                # ASSUMED: the acronym is unsourced. Candidates include
+                # San Diego Community Power (a CA utility — consistent with the
+                # sibling `sdcpCompanyFlag` and with sdcpFlag appearing in
+                # getTouCompanyListPageV2, a utility-company list) and "Smart
+                # Device Control Program", which the previous label asserted
+                # without a citation. DEF-SDCP-MEANING-UNSOURCED.
+                ("sdcp",       "SDCP",           "scheme flag; expansion unverified"),
                 ("pcs_enabled","PCS",            "Power Control System enabled"),
             ]
             active_schemes = [(label, desc) for key, label, desc in _scheme_flags if prog.get(key)]
             for label, desc in active_schemes:
-                print_kv(label, c("green", f"✅ Enrolled  ({desc})"))
+                print_kv(label, c("green", f"✅ Flag set  ({desc})"))
 
             # Grid limits (from get_power_control_settings)
             # -1 = Unlimited, 0 = Not allowed/Disabled, >0 = kW cap
@@ -2982,7 +3046,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 if val == 0:          return c("yellow", disabled_txt)
                 return f"{val:.1f} kW"
 
-            _pcs = prog.get("grid_limits_raw", {}) or {}
+            _pcs = (prog.get("grid_limits_raw") or {}) or {}
             if _pcs:
                 print_kv("Grid Import",    _grid_limit_label(_pcs.get("gridMax"),               "Unlimited import",  "Charge from grid not allowed"))
                 print_kv("Grid Export",    _grid_limit_label(_pcs.get("gridFeedMax"),            "Unlimited export",  "Export not allowed"))
@@ -3021,7 +3085,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
             else:
                 print_kv("Enrolled", c("dim", "Not enrolled"))
         # Operating Modes
-        om = data.get("operating_modes", {})
+        om = (data.get("operating_modes") or {})
         if "error" not in om and om.get("modes"):
             print_section("⚙️", "Operating Modes")
 
@@ -3055,7 +3119,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv("Backup Forever", c("dim", "Enabled"))
 
         # TOU / Grid status
-        tou = data.get("tou_status", {})
+        tou = (data.get("tou_status") or {})
         if "error" not in tou and tou:
             print_section("🏷️", "TOU / Grid")
             pto = tou.get("ptoDate")
@@ -3106,7 +3170,7 @@ async def run(client, *, json_output: bool = False, save: bool = False,
                 print_kv("Battery Capacity", f"{cap} kWh ({tou.get('apowerCount', '?')} aPower)")
 
         # Schema fingerprint
-        schema = data.get("schema_fingerprint", {})
+        schema = (data.get("schema_fingerprint") or {})
         if schema:
             print_section("🔑", "API Schema")
             print_kv("Fingerprint", schema.get("fingerprint", "?"))

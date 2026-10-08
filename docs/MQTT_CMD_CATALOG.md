@@ -21,7 +21,8 @@ Click any link in the **Python Method** column to view its formal definition in 
 | <a id="cmd-211-2"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 2}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 1) |
 | <a id="cmd-211-3"></a>**`211`** | `POWER_AND_RELAYS` | `{"type": 3}` | [`get_bms_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_bms_info) | Detailed raw battery module info (Layer 2) |
 | <a id="cmd-310"></a>**`310`** | `SMART_CIRCUIT_TOGGLE` | *(Varies)* | [`set_smart_circuit_state()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.set_smart_circuit_state) | Toggle Smart Circuits (`SwXMode`) or limits |
-| <a id="cmd-311"></a>**`311`** | `SMART_CIRCUIT_INFO` | `{"opt": 0}` | [`get_smart_circuits_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_smart_circuits_info) | Smart Circuit naming and statuses |
+| <a id="cmd-311"></a>**`311`** | `SMART_CIRCUIT_INFO` | `{"opt": 0}` read · `{"opt": 1, ...}` write | [`get_smart_circuits_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_smart_circuits_info) | Smart Circuit naming, statuses **and schedules**. Read *and* write — there is no REST equivalent. A write echoes the whole `Sw*` block back with `opt: 1`, and **`SwNMsgType` selects the kind of change**: `1` = switch on/off, `2` = schedule/config edit. A write whose MsgType does not match its content is discarded silently with `result: 0` — see `DEF-311-CONFIG-WRITES-WRONG-MSGTYPE`. |
+| <a id="cmd-315"></a>**`315`** | `SYSTEM_CONTROL` | `{"opt": 1, "paraType": 1, "reboot": 1}` | *(none — not implemented)* | aGate reboot. ⛔ The same payload exposes `reset`, `cleanUnlockAlarm`, `cleanLockAlarm`, `cleanAlarmFlag` — **never populate `reset`**, it is almost certainly a factory reset. |
 | <a id="cmd-317"></a>**`317`** | `NETWORK_INTERFACES` | `{"opt": 0}` | [`get_network_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_network_info) | Verbose eth/wifi interface IP and DHCP |
 | <a id="cmd-327"></a>**`327`** | `AESTHETICS` | *(Varies)* | [`led_light_settings()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.led_light_settings) | aPower RGB LED aesthetic limits |
 | <a id="cmd-335"></a>**`335`** | `WIFI_SCAN` | `{"wifi_ScanTime": 0}` | [`scan_wifi_networks()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.scan_wifi_networks) | Trigger active 2.4/5GHz AP discovery |
@@ -30,7 +31,77 @@ Click any link in the **Python Method** column to view its formal definition in 
 | <a id="cmd-341"></a>**`341`** | `NETWORK_SWITCHES` | `{"opt": 0}` | [`get_network_switches()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_network_switches) | Boolean flags for eth0/eth1/4G/wifi |
 | <a id="cmd-353"></a>**`353`** | `ACCESSORY_LOADS` | `{"opt": 0}` | [`get_accessories_power_info()`](API_REFERENCE.md#franklinwh_cloud.mixins.devices.DevicesMixin.get_accessories_power_info) | SC / V2L / Generator current draw payloads |
 
+## Response `cmdType` Mapping
+
+The gateway answers request `cmdType` N with response N+1 — **except `STATUS`, where 203
+answers with 201.** Do not assume N+1; use `MqttResponse` in `franklinwh_cloud.models`.
+
+| Request | Response | Confirmed occurrences |
+| :---: | :---: | :--- |
+| `203` | **`201`** ⚠️ | 780 — the one exception to the N+1 rule |
+| `211` | `212` | 137 |
+| `311` | `312` | 283 |
+| `315` | `316` | 2 |
+| `317` | `318` | 484 |
+| `327` | `328` | 418 |
+| `335` | `336` | 39 |
+| `337` | `338` | 388 |
+| `339` | `340` | 67 |
+| `341` | `342` | 38 |
+| `353` | `354` | 1267 |
+
+`310` (`SMART_CIRCUIT_TOGGLE`) is absent deliberately: it has never been observed as a
+request in any capture, so its response code is unknown.
+
+## Read vs Write
+
+Most commands use an `opt` flag (or `optType` for 317) to select direction: `0` reads, `1`
+writes. The library currently implements the **read** half of the network commands only.
+
+The write payloads below are confirmed on the wire but **not implemented** — see
+[Network Connectivity & WiFi Switching](NETWORK_CONNECTIVITY_DESIGN.md) for the full
+analysis, safety preflight and phasing.
+
+| `cmdType` | Write `dataArea` | Status |
+| :---: | :--- | :--- |
+| `337` | `{"opt":1,"wifi_SSID","wifi_Pw","ap_SSID","ap_Pw"}` | ✅ Confirmed. Sets WiFi credentials — and observed to move the gateway from 4G to WiFi on its own. `ap_SSID`/`ap_Pw` must be echoed from a preceding `opt:0` read. |
+| `317` | `{"optType":1,"paraType":6,"commSetPara":{…},"num":N}` | ⚠️ Accepted (`result:0`) but only ever observed writing an unchanged `currentNetType`. `num` is the **key count** of `commSetPara` — compute it, never hardcode. |
+| `341` | `{"opt":1, …four switches…}` | ❌ Never observed. Shape inferred by analogy; must be validated no-op-first. |
+| `315` | `{"opt":1,"paraType":1,"reboot":1}` | ✅ Confirmed. Reboot only — never populate `reset`. |
+
+> ⚠️ A write ack (`result:0`) means the aGate **accepted the config**, not that it applied
+> or associated successfully. A wrong WiFi password still returns `result:0`. Success can
+> only be established by polling `317` afterwards.
+
 ## Deprecation & Traceability
 
 - **API V2 Fallacies**: Previous hypotheses assumed modern V2 endpoints (like `getHotSpotInfo/v2`) replaced `sendMqtt` analogs. Our local matrix fuzzing verified this is false for integration developers requiring hardware physics arrays. The `MqttCmd` payloads listed above must be retained.
 - **M713 Limitations**: The LocRemCtl mode logic natively attempts to bypass these cloud relays altogether using Modbus TCP when users invoke local operations, which is why cataloging the `sendMqtt` trace is strictly tied to Remote-Only operations.
+
+
+---
+
+## Unconfirmed: cmdType 387 / 389 (smart circuits)
+
+Added 2026-09-14. **Not implemented, and not observed here.**
+
+The third-party fork [`jkt628/franklinwh-python`](https://github.com/jkt628/franklinwh-python)
+drives smart circuits with **cmdType 387** (configuration) and **389** (status),
+where the 387 response carries a structured
+`data["smartSwitch"][i]["schedule"]` object. This library uses **cmdType 311**,
+whose schedule arrives as the flat parallel arrays `SwNTime` / `SwNTimeEn` /
+`SwNTimeSet`.
+
+**Evidence status — ASSUMED.** Neither `387`, `389` nor `smartSwitch` occurs
+anywhere in the 44-capture corpus (2025-02 → 2026-03, app 2.3.1 → 2.11.0), in
+which the highest observed cmdType is 354. A higher block with a richer schema
+is *consistent with* a later addition, but different hardware, a different
+market, or an error in the fork are equally consistent. Third-party code is a
+hypothesis, not a citation — see
+[AP-14](../.agents/policies/evidence_standard.md).
+
+**What would settle it:** a capture from a current app session that touches
+Smart Circuits. If 387/389 are real and carry a structured schedule, they
+probably supersede 311 for this purpose and would resolve
+`FEAT-SC-SCHEDULE-SETTER` and `DEF-SC-TIMESET-UNDECIPHERED` without any
+guesswork about array layouts.

@@ -10,6 +10,7 @@ Usage:
     franklinwh-cli bms --json         # machine-readable
 """
 
+from franklinwh_cloud.ac_topology import leg_caveat, legs_are_real
 from franklinwh_cloud.cli_output import (
     print_header, print_section, print_kv, print_json_output,
     print_warning, print_error, c,
@@ -22,8 +23,13 @@ async def run(client, *, json_output: bool = False):
     # ── Get device info to find aPower serials ────────────────────
     try:
         dev_res = await client.get_device_info()
-        dev_result = dev_res.get("result", {})
-        apower_list = dev_result.get("apowerList", [])
+        dev_result = (dev_res.get("result") or {})
+        # getDeviceInfoV2 carries countryId, so topology costs no extra call.
+        # isThreePhaseInstall is not in this response; legs_are_real() treats
+        # AU as not-split regardless, and returns None elsewhere so the values
+        # are shown with a caveat rather than hidden. DEF-AC-TOPOLOGY-INCONSISTENT.
+        _legs_real = legs_are_real(country_id=dev_result.get("countryId"))
+        apower_list = (dev_result.get("apowerList") or [])
         total_cap = dev_result.get("totalCap", 0)
     except Exception as e:
         if json_output:
@@ -110,8 +116,8 @@ async def run(client, *, json_output: bool = False):
         print_kv("Grid Frequency", f"{freq} Hz")
 
         # ── Cell Telemetry ───────────────────────────────────────
-        bat_volts = bms.get("batVolt", [])
-        bat_temps = bms.get("batTemp", [])
+        bat_volts = (bms.get("batVolt") or [])
+        bat_temps = (bms.get("batTemp") or [])
         highest_v = bms.get("singleHighestVolt", 0)
         lowest_v = bms.get("singleLowestVolt", 0)
         highest_t = bms.get("singleHighestTemp", 0)
@@ -180,12 +186,16 @@ async def run(client, *, json_output: bool = False):
         grid_line = bms.get("gridLineVol", 0)
         inv_line = bms.get("invLineVol", 0)
 
-        print_kv("Grid Feed (L1/L2)", f"{gv1} V  |  {gv2} V")
-        print_kv("Inv Bus (L1/L2)", f"{iv1} V  |  {iv2} V")
+        _leg = "L1/L2" if _legs_real is not False else "reported L1/L2"
+        print_kv(f"Grid Feed ({_leg})", f"{gv1} V  |  {gv2} V")
+        print_kv(f"Inv Bus ({_leg})", f"{iv1} V  |  {iv2} V")
         print_kv("DC Bus (+/−)", f"{pos_bus} V  |  {neg_bus} V")
         print_kv("PE Bat / Mid Bus", f"{pe_bat} V  |  {mid_bus} V")
         print_kv("Grid Line Voltage", f"{grid_line} V")
         print_kv("Inv Line Voltage", f"{inv_line} V")
+        _cav = leg_caveat(_legs_real)
+        if _cav:
+            print_kv("", c("dim", _cav))
 
         # Full grid voltages (AN/BN)
         gv_an = bms.get("gridVoltAN", 0)
@@ -198,6 +208,24 @@ async def run(client, *, json_output: bool = False):
             print_kv("Solar (A-N / B-N)", f"{sv_an} V  |  {sv_bn} V")
 
         # ── Hardware States ──────────────────────────────────────
+        #
+        # These print as RAW CODES on purpose. const/states.py has BMS_STATE,
+        # PCS_STATE and DCDC_STATE, and it is tempting to apply them here —
+        # but they decode DIFFERENT FIELDS FROM A DIFFERENT ENDPOINT:
+        #
+        #   BMS_STATE  -> runtimeData.bms_work  (cmdType 203, per-pack list)
+        #   PCS_STATE  -> runtimeData.pe_stat   (cmdType 203, per-pack list)
+        #   DCDC_STATE -> documented as mirroring bms_work
+        #
+        # The fields below are scalars from the cmdType 211 BMS payload.
+        # bmsState is not bms_work and inverterStatus is not pe_stat; the names
+        # merely resemble each other. Mapping one enum through another on the
+        # strength of a similar name is exactly what produced
+        # DEF-CONNTYPE-ENCODING-WRONG.
+        #
+        # Decoding these needs a captured 211 payload to establish the domains.
+        # See DEF-BMS-211-STATE-CODES-UNDECODED. Until then a raw number is
+        # honest and a confident wrong word is not.
         print_section("🔧", "Hardware States")
         print_kv("BMS Status", str(bms.get("bmsState", "?")))
         print_kv("MOS State", str(bms.get("mosState", "?")))

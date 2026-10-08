@@ -1080,11 +1080,16 @@ for backup in net["backups"]:
     print(f"Backup Link:     {backup['name']} (ID: {backup['id']})")
 
 # 2. Deep Diagnostic View (Slower, use only when necessary)
-# Pings Modbus 502 on the local IP and checks external SPAN flags.
+# Pings Modbus 502 ON THE AGATE and reads the SPAN configuration flag.
+# Note these are unrelated: the SPAN link runs Modbus 502 on the SPAN PANEL
+# with the aGate as client. See docs/SPAN_INTEGRATION.md.
 deep_net = await client.get_connectivity_overview(deep_scan=True)
 
 if deep_net["modbus_tcp_502_open"]:
-    print("Modbus polling is available locally!")
+    # The aGate is listening on 502. This says nothing about the SPAN link,
+    # and a TCP connect proves only that something accepts connections —
+    # not that reads or writes are permitted.
+    print("The aGate accepts connections on Modbus 502")
 ```
 
 ### Historical Energy Data

@@ -134,6 +134,7 @@ graph LR
 | [API Reference](API_REFERENCE.md) | All 70+ methods with parameters |
 | [TOU Guide](TOU_SCHEDULE_GUIDE.md) | Schedule management with workflow diagrams |
 | [Support Info Command](CLI_SUPPORT_INFO.md) | `support --info`, `--diag`, `--mock` — topology, feature flags, relays |
+| [CLI Energy History](cli-energy.md) | `energy` command — kWh/kW history as table, JSON or CSV |
 | [CLI Raw Methods](cli-raw.md) | All raw API methods available from CLI |
 | [Troubleshooting](TROUBLESHOOTING.md) | Login, network, metrics, PII redaction guide |
 | [Thank You](thank-you.md) | Acknowledgements — Richo and franklinwh-python |

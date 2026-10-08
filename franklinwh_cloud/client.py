@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
+import re
 from jsonschema import validate, ValidationError
 import logging
 import time
@@ -22,7 +23,8 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption, FranklinWHTimeoutError,
+    InvalidTOUScheduleOption, FranklinWHTimeoutError, FranklinWHError,
+    InvalidResponseError,
 )
 # Operating Workand Run mode constants
 from franklinwh_cloud.const import RUN_STATUS, OPERATING_MODES, workModeType, TIME_OF_USE, SELF_CONSUMPTION, EMERGENCY_BACKUP
@@ -49,9 +51,36 @@ from franklinwh_cloud.mixins.devices import DevicesMixin
 from franklinwh_cloud.mixins.account import AccountMixin
 from franklinwh_cloud.mixins.discover import DiscoverMixin
 from franklinwh_cloud.mixins.force import ForceMixin
+from franklinwh_cloud.mixins.network import NetworkMixin
 from franklinwh_cloud.force_state import ForceStateStore, ForceAuditLog
 
 logger = logging.getLogger(__name__)
+
+# Field names whose values must never reach a log: wifi_Pw, ap_Pw, password,
+# token, secret, ... Matched case-insensitively on the end of the key.
+_SECRET_KEY_RE = re.compile(r"(pw|pwd|pass|password|passwd|psk|secret|token)$", re.IGNORECASE)
+
+
+def _redact_secrets(value):
+    """Return a copy of ``value`` with secret-looking fields masked, for logging.
+
+    Walks dicts and lists, and also JSON held in strings (gateway commands carry
+    their body as a JSON string in ``dataArea``). Non-JSON strings pass through.
+    """
+    if isinstance(value, dict):
+        return {k: ("***" if isinstance(k, str) and _SECRET_KEY_RE.search(k) and v not in (None, "")
+                    else _redact_secrets(v))
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_secrets(v) for v in value]
+    if isinstance(value, str) and value[:1] in ("{", "["):
+        try:
+            return json.dumps(_redact_secrets(json.loads(value)))
+        except ValueError:
+            return value
+    return value
+
+
 class AccessoryType(Enum):
     """Represents the type of accessory connected to the FranklinWH gateway.
 
@@ -223,7 +252,7 @@ async def retry(func, filter, refresh_func):
     return await func()
 
 
-class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin, ForceMixin):
+class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMixin, AccountMixin, DiscoverMixin, ForceMixin, NetworkMixin):
 
     """Client for interacting with FranklinWH gateway API."""
 
@@ -238,6 +267,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         not_grid_tied: bool = False,
         track_python_methods: bool = False,
         force_state_dir: str | None = None,
+        heartbeat: bool = True,
+        heartbeat_dir: str | None = None,
     ) -> None:
         """Initialize the Client with the provided TokenFetcher, gateway ID, and optional URL base.
 
@@ -304,6 +335,20 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         fs_dir = force_state_dir or Path(os.path.expanduser("~/.franklinwh/force_state"))
         self._force_state = ForceStateStore(fs_dir)
         self._force_audit = ForceAuditLog(fs_dir)
+
+        # Cloud-contact heartbeat. Tracks whether GATEWAY round trips are
+        # succeeding, which is the only trustworthy uptime signal — the
+        # gateway's own awsStatus flags have been observed reading zero while
+        # answering through the cloud. FEAT-CLOUD-UPTIME-HEARTBEAT.
+        #
+        # In-memory always; the file only exists so a restart does not lose
+        # the onset of an outage. Nothing is written until an MQTT call is
+        # actually made, so constructing a Client touches no disk.
+        from franklinwh_cloud.heartbeat import GatewayHeartbeat
+        hb_dir = None
+        if heartbeat:
+            hb_dir = heartbeat_dir or Path(os.path.expanduser("~/.franklinwh/heartbeat"))
+        self._heartbeat = GatewayHeartbeat(gateway, hb_dir)
 
         self._dynamic_modes_cache: dict[int, str] | None = None
         self._canary_baseline_version = "APP2.11.0"
@@ -392,9 +437,46 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
 
 
+    @staticmethod
+    def _decode_json(resp, method, url):
+        """Decode an API response body, tolerating the two non-JSON cases.
+
+        1. An empty body. Some endpoints (e.g. smart circuit toggles) answer 200
+           with nothing at all; that is success.
+        2. A body that is not JSON. The cloud sits behind CloudFront, which
+           serves HTML error pages for 502/503/504 and WAF blocks. Previously
+           this re-raised a bare ``json.JSONDecodeError`` and printed the whole
+           body to stdout, so callers could neither catch it meaningfully nor
+           see the HTTP status. A single 504 was enough to kill a long poll.
+
+        Raises
+        ------
+        InvalidResponseError
+            If the body is present but is not JSON. Subclasses FranklinWHError,
+            so existing ``except FranklinWHError`` guards now cover CDN failures.
+        """
+        if not resp.text.strip():
+            return {"code": 200, "message": "success (empty body)",
+                    "result": {"dataArea": "{}"}}
+        try:
+            return resp.json()
+        except Exception as e:
+            body = resp.text[:500]
+            logger.error(
+                f"{method} {url} returned non-JSON (HTTP {resp.status_code}): "
+                f"{body!r}"
+            )
+            raise InvalidResponseError(
+                f"{method} returned a non-JSON body (HTTP {resp.status_code}) "
+                f"from {url}: {e}",
+                status_code=resp.status_code,
+                body=body,
+            ) from e
+
     async def _post(self, url, payload, params: dict = None, **kwargs):
 
-        logger.debug(f"_post: url={url} params={params} payload={payload} kwargs={kwargs}")
+        logger.debug(f"_post: url={url} params={_redact_secrets(params)} "
+                     f"payload={_redact_secrets(payload)} kwargs={_redact_secrets(kwargs)}")
 
         from urllib.parse import urlparse, parse_qs
 
@@ -479,15 +561,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
 
-            if not resp.text.strip():
-                # Some API endpoints (e.g. smart circuit toggles) return 200 with an empty body
-                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
-            else:
-                try:
-                    json_resp = resp.json()
-                except Exception as e:
-                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
-                    raise
+            json_resp = self._decode_json(resp, "POST", url)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -535,14 +609,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
                 
-            if not resp.text.strip():
-                json_resp = {"code": 200, "message": "success (empty body)", "result": {"dataArea": "{}"}}
-            else:
-                try:
-                    json_resp = resp.json()
-                except Exception as e:
-                    print("JSON Decode Error in _post! Status:", resp.status_code, "Body:", repr(resp.text))
-                    raise
+            json_resp = self._decode_json(resp, "GET", url)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -742,18 +809,53 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         return temp.replace('"DATA"', blob.decode("utf-8"))
 
     async def _mqtt_send(self, payload):
+        """Send one command to the gateway and return the raw response.
+
+        This is the single chokepoint for gateway round trips, and therefore
+        where the cloud-contact heartbeat is recorded. A response here proves
+        the gateway is talking to the cloud; a REST call succeeding would only
+        prove that *we* reached the cloud. FEAT-CLOUD-UPTIME-HEARTBEAT.
+        """
         url = self.url_base + "hes-gateway/terminal/sendMqtt"
 
-        res = await self._post(url, payload)
-        if res["code"] == 102:
-            raise DeviceTimeoutException(res["message"])
-        if res["code"] == 136:
-            raise GatewayOfflineException(res["message"])
-        if res.get("code") != 200:
-            from franklinwh_cloud.exceptions import FranklinWHError
-            raise FranklinWHError(f"Command failed gracefully with server rejection: {res.get('code')} - {res.get('message')}")
-            
+        try:
+            res = await self._post(url, payload)
+            code = res.get("code")
+            if code == 102:
+                raise DeviceTimeoutException(res.get("message"))
+            if code == 136:
+                raise GatewayOfflineException(res.get("message"))
+            if code != 200:
+                raise FranklinWHError(
+                    f"Command failed gracefully with server rejection: "
+                    f"{code} - {res.get('message')}",
+                    code=code,
+                )
+        except Exception:
+            self._heartbeat.record_failure()
+            raise
+
+        self._heartbeat.record_success()
         return res
+
+    def get_gateway_heartbeat(self) -> dict:
+        """When did this gateway last complete a cloud round trip?
+
+        Returns ``{gateway_id, last_success, last_attempt, last_outcome,
+        consecutive_failures, offline_for_s, persisted}``.
+
+        Note
+        ----
+        Reading this after a *successful* call is nearly tautological —
+        ``offline_for_s`` will be 0, because you just proved reachability. Its
+        value is across invocations: when a call raises
+        ``GatewayOfflineException``, ask this how long the outage has been
+        running. Persisted state means the answer survives a restart.
+
+        Thresholds are deliberately not implemented here. Home Assistant
+        already polls continuously and should own them.
+        """
+        return self._heartbeat.snapshot()
 
     async def get_resolved_capabilities(self) -> ResolvedCapabilities:
         """Resolve and freeze system capabilities based on live Cloud API responses.
