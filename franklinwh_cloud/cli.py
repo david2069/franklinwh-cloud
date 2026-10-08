@@ -199,7 +199,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub_energy.add_argument("--interval", choices=["5min"],
                             help="With --period day: 288 five-minute power samples (kW) instead of the daily kWh total")
     sub_energy.add_argument("--all-fields", action="store_true",
-                            help="Include every array the API returns, under its raw API name")
+                            help="Include every array the API returns (see --describe for names and meanings)")
+    sub_energy.add_argument("--describe", action="store_true",
+                            help="Print the field dictionary (column, API key, unit, evidence) and exit — no login")
 
     # raw
     sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
@@ -409,6 +411,14 @@ async def async_main():
 
     if not args.command:
         parser.print_help()
+        return
+
+    # `energy --describe` prints the field dictionary — no credentials needed
+    if args.command == "energy" and getattr(args, "describe", False):
+        from franklinwh_cloud.cli_commands import energy
+        if args.no_color:
+            disable_color()
+        energy.describe(json_output=args.json or args.format == "json")
         return
 
     # Look for telemetry config

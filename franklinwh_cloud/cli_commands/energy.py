@@ -8,9 +8,10 @@ Usage:
     franklinwh-cli energy --period month --date 2026-09-01 --format csv
     franklinwh-cli energy --period ytd --format json --output ytd.json
     franklinwh-cli energy --period day --interval 5min --format csv
+    franklinwh-cli energy --describe                        # field dictionary, no API call
 
-Field meanings below are INFERRED from the API field names and the labels in
-docs/API_REFERENCE.md; they have not been checked against the app's display.
+Column names, descriptions, units and evidence levels come from
+franklinwh_cloud.const.energy_fields (FEAT-ENERGY-FIELD-DICT).
 See docs/ENERGY_CLI_IMPLEMENTATION_PLAN.md (FEAT-CLI-ENERGY).
 """
 
@@ -21,39 +22,16 @@ from datetime import date, timedelta
 from itertools import zip_longest
 
 from franklinwh_cloud.cli_output import c, print_error, print_success, print_json_output
+from franklinwh_cloud.const.energy_fields import (
+    ELECTRIC_FIELDS, POWER_FIELDS, RUN_STATUS_LABEL_COLUMN, EnergyField,
+)
+from franklinwh_cloud.const.modes import RUN_STATUS
 
 PERIODS = ("day", "week", "month", "year", "ytd", "lifetime")
 FORMATS = ("table", "json", "csv")
 
 # getFhpElectricData type codes (hars corpus; DEF-ENERGY-PERIOD-PARAM)
 _PERIOD_TYPE = {"day": 1, "week": 2, "month": 3, "year": 4, "ytd": 4, "lifetime": 5}
-
-# (output column, API field) — kWh per bucket
-ENERGY_COLUMNS = [
-    ("solar_kwh", "kwhSuArray"),
-    ("grid_import_kwh", "kwhUtiInArray"),
-    ("grid_export_kwh", "kwhUtiOutArray"),
-    ("battery_charge_kwh", "kwhFhpChgArray"),
-    ("battery_discharge_kwh", "kwhFhpDiArray"),
-    ("home_kwh", "kwhLoadArray"),
-    ("generator_kwh", "kwhGenArray"),
-]
-
-# (output column, API field) — 5-minute samples. "Gird" is the API's spelling.
-POWER_COLUMNS = [
-    ("soc_pct", "socArray"),
-    ("solar_to_home_kw", "powerSolarHomeArray"),
-    ("solar_to_grid_kw", "powerSolarGirdArray"),
-    ("solar_to_battery_kw", "powerSolarFhpArray"),
-    ("grid_to_home_kw", "powerGirdHomeArray"),
-    ("grid_to_battery_kw", "powerGirdFhpArray"),
-    ("battery_to_home_kw", "powerFhpHomeArray"),
-    ("battery_to_grid_kw", "powerFhpGirdArray"),
-    ("generator_to_home_kw", "powerGenHomeArray"),
-    ("generator_to_battery_kw", "powerGenFhpArray"),
-]
-
-_TIME_FIELD = "deviceTimeArray"
 
 
 def resolve_period(period: str, on: date, today: date) -> tuple[int, date]:
@@ -80,24 +58,92 @@ def resolve_period(period: str, on: date, today: date) -> tuple[int, date]:
     return _PERIOD_TYPE[period], start
 
 
-def build_rows(result: dict, columns: list[tuple[str, str]], *,
-               time_column: str = "date", all_fields: bool = False) -> tuple[list[str], list[dict]]:
+def build_rows(result: dict, fields: tuple[EnergyField, ...], *,
+               all_fields: bool = False) -> tuple[list[str], list[dict], dict]:
     """Turn the API's parallel arrays into one dict per bucket.
 
-    Missing or ``null`` values stay ``None`` — "no data" is not zero.
-    With ``all_fields``, every other array in the response is appended under
-    its raw API name.
+    ``fields[0]`` is the time column. Missing or ``null`` values stay ``None``
+    — "no data" is not zero. With ``all_fields``, non-default dictionary fields
+    are added, then any array the dictionary doesn't know, under its raw API key.
+
+    Returns (column names, rows, {column: EnergyField or None}).
     """
     result = result or {}
-    selected = list(columns)
+    selected = [f for f in fields if f.default or all_fields]
     if all_fields:
-        known = {api for _, api in columns} | {_TIME_FIELD}
-        selected += [(k, k) for k, v in result.items()
+        known = {f.api for f in fields}
+        selected += [EnergyField(k, k, "", "", "") for k, v in result.items()
                      if isinstance(v, list) and k not in known]
-    names = [time_column] + [name for name, _ in selected]
-    arrays = [result.get(_TIME_FIELD) or []] + [result.get(api) or [] for _, api in selected]
+    arrays = [result.get(f.api) or [] for f in selected]
+    names = [f.column for f in selected]
     rows = [dict(zip(names, values)) for values in zip_longest(*arrays)]
-    return names, rows
+    meta = {f.column: (f if f.evidence else None) for f in selected}
+
+    if "run_status" in names:
+        i = names.index("run_status") + 1
+        names.insert(i, RUN_STATUS_LABEL_COLUMN)
+        for r in rows:
+            code = r.get("run_status")
+            r[RUN_STATUS_LABEL_COLUMN] = None if code is None else RUN_STATUS.get(code, f"Unknown {code}")
+        meta[RUN_STATUS_LABEL_COLUMN] = None
+    return names, rows, meta
+
+
+def field_info(names: list[str], meta: dict) -> dict:
+    """The JSON ``fields`` block: column → {api, description, unit, evidence, note}."""
+    out = {}
+    for n in names:
+        f = meta.get(n)
+        if n == RUN_STATUS_LABEL_COLUMN:
+            out[n] = {"api": None, "description": "run_status as text, from const.RUN_STATUS",
+                      "unit": "", "evidence": "CONFIRMED", "note": ""}
+        elif f is None:
+            out[n] = {"api": n, "description": None, "unit": None, "evidence": None,
+                      "note": "not in the field dictionary"}
+        else:
+            out[n] = {"api": f.api, "description": f.description, "unit": f.unit,
+                      "evidence": f.evidence, "note": f.note}
+    return out
+
+
+def describe_markdown() -> str:
+    """The field dictionary as Markdown tables, embedded in docs/cli-energy.md."""
+    out = []
+    for title, fs in (("Energy history (kWh per bucket)", ELECTRIC_FIELDS),
+                      ("5-minute power (`--interval 5min`)", POWER_FIELDS)):
+        out += [f"### {title}", "",
+                "| Column | API key | Unit | Default | Evidence | Description |",
+                "|---|---|---|---|---|---|"]
+        for f in fs:
+            desc = f.description + (f" — {f.note}" if f.note else "")
+            out.append(f"| `{f.column}` | `{f.api}` | {f.unit or '—'} | "
+                       f"{'yes' if f.default else '`--all-fields`'} | {f.evidence} | {desc} |")
+            if f.column == "run_status":
+                out.append(f"| `{RUN_STATUS_LABEL_COLUMN}` | — | — | yes | CONFIRMED | "
+                           "run_status as text, from `const.RUN_STATUS` |")
+        out.append("")
+    return "\n".join(out)
+
+
+def describe(json_output: bool = False) -> int:
+    """Print the field dictionary. Makes no API call."""
+    groups = {"energy": ELECTRIC_FIELDS, "power_5min": POWER_FIELDS}
+    if json_output:
+        print_json_output({g: [{"column": f.column, "api": f.api, "description": f.description,
+                                "unit": f.unit, "evidence": f.evidence, "default": f.default,
+                                "note": f.note} for f in fs] for g, fs in groups.items()})
+        return 0
+    titles = {"energy": "Energy history (kWh per bucket)", "power_5min": "5-minute power (--interval 5min)"}
+    for g, fs in groups.items():
+        rows = [(f.column + ("" if f.default else " +"), f.api, f.unit, f.evidence, f.description)
+                for f in fs]
+        widths = [max(len(r[i]) for r in rows) for i in range(4)]
+        print(c("bold", titles[g]))
+        for r in rows:
+            print("  " + "  ".join(r[i].ljust(widths[i]) for i in range(4)) + "  " + r[4])
+        print()
+    print(c("dim", "+ = only with --all-fields.  Wh? = unit named by the API, unverified."))
+    return 0
 
 
 def trim_ytd(rows: list[dict], today: date, time_column: str = "date") -> list[dict]:
@@ -158,6 +204,8 @@ async def run(client, args) -> int:
     period = args.period
     interval = getattr(args, "interval", None)
     fmt = "json" if getattr(args, "json", False) else args.format
+    if getattr(args, "describe", False):
+        return describe(json_output=fmt == "json")
     today = date.today()
 
     try:
@@ -172,14 +220,13 @@ async def run(client, args) -> int:
 
     if interval:
         result = await client.get_power_by_day(on.isoformat())
-        names, rows = build_rows(result, POWER_COLUMNS, time_column="time",
-                                 all_fields=args.all_fields)
+        names, rows, meta = build_rows(result, POWER_FIELDS, all_fields=args.all_fields)
         total, unit = None, "kW"
         data_type, query_date = None, on
     else:
         data_type, query_date = resolve_period(period, on, today)
         result = await client.get_power_details(data_type, query_date.isoformat())
-        names, rows = build_rows(result, ENERGY_COLUMNS, all_fields=args.all_fields)
+        names, rows, meta = build_rows(result, ELECTRIC_FIELDS, all_fields=args.all_fields)
         if period == "ytd":
             rows = trim_ytd(rows, today)
         total, unit = totals(rows, names), "kWh"
@@ -202,6 +249,7 @@ async def run(client, args) -> int:
             "unit": unit,
             "columns": names,
             "rows": rows,
+            "fields": field_info(names, meta),
         }
         if total is not None:
             payload["totals"] = total
