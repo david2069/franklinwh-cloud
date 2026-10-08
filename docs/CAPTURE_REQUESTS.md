@@ -5,7 +5,7 @@
 > exactly what is missing, what to run, and what it would close — so the ask can
 > be handed to someone without explaining the whole project.
 
-Per [AP-14](../.agents/policies/evidence_standard.md), these questions stay
+Per [AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md), these questions stay
 open rather than being guessed at. Each one below is currently blocking real
 work.
 

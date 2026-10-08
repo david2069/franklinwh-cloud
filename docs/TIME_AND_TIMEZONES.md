@@ -6,7 +6,7 @@
 > this reduces to "it just works" — but the traps below still apply across a DST
 > boundary.
 
-Evidence tiers per [AP-14](../.agents/policies/evidence_standard.md). Counts are
+Evidence tiers per [AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md). Counts are
 from the HAR corpus (2025-02 → 2026-03).
 
 ---

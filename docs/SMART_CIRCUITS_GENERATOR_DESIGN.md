@@ -1,10 +1,10 @@
 # Smart Circuits & Generator — API and CLI Design
 
 > **Status:** BACKLOG — design only, no code. Queued per
-> [AP-1](../.agents/policies/change_management.md) (Queue → Plan → Execute).
+> [AP-1](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/change_management.md) (Queue → Plan → Execute).
 > Write paths are API-affecting and need sign-off (`CLAUDE.md` rule 6).
 >
-> Evidence tiers per [AP-14](../.agents/policies/evidence_standard.md).
+> Evidence tiers per [AP-14](https://github.com/david2069/franklinwh-cloud/blob/main/.agents/policies/evidence_standard.md).
 
 ## 1. Goal
 

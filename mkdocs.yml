@@ -63,6 +63,13 @@ markdown_extensions:
   - toc:
       permalink: true
 
+# Internal planning and to-do docs stay in the repo but are not published.
+exclude_docs: |
+  *_IMPLEMENTATION_PLAN.md
+  ENERGY_FIELD_DICTIONARY_PLAN.md
+  NEW_ENDPOINTS_INTEGRATION_PLAN.md
+  *_TODO.md
+
 nav:
   - Home: index.md
   - Getting Started:
@@ -93,11 +100,13 @@ nav:
     - Telemetry & Privacy: TELEMETRY.md
     - Serial Numbers Format: SERIAL_NUMBERS.md
   - CLI:
+    - Energy History (energy): cli-energy.md
+    - TOU Command (tou): CLI_TOU_COMMAND.md
+    - Schema Command (schema): CLI_SCHEMA_COMMAND.md
     - Raw API Methods: cli-raw.md
     - Support Info (--info, --diag, --mock): CLI_SUPPORT_INFO.md
   - Device Discovery:
     - Payload Strategies (Agent Warning): DISCOVER_VS_SUPPORT.md
-    - Implementation Plan: DISCOVER_IMPLEMENTATION_PLAN.md
     - Device Catalog Design: DEVICE_CATALOG_DESIGN.md
     - API Field Registry: API_FIELD_REGISTRY.md
   - Troubleshooting:
