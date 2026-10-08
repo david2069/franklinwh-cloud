@@ -18,6 +18,7 @@ A Python client library for interacting with FranklinWH energy storage systems v
 - **Real-time Data**: Battery status, solar production, grid usage, home loads
 - **Mode Control**: Switch between operating modes (Time-of-Use, Self-Consumption, Emergency Backup)
 - **TOU Schedules**: Manage Time-of-Use scheduling with multi-season, weekday/weekend support
+- **Energy History**: Day, week, month, year, year-to-date and lifetime kWh, plus 5-minute power, exported as a table, JSON or CSV, with a field dictionary describing every column ([guide](docs/cli-energy.md))
 - **Device Info**: Gateway details, network status, device inventory, BMS cell-level data
 - **Performance Monitoring**: API call metrics, response timing (min/avg/max), error rates, and CloudFront edge tracking
 - **CloudFront Edge Tracking**: Automatic PoP location monitoring, failover detection, cache hit rates, and distribution ID tracking
@@ -163,6 +164,12 @@ franklinwh-cli mode --set tou --soc 20
 # TOU schedule inspection
 franklinwh-cli tou --dispatch
 
+# Energy history — table, JSON or CSV (see docs/cli-energy.md)
+franklinwh-cli energy --period month --date 2026-09-01 --format csv -o sep.csv
+franklinwh-cli energy --period ytd
+franklinwh-cli energy --period day --interval 5min --format csv
+franklinwh-cli energy --describe        # what every column means (no login)
+
 # Direct API passthrough (33 methods available)
 franklinwh-cli raw help
 franklinwh-cli raw get_power_info
@@ -282,6 +289,7 @@ franklinwh_cloud/
 | Document | Description |
 |----------|-------------|
 | [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) | Rate limiting, CloudFront edge tracking, metrics, monitor usage |
+| [docs/cli-energy.md](docs/cli-energy.md) | `energy` command: kWh/kW history as CSV/JSON, and the field dictionary for every energy array |
 | [franklinwh_openapi.json](docs/franklinwh_openapi.json) | Unofficial Swagger v3 schema mapped from 123+ raw HTTP `.har` intercepts |
 | [FORK_ANALYSIS.md](FORK_ANALYSIS.md) | Detailed comparison with upstream `richo/franklinwh-python` |
 | [HISTORY.md](HISTORY.md) | Project timeline from fork to independence |
