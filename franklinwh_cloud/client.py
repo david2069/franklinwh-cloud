@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
+import re
 from jsonschema import validate, ValidationError
 import logging
 import time
@@ -54,6 +55,32 @@ from franklinwh_cloud.mixins.network import NetworkMixin
 from franklinwh_cloud.force_state import ForceStateStore, ForceAuditLog
 
 logger = logging.getLogger(__name__)
+
+# Field names whose values must never reach a log: wifi_Pw, ap_Pw, password,
+# token, secret, ... Matched case-insensitively on the end of the key.
+_SECRET_KEY_RE = re.compile(r"(pw|pwd|pass|password|passwd|psk|secret|token)$", re.IGNORECASE)
+
+
+def _redact_secrets(value):
+    """Return a copy of ``value`` with secret-looking fields masked, for logging.
+
+    Walks dicts and lists, and also JSON held in strings (gateway commands carry
+    their body as a JSON string in ``dataArea``). Non-JSON strings pass through.
+    """
+    if isinstance(value, dict):
+        return {k: ("***" if isinstance(k, str) and _SECRET_KEY_RE.search(k) and v not in (None, "")
+                    else _redact_secrets(v))
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_secrets(v) for v in value]
+    if isinstance(value, str) and value[:1] in ("{", "["):
+        try:
+            return json.dumps(_redact_secrets(json.loads(value)))
+        except ValueError:
+            return value
+    return value
+
+
 class AccessoryType(Enum):
     """Represents the type of accessory connected to the FranklinWH gateway.
 
@@ -448,7 +475,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
     async def _post(self, url, payload, params: dict = None, **kwargs):
 
-        logger.debug(f"_post: url={url} params={params} payload={payload} kwargs={kwargs}")
+        logger.debug(f"_post: url={url} params={_redact_secrets(params)} "
+                     f"payload={_redact_secrets(payload)} kwargs={_redact_secrets(kwargs)}")
 
         from urllib.parse import urlparse, parse_qs
 
