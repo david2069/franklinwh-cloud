@@ -10,6 +10,17 @@ from franklinwh_cloud.const import OPERATING_MODES, RUN_STATUS
 logger = logging.getLogger("franklinwh_cloud")
 
 
+def electric_date_key(data_type) -> str:
+    """Query key getFhpElectricData reads the date from, for a given ``type``.
+
+    Day (1) reads ``dayTime``; week/month/year/total (2-5) read ``startDate``
+    and return empty arrays when sent ``dayTime``. CONFIRMED by live probe
+    (tests/results/2026-10-08_DEF-ENERGY-PERIOD-PARAM_live_probe.txt) and the
+    hars/ corpus: type 1 dayTime x3011; types 2-5 startDate x56, never dayTime.
+    """
+    return "dayTime" if int(data_type) == 1 else "startDate"
+
+
 class StatsMixin:
     """Runtime stats, power data, and status methods."""
 
@@ -384,10 +395,15 @@ class StatsMixin:
         type : int
             1=Day, 2=Week, 3=Month, 4=Year, 5=Total
         timeperiod : str
-            Target date of the date range
+            Target date of the date range (YYYY-MM-DD). The server only
+            returns data when the date fits the period: a week must be given
+            as its Monday; month and year accept any day inside them; total
+            ignores the date. Anything else comes back as empty arrays.
+            See DEF-ENERGY-PERIOD-PARAM.
         """
         url = self.url_base + "api-energy/electric/getFhpElectricData"
-        params = {"gatewayId": self.gateway, "type": type, "dayTime": f"{timeperiod}"}
+        params = {"gatewayId": self.gateway, "type": type,
+                  electric_date_key(type): f"{timeperiod}"}
         data = await self._get(url, params=params)
         return data.get("result", data)
 

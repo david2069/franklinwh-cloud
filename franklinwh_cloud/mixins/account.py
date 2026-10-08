@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime
 
+from franklinwh_cloud.mixins.stats import electric_date_key
+
 
 logger = logging.getLogger("franklinwh_cloud")
 
@@ -296,9 +298,11 @@ class AccountMixin:
         Parameters
         ----------
         data_type : int
-            1 = daily, 2 = monthly, 3 = yearly
+            1 = day, 2 = week, 3 = month, 4 = year, 5 = total
+            (same endpoint and codes as ``get_power_details``)
         day_time : str, optional
-            Date string (YYYY-MM-DD). Defaults to today.
+            Date string (YYYY-MM-DD). Defaults to today. A week must be given
+            as its Monday; see ``get_power_details``.
 
         Returns
         -------
@@ -313,7 +317,7 @@ class AccountMixin:
         params = {
             "gatewayId": self.gateway,
             "type": str(data_type),
-            "dayTime": day_time,
+            electric_date_key(data_type): day_time,
         }
         data = await self._get(url, params=params)
         return data.get("result", {})
@@ -435,9 +439,11 @@ class AccountMixin:
         Parameters
         ----------
         data_type : int
-            1 = daily, 2 = monthly, 3 = yearly
+            1 = day, 2 = week, 3 = month, 4 = year, 5 = total
+            (same endpoint and codes as ``get_power_details``)
         day_time : str, optional
-            Date string (YYYY-MM-DD). Defaults to today.
+            Date string (YYYY-MM-DD). Defaults to today. A week must be given
+            as its Monday; see ``get_power_details``.
 
         Returns
         -------
@@ -452,7 +458,7 @@ class AccountMixin:
         params = {
             "gatewayId": self.gateway,
             "type": str(data_type),
-            "dayTime": day_time,
+            electric_date_key(data_type): day_time,
         }
         data = await self._get(url, params=params)
         return data
