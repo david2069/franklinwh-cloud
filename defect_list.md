@@ -8,8 +8,6 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Reported |
 |----|------|-------------|----------|
-| DEF-ENERGY-PERIOD-PARAM | Mixins | **`get_power_details()` returns empty arrays for week, month and year.** It sends `dayTime` for every `type`; the server only honours `dayTime` for type 1 (day) and needs `startDate` for types 2–4. Type 5 (lifetime) ignores the date, so it works either way. **CONFIRMED** by live read-only probe (`tests/results/2026-10-08_DEF-ENERGY-PERIOD-PARAM_live_probe.txt`) and by the `hars/` corpus: type 1 `dayTime` ×3011; types 2/3/4/5 `startDate` ×10/24/15/7, never `dayTime`. Also: a week must start on its **Monday** (a Thursday returned empty); month and year accept any date inside the period. `docs/API_REFERENCE.md` says to pass the end of the week, which is wrong. Plan: `docs/ENERGY_CLI_IMPLEMENTATION_PLAN.md`. | 2026-10-08 |
-| FEAT-CLI-ENERGY | CLI | **No CLI command exports energy history.** Users have to use `raw get_power_details` (positional type codes, JSON only, broken for week/month/year per `DEF-ENERGY-PERIOD-PARAM`). Add an `energy` subcommand with day/week/month/year/ytd/lifetime periods and table/json/csv output. Plan: `docs/ENERGY_CLI_IMPLEMENTATION_PLAN.md`. | 2026-10-08 |
 | hypothesis | result |
 |---|---|
 | collateral damage to other circuits | **none** — full 51-key block byte-identical before/after, four writes |
@@ -110,6 +108,8 @@ Per AP-12 Change Management Policy — all items queued here before execution.
 
 | ID | Area | Description | Fixed In | Commit |
 |----|------|-------------|----------|--------|
+| FEAT-CLI-ENERGY | CLI | **DONE** — `franklinwh-cli energy` exports kWh history for day/week/month/year/ytd/lifetime and 5-minute kW for a day, as table, JSON or CSV. Verified live (read-only) for every period; YTD and month totals cross-check (September solar 732.17 kWh in both). Column meanings INFERRED from field names. Docs: `docs/cli-energy.md`. Plan: `docs/ENERGY_CLI_IMPLEMENTATION_PLAN.md`. | 2026-10-08 | `feat(cli): energy subcommand` |
+| DEF-ENERGY-PERIOD-PARAM | Mixins | **FIXED** — **`get_power_details()` returns empty arrays for week, month and year.** It sends `dayTime` for every `type`; the server only honours `dayTime` for type 1 (day) and needs `startDate` for types 2–4. Type 5 (lifetime) ignores the date, so it works either way. **CONFIRMED** by live read-only probe (`tests/results/2026-10-08_DEF-ENERGY-PERIOD-PARAM_live_probe.txt`) and by the `hars/` corpus: type 1 `dayTime` ×3011; types 2/3/4/5 `startDate` ×10/24/15/7, never `dayTime`. Also: a week must start on its **Monday** (a Thursday returned empty); month and year accept any date inside the period. `docs/API_REFERENCE.md` says to pass the end of the week, which is wrong. Plan: `docs/ENERGY_CLI_IMPLEMENTATION_PLAN.md`. | 2026-10-08 | e5379c2 |
 | DEF-311-CONFIG-WRITES-WRONG-MSGTYPE | Mixins / `mixins/devices.py` | **FIXED — `SwNMsgType` says what KIND of change a 311 write is, and we sent the wrong kind for every config edit.** Filed first as `DEF-311-WRITES-NEVER-STORE`, which **overstated it**: switch writes were never broken. `set_smart_switch_state(2, "ON")` moves `Sw2Mode` 0→1 and `switch_2_state` 0→1 on live hardware, both directions, confirmed 2026-09-27. Correlating all **52 app writes** in the corpus split them cleanly:
 
 | `SwNMsgType` | `Mode` | schedule | meaning |

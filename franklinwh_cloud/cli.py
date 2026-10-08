@@ -10,6 +10,7 @@ Usage:
     franklinwh-cli discover                # device enumeration
     franklinwh-cli mode                    # current operating mode
     franklinwh-cli tou                     # TOU schedule info
+    franklinwh-cli energy --period month   # energy history (table/json/csv)
     franklinwh-cli raw <method>            # direct API passthrough
     franklinwh-cli metrics                 # API call metrics
 
@@ -182,6 +183,23 @@ def build_parser() -> argparse.ArgumentParser:
                               "confirm delivery, hold until Ctrl+C, then restore original.")
     sub_tou.add_argument("--restore", dest="tou_restore", action="store_true",
                          help="Manually restore the most recent unrestored TOU backup for this gateway.")
+
+    # energy
+    sub_energy = subs.add_parser("energy",
+                                 help="Energy (kWh) and 5-minute power (kW) history — table, JSON or CSV")
+    sub_energy.add_argument("--period", choices=["day", "week", "month", "year", "ytd", "lifetime"],
+                            default="day", help="Period to fetch (default: day)")
+    sub_energy.add_argument("--date", metavar="YYYY-MM-DD",
+                            help="Any date inside the period; snapped to its start "
+                                 "(week → Monday, month → 1st, year → Jan 1). Default: today")
+    sub_energy.add_argument("--format", choices=["table", "json", "csv"], default="table",
+                            help="Output format (default: table). Global --json means --format json")
+    sub_energy.add_argument("--output", "-o", metavar="PATH",
+                            help="Write to a file instead of stdout")
+    sub_energy.add_argument("--interval", choices=["5min"],
+                            help="With --period day: 288 five-minute power samples (kW) instead of the daily kWh total")
+    sub_energy.add_argument("--all-fields", action="store_true",
+                            help="Include every array the API returns, under its raw API name")
 
     # raw
     sub_raw = subs.add_parser("raw", help="Direct API method passthrough")
@@ -510,6 +528,12 @@ async def async_main():
                               show_current=getattr(args, 'show_current', False),
                               active_only=getattr(args, 'active_only', False),
                               tou_restore=getattr(args, 'tou_restore', False))
+
+            case "energy":
+                from franklinwh_cloud.cli_commands import energy
+                code = await energy.run(client, args)
+                if code:
+                    sys.exit(code)
 
             case "raw":
                 from franklinwh_cloud.cli_commands import raw

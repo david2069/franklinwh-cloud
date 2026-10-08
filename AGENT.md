@@ -152,6 +152,7 @@ FranklinWH Cloud API client library — Python package for battery monitoring, m
 | `diag` | Diagnostic report |
 | `bms` | Battery cell telemetry |
 | `metrics` | API call stats + CloudFront edge |
+| `energy` | Energy (kWh) / 5-min power (kW) history — table, JSON, CSV |
 | `raw` | Direct API method calls |
 | `fetch` | Arbitrary endpoint GET/POST |
 
