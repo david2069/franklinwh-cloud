@@ -2,7 +2,7 @@
  TEST RESULTS — FEAT-EFFECTIVE-MODE
  Date:    2026-04-18 12:19:04 AEST
  Branch:  feat/openapi-stubs
- Commit:  4ca0450 (pre-commit)
+ Commit:  a5fca0e (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

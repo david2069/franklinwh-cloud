@@ -42,10 +42,11 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 ## 📦 Installation
 
-### From wheel (recommended for downstream projects like FEM)
+### From a wheel (for downstream projects like FEM)
 
 ```bash
-pip install dist/franklinwh_cloud_client-0.3.0-py3-none-any.whl
+python -m build                                   # in a checkout of the release tag
+pip install dist/franklinwh_cloud-<version>-py3-none-any.whl
 ```
 
 ### From source (editable, for development)
@@ -71,8 +72,16 @@ pip install -e ".[test]"
 pip install git+https://github.com/david2069/franklinwh-cloud.git@main
 
 # Pinned release (recommended for production / Docker)
-pip install git+https://github.com/david2069/franklinwh-cloud.git@v0.3.0
+pip install git+https://github.com/david2069/franklinwh-cloud.git@v0.4.10
 ```
+
+## 🏷️ Versions & Releases
+
+- Releases are listed on the [GitHub Releases page](https://github.com/david2069/franklinwh-cloud/releases); [CHANGELOG.md](CHANGELOG.md) has every version's changes.
+- **Pin a tag** (`@vX.Y.Z`) in anything you deploy. `@main` moves.
+- `main` holds released code. Work happens on `feat/*` branches and reaches users only through a tagged release.
+- Versioning is [SemVer](https://semver.org) (pre-1.0): patch releases are fixes only, minor releases add features.
+- Release process: [`.agents/policies/release_policy.md`](.agents/policies/release_policy.md).
 
 ## ⚙️ Configuration
 
@@ -301,21 +310,21 @@ franklinwh_cloud/
 ## 🧪 Testing
 
 ```bash
-# Unit tests only (no API credentials needed)
+# Unit tests only — offline, no credentials, safe to run any time
 pytest -m "not live" -q
 
 # Live API tests (requires franklinwh.ini or env vars)
 pytest -m live -v
-
-# All tests
-pytest -v
 
 # Record results for traceability (AP-11)
 ./tests/run_and_record.sh CLI-refactor
 cat tests/results/test_history.log
 ```
 
-**Current coverage**: 286 tests across all 8 domains
+> ⚠️ **Live tests act on your real system.** `-m live` authenticates against the real
+> cloud, and `tests/test_live_mode.py` issues real `set_mode()` writes that change your
+> aGate's operating mode. Plain `pytest` with no `-m` filter **includes** them. Never
+> run live tests unattended. See [`.agents/policies/live_test_protocol.md`](.agents/policies/live_test_protocol.md).
 
 ## 📚 API Reference
 

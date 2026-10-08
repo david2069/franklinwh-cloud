@@ -1,7 +1,7 @@
 # Energy CLI — Implementation Plan
 
 **Ledger:** `DEF-ENERGY-PERIOD-PARAM`, `FEAT-CLI-ENERGY` (`defect_list.md`)
-**Status:** Done 2026-10-08 — §1 in e5379c2; §2 in `feat(cli): energy subcommand`
+**Status:** Done 2026-10-08 — §1 in 4700025; §2 in `feat(cli): energy subcommand`
 **Evidence:** `tests/results/2026-10-08_DEF-ENERGY-PERIOD-PARAM_live_probe.txt`, `hars/` corpus
 
 Two items, done in this order and committed separately (AP-1).

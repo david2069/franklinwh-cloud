@@ -69,6 +69,7 @@ If a change requires a downstream user to rewrite their integration code, you mu
 | **API-affecting changes need approval** | Any change to `set_tou_schedule`, `save_tou_dispatch`, or mode-setting APIs requires user sign-off before commit |
 | **CLI argument changes need approval** | Adding/removing/renaming CLI arguments or subcommands must be described in a plan first |
 | **Constant changes need approval** | Changes to dispatch codes, wave types, or TOU schema in `const/` require approval |
+| **Releases follow `release_policy.md`** | Tags, version bumps, GitHub Releases and pushes to `main` follow `.agents/policies/release_policy.md` (branch model, Path A/B, post-tag verification). Tagging or pushing `main` needs user sign-off |
 
 ---
 
@@ -102,8 +103,13 @@ All verification logic (Syntax checks, live testing limits, and offline logs) mu
 > `.agents/policies/evidence_standard.md`.
 
 ### 🚫 STRICT BOUNDARY: No PII Exposure (AP-3)
-> **Never commit real user details.** Any captured JSON payloads, API outputs, or documentation examples must be rigorously scrubbed of all Personally Identifiable Information before being written to disk or `.md` files.
-> You must strictly adhere to `.agents/policies/pii_policy.md`. Replace real emails with `user@example.com` and real serials with `10060006AXXXXXXXXX`.
+> **Never commit real user details**, in files **or** in commit messages, author fields, PR descriptions or release notes. That includes names, emails, home-directory paths (`/Users/<name>`) and addresses. Use `user@example.com`, `10060006AXXXXXXXXX` and `~/…`.
+>
+> - Run `python3 scripts/check_pii.py --scan` before every commit; it must pass. Enable the pre-push hook once per clone: `git config core.hooksPath scripts/hooks`.
+> - The scanner's personal terms live **outside git** (`~/.config/pii_terms` locally, the `PII_TERMS` secret in CI). Never write them, or any real value "as an example", into a tracked file.
+> - Don't add skips to the scanner without user approval. Each skip is a blind spot.
+>
+> Full rules and the history-rewrite procedure: `.agents/policies/pii_policy.md`.
 
 ---
 
@@ -113,9 +119,21 @@ All verification logic (Syntax checks, live testing limits, and offline logs) mu
 cd ~/dev/franklinwh-cloud
 ```
 
-- **Tests**: `python -m pytest tests/ -v --tb=short`
-- **CLI**: Run from `~/dev/franklinwh-cloud-test/` (where `franklinwh.ini` lives)
+- **Tests**: `python -m pytest tests/ -v --tb=short` (offline; live tests are opt-in with `-m live` — see CLAUDE.md before running them)
+- **CLI**: Run from the sandbox `~/dev/franklinwh-cloud-test/` (where `franklinwh.ini` lives)
 - **Install**: `pip install -e .` (editable — source changes take effect immediately)
+
+### Workspaces and branches
+
+| Path / ref | What it is |
+|---|---|
+| `~/dev/franklinwh-cloud` | **The only copy of the source.** All branches, commits and tags happen here |
+| `~/dev/franklinwh-cloud-test` | **Sandbox, not a git repo.** `franklinwh.ini`, `.env`, a venv with an editable install of the source, scratch output. See `docs/SANDBOX_SETUP.md`. Never clone the repo into it |
+| `main` | Released and releasable. Every tag is on `main` |
+| `feat/*`, `fix/*`, `docs/*` | Work in progress, branched from `main` |
+| `release/x.y.z` | Fix-only release cut from the last tag |
+
+Full rules: `.agents/policies/release_policy.md`.
 
 > ⚠️ **Credentials live in `franklinwh-cloud-test/franklinwh.ini`** — the CLI must be run from that directory or with `--config` pointing to it.
 
@@ -165,6 +183,8 @@ FranklinWH Cloud API client library — Python package for battery monitoring, m
 | [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) | CLI usage guide, examples, metrics |
 | [docs/TOU_SCHEDULE_GUIDE.md](docs/TOU_SCHEDULE_GUIDE.md) | TOU API reference — dispatch codes, diagrams, code examples |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [release_policy.md](.agents/policies/release_policy.md) | Branch model, versioning, release paths, GitHub Releases |
+| [docs/SANDBOX_SETUP.md](docs/SANDBOX_SETUP.md) | The credentials/CLI sandbox and its venvs |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
 | [README.md](README.md) | Project overview and installation |
 

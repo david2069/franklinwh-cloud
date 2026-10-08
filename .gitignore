@@ -53,3 +53,6 @@ site/
 internal_research/
 scratch_dispatch.json
 scratch_*.json
+
+# Personal PII scanner terms — local only (see .agents/policies/pii_policy.md)
+.pii_terms

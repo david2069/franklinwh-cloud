@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-RELAY-NORM
  Date:    2026-04-06 00:38:32 AEST
  Branch:  feat/openapi-stubs
- Commit:  27c7bf7 (pre-commit)
+ Commit:  83c020f (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

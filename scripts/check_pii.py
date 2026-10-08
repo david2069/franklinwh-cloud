@@ -5,6 +5,36 @@ import argparse
 import subprocess
 
 
+def load_personal_terms(repo_root):
+    """Return ([(label, compiled_regex)], allow_set) from env PII_TERMS, .pii_terms or ~/.config/pii_terms.
+
+    "allow:<value>" lines are exact values (e.g. MAC addresses) that are already
+    published and should not fail the scan. They live outside git like the terms.
+    """
+    text = os.environ.get("PII_TERMS")
+    if not text:
+        for path in (os.path.join(repo_root, ".pii_terms"),
+                     os.path.expanduser("~/.config/pii_terms")):
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8") as fh:
+                    text = fh.read()
+                break
+    terms, allow = [], set()
+    for n, raw in enumerate((text or "").splitlines(), 1):
+        t = raw.strip()
+        if not t or t.startswith("#"):
+            continue
+        if t.startswith("allow:"):
+            allow.add(t[6:].strip().upper())
+            continue
+        if t.startswith("re:"):
+            rx = re.compile(t[3:], re.IGNORECASE)
+        else:
+            rx = re.compile(r"(?<![A-Za-z0-9])" + re.escape(t) + r"(?![A-Za-z0-9])", re.IGNORECASE)
+        terms.append((f"personal term #{n}", rx))  # label never echoes the term
+    return terms, allow
+
+
 def main():
     parser = argparse.ArgumentParser(description="PII Redaction Checker")
     parser.add_argument("--scan", action="store_true", help="Scan for PII and exit with error if found")
@@ -12,41 +42,31 @@ def main():
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-    # Core identifying PII strings (non-standard formats)
-    bad_strings = [
-        "redacted-surname", "redacted-user", "redacted-suburb", "redacted-street", "2069"
-    ]
+    # ── Personal terms: loaded from OUTSIDE git, never written in this file ──
+    # Kept outside git so this file never contains them. Sources, first found wins:
+    #   1. env PII_TERMS        (CI: a repository secret)
+    #   2. <repo>/.pii_terms    (gitignored)
+    #   3. ~/.config/pii_terms
+    # One term per line. Plain lines match case-insensitively on word boundaries;
+    # lines starting "re:" are regular expressions. "#" starts a comment.
+    personal_terms, allowed_values = load_personal_terms(repo_root)
+    if not personal_terms:
+        msg = ("No personal PII terms configured (PII_TERMS / .pii_terms / "
+               "~/.config/pii_terms): names, addresses and handles are NOT being checked.")
+        if os.environ.get("CI"):
+            print(f"ERROR: {msg} Set the PII_TERMS repository secret.")
+            sys.exit(2)
+        print(f"WARNING: {msg}")
 
     # Regular expressions for structured PII types
     email_regex = re.compile(r'[\w.-]+@[\w.-]+\.\w+')
-    geo_lat = re.compile(r'-33\.\d{5,}')
-    geo_lon = re.compile(r'151\.\d{5,}')
+    # Home directories name the user. Placeholders and CI runners are fine.
+    home_path_regex = re.compile(r'(?:/Users|/home)/(?!<|runner/|user/|you/|username/|\$)[A-Za-z0-9._-]+')
     serial_regex = re.compile(r'100[56][A-Z0-9]{16}')
     mac_regex = re.compile(r'\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b')
-
-    # ── MAC addresses ─────────────────────────────────────────────────────────
-    # Added 2026-08-30 after a real cellular-modem MAC was copied out of live
-    # terminal output into a test fixture and committed to this PUBLIC repo.
-    # The scanner passed, because it had never looked for MACs. Reading caught
-    # it; reading is not a control.
-    #
-    # Obvious placeholders are fine — the point is to make fabricated values the
-    # path of least resistance, not to ban the notation.
+    # Placeholder MACs are fine; real ones that are already published are listed
+    # as "allow:" lines in the terms source, never here.
     mac_placeholder_prefixes = ("AA:BB:CC:", "DE:AD:BE:", "00:00:00:", "11:22:33:")
-
-    # Real MACs already committed to this repo before the check existed, and
-    # therefore already public. Listing them keeps CI honest about NEW leaks
-    # instead of failing permanently on history nobody is going to rewrite.
-    # Removing them for real means rewriting main's history — a separate and
-    # much larger decision. Do NOT extend this list to admit a new address;
-    # scrub the address instead.
-    known_public_macs = {
-        "4C:24:CE:67:3A:7C",   # aGate WiFi
-        "88:C9:B3:20:00:80",   # aGate eth0
-        "88:C9:B3:21:2C:B8",   # aGate eth1
-        "E6:4F:68:B1:91:5C",   # aGate cellular
-        "3A:24:91:B4:CA:64",   # support-snapshot fixture
-    }
 
     # Allowed emails / version-string false positives
     ignore_emails = [
@@ -58,6 +78,8 @@ def main():
     ]
     # Skip software-version strings that look like emails: python@3.14, setuptools@68.0
     version_string_regex = re.compile(r'^[a-z][a-z0-9_-]+@\d+\.\d+', re.IGNORECASE)
+    # Skip pip/git URL refs that look like emails: franklinwh-cloud.git@v0.4.10, repo.git@vX.Y.Z
+    git_ref_regex = re.compile(r'\.git@v(\d+|x)\.', re.IGNORECASE)
 
     # ── File list: only scan git-tracked files ─────────────────────────────────
     # This exactly mirrors what GitHub Actions sees after actions/checkout@v4.
@@ -71,7 +93,7 @@ def main():
         tracked_files = [
             os.path.join(repo_root, p.strip())
             for p in result.stdout.splitlines()
-            if p.strip() and p.strip().endswith(('.py', '.md', '.json', '.yml', '.txt', '.sh', '.ini'))
+            if p.strip()
         ]
     except Exception:
         # Fallback if git is unavailable (e.g. Docker without git)
@@ -84,8 +106,7 @@ def main():
         for root, dirs, files in os.walk(repo_root):
             dirs[:] = [d for d in dirs if d not in ignore_dirs]
             for file in files:
-                if file.endswith(('.py', '.md', '.json', '.yml', '.txt', '.sh', '.ini')):
-                    tracked_files.append(os.path.join(root, file))
+                tracked_files.append(os.path.join(root, file))
 
     found = 0
     count = 0
@@ -93,40 +114,36 @@ def main():
     for filepath in tracked_files:
         if not os.path.isfile(filepath):
             continue
-        # Skip the scanner itself and brain/agent artefacts
-        if "/.gemini/" in filepath or "brain" in filepath or "check_pii.py" in os.path.basename(filepath):
+        rel = os.path.relpath(filepath, repo_root)
+        # Generated files carry absolute paths and machine state; never commit them.
+        if re.search(r'(^|/)(\.coverage|\.DS_Store)$|\.pyc$', rel):
+            print(f"PII Risk [generated file committed]: {rel}")
+            found += 1
+            continue
+        # Agent scratch artefacts are not shipped
+        if "/.gemini/" in filepath or "brain" in filepath:
             continue
 
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
+            with open(filepath, 'rb') as fb:
+                raw = fb.read()
+            if b"\x00" in raw[:8192]:
+                continue  # binary
+            lines = raw.decode('utf-8').splitlines()
             count += 1
 
             for i, line in enumerate(lines):
-                # Skip lines that are local filesystem paths embedded in test output
-                stripped = line.strip()
-                if stripped.startswith(('/Users/', '/home/', '/runner/work/')):
-                    continue
-
                 line_lower = line.lower()
 
-                # ── Generic bad-string check ──────────────────────────────
-                for bs in bad_strings:
-                    if bs not in line_lower:
-                        continue
+                # ── Personal terms (from outside git) ──────────────────
+                for label, rx in personal_terms:
+                    if rx.search(line):
+                        print(f"PII Leak [{label}]: {rel}:{i+1}")
+                        found += 1
 
-                    if bs == "2069":
-                        if "david2069" in line_lower or "2069-" in line_lower or "-2069" in line_lower:
-                            continue
-
-                    if bs == "redacted-surname":
-                        # Only flag 'redacted-surname' when it appears standalone, not embedded in
-                        # 'redacted-user' filesystem path tokens or the noreply GitHub handle.
-                        scrubbed = line_lower.replace("redacted-user", "").replace("david2069", "")
-                        if "redacted-surname" not in scrubbed:
-                            continue
-
-                    print(f"PII Leak [{bs}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                # ── Home directory paths ──────────────────────────────────
+                for m in home_path_regex.finditer(line):
+                    print(f"PII Leak [Home path {m.group(0)}]: {rel}:{i+1}")
                     found += 1
 
                 # ── Email check ───────────────────────────────────────────
@@ -134,57 +151,36 @@ def main():
                     email = match.group(0).lower()
                     if email in ignore_emails or "example.com" in email:
                         continue
-                    if version_string_regex.match(email):
+                    if version_string_regex.match(email) or git_ref_regex.search(email):
                         continue
-                    print(f"PII Leak [Email {email}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
-                    found += 1
-
-                # ── GPS coordinates ───────────────────────────────────────
-                if geo_lat.search(line):
-                    print(f"PII Leak [Latitude]: {os.path.relpath(filepath, repo_root)}:{i+1}")
-                    found += 1
-                if geo_lon.search(line):
-                    print(f"PII Leak [Longitude]: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                    print(f"PII Leak [Email {email}]: {rel}:{i+1}")
                     found += 1
 
                 # ── MAC addresses ─────────────────────────────────────────
                 for match in mac_regex.finditer(line):
                     mac = match.group(0).upper()
-                    if mac.startswith(mac_placeholder_prefixes):
+                    if mac.startswith(mac_placeholder_prefixes) or mac in allowed_values:
                         continue
-                    if mac in known_public_macs:
-                        continue
-                    print(f"PII Leak [MAC {mac}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                    print(f"PII Leak [MAC {mac}]: {rel}:{i+1}")
                     found += 1
 
                 # ── Serial numbers ────────────────────────────────────────
                 for match in serial_regex.finditer(line):
                     serial = match.group(0)
                     if "X" not in serial.upper() and serial != "10060006A00000000000":
-                        print(f"PII Leak [Raw Serial {serial}]: {os.path.relpath(filepath, repo_root)}:{i+1}")
+                        print(f"PII Leak [Raw Serial {serial}]: {rel}:{i+1}")
                         found += 1
 
         except UnicodeDecodeError:
             pass
 
-    # ── Commit metadata ───────────────────────────────────────────────────────
-    # Added 2026-10-04. This scanner only ever read git-tracked FILE CONTENTS,
-    # so it could not see an author field — and 31 commits on public branches
-    # carry a real email, 4 of them a real full name, which it had passed over
-    # on every run since the repo went public.
-    #
-    # Only NEW commits are reported. Rewriting published history changes every
-    # downstream SHA and GitHub keeps the originals reachable anyway, so the
-    # already-public ones are a deliberate accepted exposure rather than a
-    # finding to re-raise each run. The job here is to stop the next one.
+    # ── Commit metadata: authors of commits not yet pushed ────────────────────
     author_found = 0
     try:
         # Commits not yet on any remote — the ones still cheap to amend.
         rev = subprocess.run(
-            # HEAD must be named explicitly: "--not --remotes" alone gives git
-            # no positive ref to walk from, so it silently returns nothing. The
-            # first version of this check did that and passed on a commit
-            # authored "a real name <user@example.com>".
+            # HEAD must be named explicitly: "--not --remotes" alone has no
+            # positive ref to walk from and returns nothing.
             ["git", "log", "HEAD", "--format=%H%x1f%an%x1f%ae", "--not", "--remotes"],
             cwd=repo_root, capture_output=True, text=True, timeout=30,
         )
@@ -195,10 +191,10 @@ def main():
             sha, name, email = parts
             ident = f"{name} <{email}>"
             low = ident.lower()
-            if any(b in low for b in bad_strings if b != "2069"):
+            if any(rx.search(ident) for _, rx in personal_terms):
                 print(f"PII Leak [Commit author {ident}]: {sha[:12]} (unpushed)")
                 author_found += 1
-            elif email_regex.search(email) and not email.endswith("users.noreply.github.com"):
+            elif email_regex.search(email) and email.rpartition("@")[2].lower() != "users.noreply.github.com":
                 print(f"PII Leak [Commit email {email}]: {sha[:12]} (unpushed)")
                 author_found += 1
         if author_found:

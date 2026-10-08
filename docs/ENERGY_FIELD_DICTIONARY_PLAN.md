@@ -3,7 +3,7 @@
 **Ledger:** `FEAT-ENERGY-FIELD-DICT` (`defect_list.md`)
 **Status:** Done 2026-10-08 — O1–O4 approved. The 5-minute balance check passed (within 3%), so the 7 solar/grid/battery kW flows are CORROBORATED
 **Evidence:** `tests/results/2026-10-08_FEAT-ENERGY-FIELD-DICT_evidence.txt`
-**Builds on:** `FEAT-CLI-ENERGY` (f7d7c72)
+**Builds on:** `FEAT-CLI-ENERGY` (df3b998)
 
 ## Goal
 
@@ -101,7 +101,7 @@ V2L 5-minute arrays (`powerV2lFhpArray`, `powerV2lHomeArray`) → `v2l_to_batter
 
 | # | Change | Who's affected |
 |---|---|---|
-| **O1** | CSV/JSON/table: the `--all-fields` extra columns use the readable names above instead of raw API keys. A key the API adds that isn't in the dictionary still appears under its raw name | Anyone parsing `--all-fields` output by raw key. The command shipped today (f7d7c72) and has no known consumers |
+| **O1** | CSV/JSON/table: the `--all-fields` extra columns use the readable names above instead of raw API keys. A key the API adds that isn't in the dictionary still appears under its raw name | Anyone parsing `--all-fields` output by raw key. The command shipped today (df3b998) and has no known consumers |
 | **O2** | 5-minute output gains `run_status`, `run_status_label` and `battery_stored_kwh` by default (column count 11 → 14) | Only scripts that rely on column *positions* in 5-minute CSV |
 | **O3** | JSON gains a top-level `"fields"` object: `{column: {api, description, unit, evidence}}` for every column present. Purely additive; no existing key changes | None |
 | **O4** | `--describe` flag: prints the dictionary as a table (or JSON with `--json`) and exits **without making an API call**. Handled before login | None (new flag) |

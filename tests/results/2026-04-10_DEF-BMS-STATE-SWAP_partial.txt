@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-BMS-STATE-SWAP
  Date:    2026-04-10 13:42:49 AEST
  Branch:  feat/openapi-stubs
- Commit:  9484d71 (pre-commit)
+ Commit:  dffc458 (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

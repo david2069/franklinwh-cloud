@@ -2,7 +2,7 @@
  TEST RESULTS — DEF-GRID-STATE-ENUM
  Date:    2026-04-10 14:30:03 AEST
  Branch:  feat/openapi-stubs
- Commit:  bce0c28 (pre-commit)
+ Commit:  dd71ecb (pre-commit)
  Result:  PARTIAL ⚠️
 ═══════════════════════════════════════════════════════════
 

@@ -36,7 +36,7 @@
 
 ```bash
 cd ~/dev/franklinwh-cloud
-python -m pytest tests/ -v --tb=short
+python -m pytest tests/ -m "not live" -v --tb=short   # offline only; live tests change the real aGate
 ```
 
 Live tests are **opt-in** — `pyproject.toml` sets `addopts = "-m 'not live'"`, so the
