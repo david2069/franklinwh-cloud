@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-10-08
+
+### Fixed
+- **`DEF-ENERGY-PERIOD-PARAM`** — `get_power_details()` and `get_electric_data()` returned empty arrays for week, month and year. `getFhpElectricData` reads the date from `dayTime` for type 1 (day) only; types 2–5 read `startDate` and silently ignore `dayTime`. Both methods now send the key that matches the type; signatures are unchanged. A week must be requested by its **Monday** — any other day returns empty arrays — which `docs/API_REFERENCE.md` had as "end of week"; month and year accept any day inside them. Confirmed by a live read-only probe (`tests/results/2026-10-08_DEF-ENERGY-PERIOD-PARAM_live_probe.txt`) and the `hars/` corpus (type 1 `dayTime` ×3011; types 2–5 `startDate` ×56, never `dayTime`). Fix-only release cut from v0.4.9. Tests: 405 passed, 39 skipped (opt-in live) — `tests/results/2026-10-08_v0.4.10_release_pass.txt`.
+
 ## [0.4.9] - 2026-05-31
 
 ### Fixed
