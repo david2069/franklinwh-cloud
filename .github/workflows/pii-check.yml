@@ -15,4 +15,8 @@ jobs:
           python-version: '3.12'
 
       - name: Run PII Scanner
+        env:
+          # Personal terms live in a repository secret, never in the repo.
+          # The scanner fails in CI if this is empty.
+          PII_TERMS: ${{ secrets.PII_TERMS }}
         run: python3 scripts/check_pii.py --scan

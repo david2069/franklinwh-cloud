@@ -1,0 +1,11 @@
+#!/bin/sh
+# Blocks a push if scripts/check_pii.py finds personal data in tracked files or
+# in the authors of the commits being pushed.
+# Enable once per clone:  git config core.hooksPath scripts/hooks
+# Personal terms come from ~/.config/pii_terms (see .agents/policies/pii_policy.md).
+repo_root=$(git rev-parse --show-toplevel) || exit 1
+python3 "$repo_root/scripts/check_pii.py" --scan || {
+    echo ""
+    echo "Push blocked by the PII scanner. Fix the findings above, then push again."
+    exit 1
+}
