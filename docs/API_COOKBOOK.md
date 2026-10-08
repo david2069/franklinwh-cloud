@@ -1102,7 +1102,7 @@ day = await client.get_power_details(type=1, timeperiod="2026-03-18")
 #                                   type=1  # DAY — hourly breakdown
 
 # This week
-week = await client.get_power_details(type=2, timeperiod="2026-03-18")
+week = await client.get_power_details(type=2, timeperiod="2026-03-16")  # must be a Monday
 #                                     type=2  # WEEK — daily breakdown
 
 # This month

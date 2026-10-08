@@ -1,0 +1,31 @@
+Live read-only probe — GET api-energy/electric/getFhpElectricData
+Date: 2026-10-08   Gateway: 10060006AXXXXXXXXX (redacted)   Account: real, positive-path read (AP-13 Rule 1)
+Method: Client._get(url, params={gatewayId, type, <key>: <date>}) for key in (startDate, dayTime)
+
+type=1 startDate=2026-09-15: n=0  (empty)
+type=1 dayTime=2026-09-15:   n=1  first=2026-09-15
+type=2 startDate=2026-09-07: n=7  2026-09-07 .. 2026-09-13   (Monday)
+type=2 dayTime=2026-09-07:   n=0  (empty)
+type=2 startDate=2026-09-10: n=0  (empty — Thursday; week must start on its Monday)
+type=2 dayTime=2026-09-10:   n=0  (empty)
+type=3 startDate=2026-09-01: n=30 2026-09-01 .. 2026-09-30
+type=3 dayTime=2026-09-01:   n=0  (empty)
+type=3 startDate=2026-09-15: n=30 2026-09-01 .. 2026-09-30   (server normalises mid-month)
+type=3 dayTime=2026-09-15:   n=0  (empty)
+type=4 startDate=2025-01-01: n=12 2025-01 .. 2025-12
+type=4 dayTime=2025-01-01:   n=0  (empty)
+type=4 startDate=2026-06-30: n=12 2026-01 .. 2026-12         (server normalises mid-year)
+type=4 dayTime=2026-06-30:   n=0  (empty)
+type=5 startDate=2020-01-01: n=3  2024 .. 2026               (date ignored)
+type=5 dayTime=2020-01-01:   n=3  2024 .. 2026               (date ignored)
+
+Conclusion: type 1 requires dayTime; types 2-4 require startDate; type 5 accepts either.
+Matches the hars/ corpus: type 1 dayTime x3011; types 2/3/4/5 startDate x10/24/15/7, zero dayTime.
+Library get_power_details() sends dayTime for every type, so week/month/year return empty arrays.
+
+--- After fix (electric_date_key), same gateway, via the library methods ---
+type=1 2026-10-07: get_power_details n=1 ['2026-10-07']..['2026-10-07'] | get_electric_data n=1
+type=2 2026-09-07: get_power_details n=7 ['2026-09-07']..['2026-09-13'] | get_electric_data n=7
+type=3 2026-09-01: get_power_details n=30 ['2026-09-01']..['2026-09-30'] | get_electric_data n=30
+type=4 2025-01-01: get_power_details n=12 ['2025-01']..['2025-12'] | get_electric_data n=12
+type=5 2026-10-08: get_power_details n=3 ['2024']..['2026'] | get_electric_data n=3
