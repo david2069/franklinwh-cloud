@@ -96,10 +96,13 @@ Pre-aggregated energy data from Franklin's servers. No client-side math needed.
 | `type` | Period | `timeperiod` format | Example |
 |--------|--------|---------------------|---------|
 | 1 | Day | `YYYY-MM-DD` | `"2026-03-18"` |
-| 2 | Week | `YYYY-MM-DD` (end of week) | `"2026-03-18"` |
-| 3 | Month | `YYYY-MM-01` | `"2026-03-01"` |
-| 4 | Year | `YYYY-01-01` | `"2026-01-01"` |
-| 5 | Lifetime | Today's date | `"2026-03-18"` |
+| 2 | Week | `YYYY-MM-DD` — **the Monday** the week starts (any other day returns empty arrays) | `"2026-03-16"` |
+| 3 | Month | any day in the month (`YYYY-MM-01` conventional) | `"2026-03-01"` |
+| 4 | Year | any day in the year (`YYYY-01-01` conventional) | `"2026-01-01"` |
+| 5 | Lifetime | ignored — today's date is fine | `"2026-03-18"` |
+
+> The library sends the date as `dayTime` for type 1 and `startDate` for types 2–5 — the
+> server ignores the other key and returns empty arrays (`DEF-ENERGY-PERIOD-PARAM`).
 
 ```python
 import asyncio
