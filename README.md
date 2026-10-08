@@ -298,6 +298,8 @@ franklinwh_cloud/
 | Document | Description |
 |----------|-------------|
 | [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) | Rate limiting, CloudFront edge tracking, metrics, monitor usage |
+| [docs/CLI_COMMAND_REFERENCE.md](docs/CLI_COMMAND_REFERENCE.md) | Every CLI command and option on one page, with examples |
+| [docs/TEST_QUICK_REFERENCE.md](docs/TEST_QUICK_REFERENCE.md) | Running the checks safely: offline, live, results, docs build |
 | [docs/cli-energy.md](docs/cli-energy.md) | `energy` command: kWh/kW history as CSV/JSON, and the field dictionary for every energy array |
 | [franklinwh_openapi.json](docs/franklinwh_openapi.json) | Unofficial Swagger v3 schema mapped from 123+ raw HTTP `.har` intercepts |
 | [FORK_ANALYSIS.md](FORK_ANALYSIS.md) | Detailed comparison with upstream `richo/franklinwh-python` |
