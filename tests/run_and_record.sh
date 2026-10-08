@@ -70,6 +70,9 @@ else
     PYTEST_OUTPUT=$($PYTHON -m pytest tests/ -m "not live" -q --tb=short 2>&1) || EXIT_CODE=$?
 fi
 
+# Saved results are committed: replace the home directory with ~ (pii_policy.md rule 2)
+PYTEST_OUTPUT="${PYTEST_OUTPUT//$HOME/~}"
+
 # ── Determine result ─────────────────────────────────────────────
 if [ $EXIT_CODE -eq 0 ]; then
     RESULT="pass"

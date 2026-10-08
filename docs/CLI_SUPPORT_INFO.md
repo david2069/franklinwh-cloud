@@ -2,7 +2,7 @@
 
 > **Status: Implemented** — Available in `franklinwh-cli`.
 > Snapshot schema version: **3** (as of 2026-05-02).
-> Supersedes the design proposal in [`archive/CLI_FUTURE_TODO.md`](archive/CLI_FUTURE_TODO.md).
+> Supersedes the design proposal in [`archive/CLI_FUTURE_TODO.md`](https://github.com/david2069/franklinwh-cloud/blob/main/docs/archive/CLI_FUTURE_TODO.md).
 
 The `support` command generates a **full-fidelity diagnostic snapshot** of a
 FranklinWH gateway — hardware identity, live power state, battery health,

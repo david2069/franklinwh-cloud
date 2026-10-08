@@ -76,6 +76,7 @@ nav:
     - Python Environment Setup: HOWTO_PYTHON.md
     - Installation: getting-started.md
     - Sandbox Setup: SANDBOX_SETUP.md
+    - Test Quick Reference: TEST_QUICK_REFERENCE.md
   - Guides:
     - API Cookbook: API_COOKBOOK.md
     - Time & Time Zones: TIME_AND_TIMEZONES.md
@@ -100,6 +101,7 @@ nav:
     - Telemetry & Privacy: TELEMETRY.md
     - Serial Numbers Format: SERIAL_NUMBERS.md
   - CLI:
+    - Command Reference (all commands): CLI_COMMAND_REFERENCE.md
     - Energy History (energy): cli-energy.md
     - TOU Command (tou): CLI_TOU_COMMAND.md
     - Schema Command (schema): CLI_SCHEMA_COMMAND.md
