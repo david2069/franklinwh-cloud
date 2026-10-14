@@ -51,6 +51,24 @@ policy**. That makes it critical to be *self-governing*:
 
 ---
 
+## Observed Server-Side Limits
+
+The FranklinWH cloud enforces its own limits, independent of this client's limiter.
+A real example: on 2026-10-14, **42 of 121** `getDeviceCompositeInfo` calls (35%) got
+HTTP 429 *Too Many Requests*. That was one endpoint polled every 30 s for an hour, on an
+account other integrations were also polling. The longest run without a good reading was
+3 minutes. Evidence: `tests/results/2026-10-14_VPP-MODE-MODBUS-DISPATCH_capture.jsonl`.
+
+Practical consequences:
+
+- **The limit is per account, not per client.** Everything polling the same account
+  shares it.
+- **Design for gaps.** Anything that verifies a result through the cloud (e.g. confirming
+  a dispatch took effect) should tolerate minutes without a reading.
+- **429s are reported explicitly.** `_get()` returns `{"code": 429, "result": None,
+  "retry_after": N}` and records it. `get_stats()` then returns `is_stale=True` with
+  `stale_reason="rate_limited"`.
+
 ## How It Works
 
 ```
