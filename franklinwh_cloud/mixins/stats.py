@@ -68,12 +68,20 @@ class StatsMixin:
         # Intercept empty cloud API payload glitch (HTTP 200 with result: null)
         # to prevent 0% telemetry passthrough.
         if not data_v2:
+            reason = "rate_limited" if res.get("code") == 429 else "empty_payload"
             last_known = getattr(self, "_last_known_stats", None)
             if last_known:
-                logger.warning("get_stats: API payload was empty. Returning last-known-good stats with is_stale=True.")
+                logger.warning(f"get_stats: no data ({reason}). Returning last-known-good stats with is_stale=True.")
                 last_known.is_stale = True
+                last_known.stale_reason = reason
                 return last_known
-            return empty_stats()
+            # No earlier reading to fall back on (first call on this client). The zeros
+            # are a placeholder, not a reading, so they must be flagged too.
+            logger.warning(f"get_stats: no data ({reason}) and no earlier reading. Returning zeros with is_stale=True.")
+            stale = empty_stats()
+            stale.is_stale = True
+            stale.stale_reason = reason
+            return stale
 
         workMode = data_v2.get("currentWorkMode", 1)
         if workMode is None:

@@ -608,7 +608,20 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 )
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
-                
+
+            if resp.status_code == 429:
+                # Say so explicitly instead of letting it look like an empty payload.
+                try:
+                    retry_after = int(resp.headers.get("Retry-After", "30"))
+                except ValueError:
+                    retry_after = 30
+                self.metrics.record_rate_limit()
+                if self.rate_limiter is not None:
+                    self.rate_limiter.record_429(retry_after)
+                logger.warning(f"GET {url} rate limited (HTTP 429), retry after {retry_after}s")
+                return {"code": 429, "message": "rate limited (HTTP 429)",
+                        "result": None, "retry_after": retry_after}
+
             json_resp = self._decode_json(resp, "GET", url)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp

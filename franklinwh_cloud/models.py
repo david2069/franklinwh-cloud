@@ -317,7 +317,8 @@ class Stats:
 
     current: Current
     totals: Totals
-    is_stale: bool = False           # True if telemetry is a last-known-good cache hit
+    is_stale: bool = False           # True if these values are not a fresh reading
+    stale_reason: str = ""           # why: "empty_payload", "rate_limited" (HTTP 429); "" when fresh
 
 
 def empty_stats() -> Stats:
