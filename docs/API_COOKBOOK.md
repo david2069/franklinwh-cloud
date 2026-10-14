@@ -412,8 +412,29 @@ from franklinwh_cloud.const import RUN_STATUS
 
 ### VPP Mode (Virtual Power Plant)
 
-VPP mode means your gateway is under utility/aggregator control. The gateway dispatches
-autonomously to external signals — your personal TOU schedule is suspended.
+VPP mode means the gateway is under **external control**: a utility or aggregator VPP
+programme through the FranklinWH cloud, **or a Modbus TCP client** sending a remote
+dispatch (e.g. `WSet` force charge/discharge). Your own TOU schedule is suspended while it
+lasts. For the Modbus side, see franklinwh-modbus
+[`VPP_MODE_REFERENCE.md`](https://github.com/david2069/franklinwh-modbus/blob/develop/docs/VPP_MODE_REFERENCE.md).
+
+**What the cloud reports during a Modbus remote dispatch.** Observed live on one site,
+2026-10-14, with a 5 kW Modbus force discharge sent at 18:00:08. Source:
+`getDeviceCompositeInfo` (refreshFlag=0), polled every 30 s. Raw capture:
+`tests/results/2026-10-14_VPP-MODE-MODBUS-DISPATCH_capture.jsonl`.
+
+| Field | Before | During |
+|---|---|---|
+| `runtimeData.mode` (`tou_mode`) | `85232` | **`9`** |
+| `runtimeData.name` (`tou_mode_desc`) | `"Self-Consumption"` | **`""`** |
+| `runtimeData.run_status` | `0` (Standby) | `2` (Discharging) |
+| `currentWorkMode` (`work_mode`) | `2` | `2` — **unchanged** |
+
+The switch to `9` showed up by 18:01:01, within a minute of the command. The configured
+work mode does not change, so check `tou_mode` (or `effective_mode`) for external control,
+not `work_mode`. How quickly `9` clears after the dispatch ends hasn't been measured yet.
+The 5-minute history (`get_power_by_day()`) records no mode at all, so this is visible
+**live only**.
 
 **Detection:**
 

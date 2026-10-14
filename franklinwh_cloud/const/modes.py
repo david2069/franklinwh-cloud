@@ -83,7 +83,7 @@ RUN_STATUS = {
     6: "Off-Grid Charging",
     7: "Off-Grid Discharging",
     8: "Debug Mode",           # Franklin Remote Support
-    9: "VPP mode"              # Virtual Power Plant mode controlled
+    9: "VPP mode"              # External control: cloud VPP programme or Modbus remote dispatch (docs/API_COOKBOOK.md)
 }
 
 # Power Control Settings for aGate
