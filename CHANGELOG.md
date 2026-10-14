@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **`DEF-STATS-FIRST-POLL-ZERO`** — when the cloud returned no data on the first `get_stats()` call of a client (an empty payload or an HTTP 429), the zeros it returned were not flagged, so a 0% charge reading looked real. They're now marked `is_stale=True`, and a new `Stats.stale_reason` says why (`"empty_payload"` or `"rate_limited"`). The fallback to the last good reading carries the reason too. HTTP 429 responses from `_get()` now come back as an explicit `{"code": 429, ...}` (recorded in metrics and the rate limiter's backoff) instead of raising on an HTML body or looking like an empty payload. Tests: `tests/test_stats_stale_first_poll.py`. Reported by the fwhai integration.
+
 ## [0.5.0] - 2026-10-09
 
 ### Added
