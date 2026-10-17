@@ -56,3 +56,6 @@ scratch_*.json
 
 # Personal PII scanner terms — local only (see .agents/policies/pii_policy.md)
 .pii_terms
+
+# Owner-private notes: local only, never committed (site data, captures, unpublished findings)
+private/
