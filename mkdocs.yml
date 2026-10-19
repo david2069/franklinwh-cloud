@@ -79,6 +79,7 @@ nav:
     - Test Quick Reference: TEST_QUICK_REFERENCE.md
   - Guides:
     - API Cookbook: API_COOKBOOK.md
+    - Cloud API vs Modbus TCP: MODBUS_CLOUD_COMPARISON.md
     - Time & Time Zones: TIME_AND_TIMEZONES.md
     - AC Topology: AC_TOPOLOGY.md
     - SPAN Integration: SPAN_INTEGRATION.md
