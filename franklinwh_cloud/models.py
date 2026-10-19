@@ -105,7 +105,9 @@ class Current:
     All fields sourced from getDeviceCompositeInfo (cmdType 203) → result.runtimeData
     unless noted. Field comments show the raw API key name.
 
-    Power values are in kW (positive = producing/exporting, negative = consuming/importing).
+    Power values are in kW. Signs differ by field:
+      grid_use:    positive = importing from grid, negative = exporting to grid
+      battery_use: positive = discharging, negative = charging
     """
 
     # ── Power flow (kW) ──────────────────────────────────────────────────────
