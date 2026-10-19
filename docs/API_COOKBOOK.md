@@ -753,13 +753,13 @@ stats = await client.get_stats()
 # Instantaneous power (kW)
 solar_kw     = stats.current.solar_production    # p_sun
 battery_kw   = stats.current.battery_use         # p_fhp (negative = charging)
-grid_kw      = stats.current.grid_use            # p_uti
+grid_kw      = stats.current.grid_use            # p_uti (+ import, − export)
 home_kw      = stats.current.home_load           # p_load
 soc          = stats.current.battery_soc         # Battery %
 
 # Operating state
-mode_name    = stats.current.work_mode_desc      # "Self Consumption"
-run_status   = stats.current.run_status_desc      # "Normal operation"
+mode_name    = stats.current.work_mode_desc      # "Self-Consumption"
+run_status   = stats.current.run_status_desc      # "Standby" / "Charging" / "Discharging"
 
 # Grid connection state (four-state enum — see GridConnectionState section below)
 from franklinwh_cloud.models import GridConnectionState
@@ -775,6 +775,9 @@ bat_chg_kwh  = stats.totals.battery_charge       # kwh_fhp_chg
 bat_dis_kwh  = stats.totals.battery_discharge    # kwh_fhp_di
 home_kwh     = stats.totals.home_use             # kwh_load
 ```
+
+Reading the same aGate over Modbus TCP instead? See
+[Cloud API vs Modbus TCP](MODBUS_CLOUD_COMPARISON.md) for the field-by-field mapping.
 
 ### Operating Mode & System Limiters (Global SOC Configs)
 
