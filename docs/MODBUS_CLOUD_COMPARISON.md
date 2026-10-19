@@ -8,7 +8,11 @@ The same aGate can be read two ways:
   [franklinwh-modbus](https://github.com/david2069/franklinwh-modbus).
 
 This page maps each metric across the two. franklinwh-modbus keeps its own copy of
-this table, linked to its own examples; the two are maintained separately on purpose.
+this table, linked to its own examples; the two are maintained separately on purpose:
+[franklinwh-modbus — Modbus vs Cloud comparison](https://david2069.github.io/franklinwh-modbus/MODBUS_CLOUD_COMPARISON/)
+(its [API Cookbook](https://david2069.github.io/franklinwh-modbus/API_COOKBOOK/) and
+[extension registers](https://david2069.github.io/franklinwh-modbus/FRANKLINWH_MODBUS_EXTENSIONS/)
+have the Modbus-side examples).
 Code examples for every cloud field are in the [API Cookbook](API_COOKBOOK.md#power-flow-status).
 
 > [!NOTE]
@@ -91,6 +95,7 @@ Whether the cloud lifetime total and the Modbus counter agree has not been check
 | | Cloud API | Modbus TCP Server (aGate :502) |
 |---|---|---|
 | Network | Internet + FranklinWH cloud | Local LAN only |
+| Concurrent clients | Many (sharing the account's rate limit) | One Modbus client at a time |
 | Rate limits | Yes — shared per account ([Rate Limiting](RATE_LIMITING.md)) | None known |
 | Daily totals, solar/home energy, programme name | Yes | No |
 | Electrical detail, per-battery data | Partial | Yes |
