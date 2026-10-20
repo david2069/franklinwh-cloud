@@ -8,7 +8,9 @@ import httpx
 import logging
 
 from franklinwh_cloud.api import DEFAULT_URL_BASE
-from franklinwh_cloud.exceptions import InvalidCredentialsException, AccountLockedException
+from franklinwh_cloud.exceptions import (
+    InvalidCredentialsException, AccountLockedException, LoginError, RateLimitedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,20 +101,52 @@ class PasswordAuth(BaseAuth):
         }
         async with httpx.AsyncClient(http2=True) as client:
             res = await client.post(url, data=form, headers={"softwareversion": emulate_app_version}, timeout=30)
+        if res.status_code == 429:
+            raise RateLimitedError(
+                "Login rate limited (HTTP 429)", retry_after=_retry_after(res),
+            )
         res.raise_for_status()
-        js = res.json()
+        try:
+            js = res.json()
+        except ValueError as e:
+            raise LoginError(
+                f"Login returned a non-JSON body (HTTP {res.status_code})",
+                code=res.status_code,
+            ) from e
+        if not isinstance(js, dict):
+            raise LoginError(f"Login returned an unexpected body: {type(js).__name__}")
 
-        if js["code"] == 401:
-            raise InvalidCredentialsException(js["message"])
+        code = js.get("code")
+        message = js.get("message")
 
-        if js["code"] == 400:
-            raise AccountLockedException(js["message"])
+        if code == 401:
+            raise InvalidCredentialsException(message, code=401)
+
+        if code == 400:
+            raise AccountLockedException(message, code=400)
+
+        if code == 429:
+            raise RateLimitedError(message or "Login rate limited (code 429)",
+                                   retry_after=_retry_after(res))
+
+        # DEF-AUTH-LOGIN-NULL-RESULT: anything else without a result used to
+        # raise TypeError here and lose the server's code and message.
+        if not isinstance(js.get("result"), dict):
+            raise LoginError(message or f"Login failed (code={code})", code=code)
 
         # Capture natively echoed backend version for Telemetry
         js["result"]["_emulated_version"] = emulate_app_version
         js["result"]["_backend_software_version"] = js["result"].get("softwareVersion") or res.headers.get("softwareversion")
 
         return js["result"]
+
+def _retry_after(res) -> int:
+    """Seconds from a response's Retry-After header, or 30 when absent/invalid."""
+    try:
+        return int(res.headers.get("Retry-After", "30"))
+    except (TypeError, ValueError):
+        return 30
+
 
 # Backwards compatibility alias for older scripts and <= 0.3.0
 TokenFetcher = PasswordAuth

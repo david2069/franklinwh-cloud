@@ -5,14 +5,6 @@ class TokenExpiredException(Exception):
     """Raised when the token has expired."""
 
 
-class AccountLockedException(Exception):
-    """Raised when the account is locked."""
-
-
-class InvalidCredentialsException(Exception):
-    """Raised when the credentials are invalid."""
-
-
 class DeviceTimeoutException(Exception):
     """Raised when the device times out."""
 
@@ -76,6 +68,74 @@ class InvalidResponseError(FranklinWHError):
         self.status_code = status_code
         self.body = body
         super().__init__(message, code=status_code)
+
+
+class LoginError(FranklinWHError):
+    """Raised when the login endpoint does not return a token.
+
+    Base class for every login failure, so ``except LoginError`` catches them
+    all. Raised directly for a response code the library does not recognise,
+    or a response with no ``result`` — instead of the ``TypeError`` older
+    versions raised there (``DEF-AUTH-LOGIN-NULL-RESULT``).
+
+    Attributes
+    ----------
+    code : int | None
+        The ``code`` field from the login response.
+    message : str | None
+        The ``message`` field from the login response.
+    """
+
+
+class InvalidCredentialsException(LoginError):
+    """Raised when the credentials are invalid (login code 401)."""
+
+
+class AccountLockedException(LoginError):
+    """Raised for login code 400.
+
+    Despite the name, code 400 is also sent **before** the account locks, as a
+    warning: one live sample (2026-10-17) was a wrong password answered with
+    ``"Incorrect password, you still have 2 chances to enter."``
+
+    Attributes
+    ----------
+    attempts_left : int | None
+        The ``N`` parsed from "you still have N chances" in the message, or
+        ``None`` when the message does not say. INFERRED from that one English
+        sample (the library always requests ``lang=en_US``). ``None`` does not
+        prove the account is locked — no locked-account message has been
+        captured. Callers should not retry while this is not ``None`` and small,
+        and should not retry blindly at all.
+    """
+
+    def __init__(self, message=None, code=400, attempts_left=None):
+        super().__init__(message, code=code)
+        if attempts_left is None and message:
+            import re
+            m = re.search(r"still have (\d+) chances?", str(message), re.IGNORECASE)
+            if m:
+                attempts_left = int(m.group(1))
+        self.attempts_left = attempts_left
+
+
+class RateLimitedError(FranklinWHError):
+    """Raised when the cloud answers HTTP 429, or a body with ``code`` 429,
+    on a call that has no other way to report it (currently: login).
+
+    Not a :class:`LoginError` on purpose: being rate limited says nothing about
+    the credentials, so a caller counting failed logins toward a lockout must
+    not count this one.
+
+    Attributes
+    ----------
+    retry_after : int
+        Seconds from the ``Retry-After`` header, or 30 when it is absent.
+    """
+
+    def __init__(self, message=None, code=429, retry_after=30):
+        super().__init__(message, code=code)
+        self.retry_after = retry_after
 
 
 class InvalidOperatingMode(BaseException):

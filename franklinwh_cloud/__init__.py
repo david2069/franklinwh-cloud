@@ -10,7 +10,8 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption, ForceSessionError, ForceVPPLockError, ForceSessionActiveError
+    InvalidTOUScheduleOption, ForceSessionError, ForceVPPLockError, ForceSessionActiveError,
+    FranklinWHError, LoginError, RateLimitedError,
 )
 
 # Operating Work and Run mode constants
@@ -44,10 +45,13 @@ __all__ = [
     "GridStatus",
     "GridConnectionState",
     "InvalidCredentialsException",
+    "LoginError",
+    "RateLimitedError",
     "InvalidOperatingMode",
     "InvalidOperatingModeOption",
     "InvalidTOUScheduleOption",
     "ForceSessionError",
+    "FranklinWHError",
     "ForceVPPLockError",
     "ForceSessionActiveError",
     "PasswordAuth",
