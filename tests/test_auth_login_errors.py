@@ -116,3 +116,14 @@ def test_legacy_single_arg_construction_still_works():
     e = InvalidCredentialsException("Login failed: No token returned in response")
     assert str(e) == "Login failed: No token returned in response"
     assert e.code is None
+
+
+@respx.mock
+async def test_real_lockout_message_has_attempts_left_none():
+    # Live sample, 2026-10-21: account locked after repeated failed logins.
+    _mock(code=400, message="The password is locked. Please try again after 2 min 38 sec",
+          success=False)
+    with pytest.raises(AccountLockedException) as ei:
+        await PasswordAuth._login("a@example.com", "x")
+    assert ei.value.attempts_left is None
+    assert ei.value.code == 400

@@ -1,0 +1,8 @@
+0.6.0 live positive-path check (AP-13 Rule 1), 2026-10-21, branch feat/0.6.0-auth-lifecycle-429
+- PasswordAuth.get_token(): login OK
+- resolve_gateway(auth) with no serial: one gateway, matches configured serial
+- async with Client(...): get_stats() is_stale=False; session closed on exit
+Observed earlier the same day (not caused by this check): login code 400
+"The password is locked. Please try again after 2 min 38 sec" after repeated
+failed logins from another client; added as a test sample.
+Offline suite: see commit.
