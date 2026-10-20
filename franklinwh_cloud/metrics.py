@@ -523,6 +523,11 @@ class ClientMetrics:
         }
 
 
+def _is_rate_limited(res) -> bool:
+    """True for the explicit 429 shape Client returns; never cache it as good data."""
+    return isinstance(res, dict) and res.get("code") == 429
+
+
 async def instrumented_retry(metrics, endpoint, method, func, filter_fn, refresh_fn,
                              rate_limiter: RateLimiter | None = None,
                              stale_cache: StaleDataCache | None = None):
@@ -564,7 +569,7 @@ async def instrumented_retry(metrics, endpoint, method, func, filter_fn, refresh
         if filter_fn(res):
             metrics.record_call(method, endpoint, elapsed)
             # Cache successful response
-            if stale_cache is not None:
+            if stale_cache is not None and not _is_rate_limited(res):
                 stale_cache.store(endpoint, res)
             return res
 
@@ -578,7 +583,7 @@ async def instrumented_retry(metrics, endpoint, method, func, filter_fn, refresh
         elapsed2 = time.time() - t1
         metrics.record_call(method, endpoint, elapsed2)
         # Cache successful retry
-        if stale_cache is not None:
+        if stale_cache is not None and not _is_rate_limited(res):
             stale_cache.store(endpoint, res)
         return res
 

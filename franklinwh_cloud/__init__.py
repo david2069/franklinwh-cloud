@@ -10,8 +10,10 @@ from .exceptions import (
     TokenExpiredException, AccountLockedException, InvalidCredentialsException,
     DeviceTimeoutException, GatewayOfflineException, InvalidOperatingMode,
     InvalidOperatingModeOption, UauthorizedRequest, BadRequestParsingError,
-    InvalidTOUScheduleOption, ForceSessionError, ForceVPPLockError, ForceSessionActiveError
+    InvalidTOUScheduleOption, ForceSessionError, ForceVPPLockError, ForceSessionActiveError,
+    FranklinWHError, LoginError, RateLimitedError, GatewaySelectionError,
 )
+from .gateways import resolve_gateway, list_gateway_serials
 
 # Operating Work and Run mode constants
 from .const import RUN_STATUS, OPERATING_MODES, workModeType
@@ -41,13 +43,19 @@ __all__ = [
     "Current",
     "DeviceTimeoutException",
     "GatewayOfflineException",
+    "GatewaySelectionError",
     "GridStatus",
     "GridConnectionState",
     "InvalidCredentialsException",
+    "LoginError",
+    "list_gateway_serials",
+    "RateLimitedError",
+    "resolve_gateway",
     "InvalidOperatingMode",
     "InvalidOperatingModeOption",
     "InvalidTOUScheduleOption",
     "ForceSessionError",
+    "FranklinWHError",
     "ForceVPPLockError",
     "ForceSessionActiveError",
     "PasswordAuth",

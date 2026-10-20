@@ -437,6 +437,53 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
 
 
+    def _rate_limited(self, method, url, resp, body=None) -> dict:
+        """Record a rate-limit response and return it in one explicit shape.
+
+        Two forms reach here: HTTP status 429, and a JSON body whose ``code``
+        is 429 (FWHAI logged ``"429: Too Many Requests"`` built from the body;
+        whether that body came with HTTP 200 or 429 is not captured —
+        INFERRED that both occur). Either way the caller gets
+        ``{"code": 429, "message": …, "result": None, "retry_after": N}``,
+        the call is counted in metrics, and the rate limiter backs off.
+        """
+        try:
+            retry_after = int(resp.headers.get("Retry-After", "30"))
+        except (TypeError, ValueError):
+            retry_after = 30
+        self.metrics.record_rate_limit()
+        if self.rate_limiter is not None:
+            self.rate_limiter.record_429(retry_after)
+        if body is None:
+            message = "rate limited (HTTP 429)"
+        else:
+            message = body.get("message") or "rate limited (code 429)"
+        logger.warning(
+            f"{method} {url} rate limited (HTTP {resp.status_code}, code 429), "
+            f"retry after {retry_after}s"
+        )
+        return {"code": 429, "message": message, "result": None,
+                "retry_after": retry_after}
+
+    async def aclose(self) -> None:
+        """Close the HTTP session this client opened.
+
+        ``Client`` owns an ``httpx.AsyncClient`` bound to the event loop that
+        first uses it. Close it when you are done — e.g. a poller that runs
+        ``asyncio.run()`` per pass and builds a new ``Client`` each time leaks
+        one session per pass otherwise. The auth object (and its token) is not
+        affected, so it can be reused for the next ``Client``. Safe to call
+        more than once.
+        """
+        if not self.session.is_closed:
+            await self.session.aclose()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()
+
     @staticmethod
     def _decode_json(resp, method, url):
         """Decode an API response body, tolerating the two non-JSON cases.
@@ -561,7 +608,12 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             except httpx.TimeoutException:
                 raise FranklinWHTimeoutError(url, 30)
 
+            if resp.status_code == 429:
+                return self._rate_limited("POST", url, resp)
+
             json_resp = self._decode_json(resp, "POST", url)
+            if isinstance(json_resp, dict) and json_resp.get("code") == 429:
+                return self._rate_limited("POST", url, resp, json_resp)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
@@ -610,19 +662,11 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                 raise FranklinWHTimeoutError(url, 30)
 
             if resp.status_code == 429:
-                # Say so explicitly instead of letting it look like an empty payload.
-                try:
-                    retry_after = int(resp.headers.get("Retry-After", "30"))
-                except ValueError:
-                    retry_after = 30
-                self.metrics.record_rate_limit()
-                if self.rate_limiter is not None:
-                    self.rate_limiter.record_429(retry_after)
-                logger.warning(f"GET {url} rate limited (HTTP 429), retry after {retry_after}s")
-                return {"code": 429, "message": "rate limited (HTTP 429)",
-                        "result": None, "retry_after": retry_after}
+                return self._rate_limited("GET", url, resp)
 
             json_resp = self._decode_json(resp, "GET", url)
+            if isinstance(json_resp, dict) and json_resp.get("code") == 429:
+                return self._rate_limited("GET", url, resp, json_resp)
             self._check_canary_trap(url, json_resp, resp.headers)
             return json_resp
 
