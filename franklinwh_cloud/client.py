@@ -437,6 +437,25 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
 
 
+    async def aclose(self) -> None:
+        """Close the HTTP session this client opened.
+
+        ``Client`` owns an ``httpx.AsyncClient`` bound to the event loop that
+        first uses it. Close it when you are done — e.g. a poller that runs
+        ``asyncio.run()`` per pass and builds a new ``Client`` each time leaks
+        one session per pass otherwise. The auth object (and its token) is not
+        affected, so it can be reused for the next ``Client``. Safe to call
+        more than once.
+        """
+        if not self.session.is_closed:
+            await self.session.aclose()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()
+
     @staticmethod
     def _decode_json(resp, method, url):
         """Decode an API response body, tolerating the two non-JSON cases.
