@@ -69,8 +69,8 @@ class TestResolveGateway:
 
     @respx.mock
     async def test_given_serial_matches_case_insensitively(self):
-        _gateways("1006000AB0CD00000042")
-        assert await resolve_gateway(TokenAuth("t"), "1006000ab0cd00000042") == "1006000AB0CD00000042"
+        _gateways("99900000AB0CD0000042")
+        assert await resolve_gateway(TokenAuth("t"), "99900000ab0cd0000042") == "99900000AB0CD0000042"
 
     @respx.mock
     async def test_given_serial_not_on_account_refuses(self):
