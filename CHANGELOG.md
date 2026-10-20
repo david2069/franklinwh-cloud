@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-21
+
 ### Added
 - **`Client.aclose()` and `async with Client(...)` (`FEAT-CLIENT-ACLOSE`)** — `Client` opens an `httpx.AsyncClient` bound to the event loop that first uses it, and had no way to close it, so a poller building a `Client` per `asyncio.run()` pass leaked one session per pass. `aclose()` closes it (idempotent); the auth object and its token are untouched, so one `PasswordAuth` can be reused across Clients. Requested by the Direct Connect bridge.
 - **`resolve_gateway(auth, serial=None)` and `list_gateway_serials(auth)` (`FEAT-RESOLVE-GATEWAY`)** — choose the aGate without guessing: one gateway on the account → it; a given serial → checked against the account (case-insensitive, returned in the account's spelling); none, several, or an unknown serial → `GatewaySelectionError` with `.serials`. `FranklinWHCloud.select_gateway()` keeps binding the first gateway when no serial is given (backward compatible) but now logs a warning when the account has several, and closes its temporary client. Requested by the Direct Connect bridge.
