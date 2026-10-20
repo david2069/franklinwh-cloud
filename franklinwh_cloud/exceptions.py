@@ -185,3 +185,18 @@ class ForceVPPLockError(ForceSessionError):
 
 class ForceSessionActiveError(ForceSessionError):
     """Raised when a force session is already active."""
+
+
+class GatewaySelectionError(FranklinWHError):
+    """Raised by :func:`franklinwh_cloud.resolve_gateway` when it cannot pick
+    exactly one aGate without guessing.
+
+    Attributes
+    ----------
+    serials : list[str]
+        Every gateway serial the account returned (empty if none).
+    """
+
+    def __init__(self, message=None, serials=None):
+        super().__init__(message)
+        self.serials = list(serials or [])

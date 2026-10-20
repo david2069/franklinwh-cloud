@@ -1,7 +1,10 @@
 import configparser
+import logging
 import os
 from .client import Client
 from .auth import PasswordAuth
+
+logger = logging.getLogger(__name__)
 
 class FranklinWHCloud:
     """
@@ -74,16 +77,20 @@ class FranklinWHCloud:
             # Auto-discover the first gateway attached to the account natively
             # The login payload does NOT contain gateway bindings, so we must
             # execute an explicit account-level fetch using a proxy client.
-            temp_client = Client(self._auth, "placeholder")
-            gateways_raw = await temp_client.get_home_gateway_list()
-            
-            # Unwrap the API envelope
-            gw_list = (gateways_raw.get("result") or []) if isinstance(gateways_raw, dict) else gateways_raw
-            
-            if not gw_list:
+            from .gateways import list_gateway_serials
+            serials = await list_gateway_serials(self._auth)
+
+            if not serials:
                 raise ValueError("No gateways found via get_home_gateway_list(). Cannot auto-bind Client.")
-            
-            target_gateway = gw_list[0].get("id", "")
+            if len(serials) > 1:
+                # Kept for backward compatibility; resolve_gateway() refuses instead.
+                logger.warning(
+                    f"select_gateway(): {len(serials)} gateways on this account and no serial "
+                    f"given; binding the first ({serials[0]}). Pass a serial, or use "
+                    f"franklinwh_cloud.resolve_gateway() to refuse rather than guess."
+                )
+
+            target_gateway = serials[0]
 
         self._client = Client(self._auth, target_gateway, cache=self._cache,
                                track_python_methods=self._track_python_methods, force_state_dir=self._force_state_dir)
