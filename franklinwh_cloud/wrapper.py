@@ -77,8 +77,13 @@ class FranklinWHCloud:
             # Auto-discover the first gateway attached to the account natively
             # The login payload does NOT contain gateway bindings, so we must
             # execute an explicit account-level fetch using a proxy client.
-            from .gateways import list_gateway_serials
-            serials = await list_gateway_serials(self._auth)
+            from .gateways import serials_from_gateway_list
+            temp_client = Client(self._auth, "placeholder")
+            try:
+                gateways_raw = await temp_client.get_home_gateway_list()
+            finally:
+                await temp_client.aclose()
+            serials = serials_from_gateway_list(gateways_raw)
 
             if not serials:
                 raise ValueError("No gateways found via get_home_gateway_list(). Cannot auto-bind Client.")

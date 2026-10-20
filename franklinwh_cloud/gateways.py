@@ -16,6 +16,11 @@ async def list_gateway_serials(auth: BaseAuth) -> list[str]:
 
     async with Client(auth, "placeholder") as tmp:
         res = await tmp.get_home_gateway_list()
+    return serials_from_gateway_list(res)
+
+
+def serials_from_gateway_list(res) -> list[str]:
+    """Extract gateway serials (``id``) from a ``get_home_gateway_list()`` response."""
     entries = (res.get("result") or []) if isinstance(res, dict) else (res or [])
     return [str(e.get("id")) for e in entries if isinstance(e, dict) and e.get("id")]
 

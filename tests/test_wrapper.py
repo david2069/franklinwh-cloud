@@ -55,3 +55,15 @@ async def test_proxy_without_init_raises_runtime_error():
     client = FranklinWHCloud("user@example.com", "secret")
     with pytest.raises(RuntimeError, match="Client not initialized"):
         await client.get_stats()
+
+
+@pytest.mark.asyncio
+async def test_select_gateway_warns_when_several_and_closes_temp_client(mock_password_auth, mock_client, caplog):
+    mock_client.return_value.get_home_gateway_list = AsyncMock(
+        return_value={"result": [{"id": "99900000000000000001"}, {"id": "99900000000000000002"}]})
+    client = FranklinWHCloud("user@example.com", "secret")
+    with caplog.at_level("WARNING", logger="franklinwh_cloud.wrapper"):
+        await client.select_gateway()
+    assert "2 gateways" in caplog.text
+    assert mock_client.call_args_list[-1].args[1] == "99900000000000000001"
+    mock_client.return_value.aclose.assert_awaited()
