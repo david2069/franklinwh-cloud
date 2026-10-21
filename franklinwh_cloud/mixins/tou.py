@@ -57,6 +57,8 @@ from franklinwh_cloud.exceptions import (
     FranklinWHTimeoutError,
 )
 
+from franklinwh_cloud.log_redaction import _mask_serial, _redact_secrets
+
 logger = logging.getLogger("franklinwh_cloud")
 
 
@@ -750,9 +752,9 @@ class TouMixin:
         The touSchedule list format matches the FranklinWH saveTouDispatch API.
         See const/test_fixtures.py for example schedule formats.
         """
-        logger.debug(f"set_tou_schedule:  touMode = '{touMode}' for aGate {self.gateway}")
+        logger.debug(f"set_tou_schedule:  touMode = '{touMode}' for aGate {_mask_serial(self.gateway)}")
         validate_tou_mode = str(touMode).upper().replace(' ', '_').replace('-', '_')
-        logger.debug(f"set_tou_schedule: Validating TOU mode '{validate_tou_mode}' for aGate {self.gateway}")
+        logger.debug(f"set_tou_schedule: Validating TOU mode '{validate_tou_mode}' for aGate {_mask_serial(self.gateway)}")
 
         if validate_tou_mode in valid_tou_modes:
             logger.debug(f"set_mode: Validated requested TOU mode: {touMode}")
@@ -774,7 +776,7 @@ class TouMixin:
             if not matched:
                 raise InvalidTOUScheduleOption(f"Invalid TOU mode requested: {touMode}")
 
-        logger.debug(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {self.gateway}")
+        logger.debug(f"set_tou_schedule: Preparing to set TOU schedule mode '{touMode}' for aGate {_mask_serial(self.gateway)}")
         res = await self.get_tou_dispatch_detail()
         template = (res.get("result") or {}).get("template", None)
 
@@ -784,7 +786,7 @@ class TouMixin:
         if template:
             account = null
             res = await self.get_home_gateway_list()
-            logger.debug(f"set_tou_schedule: Retrieved Home Gateway List for aGate {self.gateway}")
+            logger.debug(f"set_tou_schedule: Retrieved Home Gateway List for aGate {_mask_serial(self.gateway)}")
             for agate in res["result"]:
                 if agate["id"] == self.gateway:
                     account = res["result"][0]["account"]
@@ -1401,7 +1403,7 @@ class TouMixin:
         ))
 
         res = await self.get_pcs_hintinfo(dispatchIdList)
-        logger.debug(f"set_tou_schedule: JSON: {payload}")
+        logger.debug(f"set_tou_schedule: JSON: {_redact_secrets(payload)}")
         logger.debug("set_tou_schedule: Convert payload to JSON prior to calling saveTouDispatch")
 
         res = await self.save_tou_dispatch(payload)

@@ -19,6 +19,8 @@ from franklinwh_cloud.const import (
 )
 from franklinwh_cloud.exceptions import InvalidOperatingMode, InvalidOperatingModeOption
 
+from franklinwh_cloud.log_redaction import _mask_serial, _redact_url
+
 logger = logging.getLogger("franklinwh_cloud")
 
 
@@ -170,7 +172,7 @@ class ModesMixin:
         logger.debug(f"set_mode: deviceStatus={deviceStatus}, valid={valid}")
 
         if int(deviceStatus) != 1:
-            logger.warning(f"set_mode: aGate {self.gateway} deviceStatus is not Normal (1) - current deviceStatus={deviceStatus}")
+            logger.warning(f"set_mode: aGate {_mask_serial(self.gateway)} deviceStatus is not Normal (1) - current deviceStatus={deviceStatus}")
 
         runMode = str(res["result"]["runtimeData"]["mode"])
 
@@ -202,12 +204,12 @@ class ModesMixin:
         tariffSettingFlag = tou_res["result"]["tariffSettingFlag"]
         touSendStatus = tou_res["result"]["touSendStatus"]
         if tariffSettingFlag:
-            logger.warning(f"set_mode: aGate {self.gateway} has tariffSettingFlag enabled - current tariffSettingFlag={tariffSettingFlag}")
+            logger.warning(f"set_mode: aGate {_mask_serial(self.gateway)} has tariffSettingFlag enabled - current tariffSettingFlag={tariffSettingFlag}")
         if touSendStatus:
-            logger.warning(f"set_mode: aGate {self.gateway} has touSendStatus enabled - current touSendStatus={touSendStatus}")
+            logger.warning(f"set_mode: aGate {_mask_serial(self.gateway)} has touSendStatus enabled - current touSendStatus={touSendStatus}")
         stopMode = tou_res["result"]["stopMode"]
         if stopMode:
-            logger.warning(f"set_mode: aGate {self.gateway} is in Stop Mode - current stopMode={stopMode}")
+            logger.warning(f"set_mode: aGate {_mask_serial(self.gateway)} is in Stop Mode - current stopMode={stopMode}")
 
         url = self.url_base + "hes-gateway/terminal/tou/updateTouModeV2"
         url = url + f"?gatewayId={self.gateway}"
@@ -216,7 +218,7 @@ class ModesMixin:
         safe_tou_id = touId if touId is not None else 0
         url = url + f"&currendId={safe_tou_id}"
 
-        logger.debug(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {self.gateway}")
+        logger.debug(f"set_mode: Preparing to switch operating mode to {requestedOperatingMode} for aGate {_mask_serial(self.gateway)}")
         if requestedOperatingMode != EMERGENCY_BACKUP:
             if requestedSOC is None:
                 soc = int(current_soc) if current_soc is not None else None
@@ -264,8 +266,8 @@ class ModesMixin:
             url = url + "&soc=20"
 
         mode_name = MODE_MAP.get(requestedOperatingMode, f"Unknown Mode {requestedOperatingMode}")
-        logger.debug(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {self.gateway}")
-        logger.debug(f"set_mode: POST URL = {url}")
+        logger.debug(f"set_mode: *switching operating work mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex}  for aGate {_mask_serial(self.gateway)}")
+        logger.debug(f"set_mode: POST URL = {_redact_url(url)}")
 
         res = await self._post(url, payload=None)
         res_code = res.get('code')
@@ -273,11 +275,11 @@ class ModesMixin:
         if res_code in (200, 176):
             result = True
             if res_code == 176:
-                logger.warning(f"set_mode: Mode '{mode_name}' queued for offline sync (code 176) for aGate {self.gateway}")
+                logger.warning(f"set_mode: Mode '{mode_name}' queued for offline sync (code 176) for aGate {_mask_serial(self.gateway)}")
             else:
-                logger.debug(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {self.gateway}")
+                logger.debug(f"set_mode: Successfully switched operating mode to '{mode_name}' for aGate {_mask_serial(self.gateway)}")
         else:
-            logger.error(f"set_mode: failed switched operating mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex} for aGate {self.gateway}: {res}")
+            logger.error(f"set_mode: failed switched operating mode to '{mode_name}' currendId={currendId} oldIndex={oldIndex} for aGate {_mask_serial(self.gateway)}: {res}")
             result = False
 
         return result

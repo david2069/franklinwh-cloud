@@ -8,6 +8,8 @@ import warnings
 from franklinwh_cloud.exceptions import BadRequestParsingError, DeviceTimeoutException
 from franklinwh_cloud.models import MqttCmd
 
+from franklinwh_cloud.log_redaction import _mask_serial
+
 logger = logging.getLogger("franklinwh_cloud")
 
 
@@ -300,7 +302,7 @@ class DevicesMixin:
         https://www.franklinwh.com/support/overview/smart-circuits
         """
         payload = {"opt": 0}
-        logger.debug(f"get_smart_circuits_info: cmdType: 311 Type 2 on aGate {self.gateway}")
+        logger.debug(f"get_smart_circuits_info: cmdType: 311 Type 2 on aGate {_mask_serial(self.gateway)}")
         wire_payload = self._build_payload(MqttCmd.SMART_CIRCUIT_INFO, payload)  # cmdType 311
         data = (await self._mqtt_send(wire_payload))["result"]["dataArea"]
         return json.loads(data)

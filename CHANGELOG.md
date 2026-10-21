@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-21
+
+### Security
+- **`DEF-DEBUG-LOG-SECRETS` (#25)** — with the `franklinwh_cloud` logger at DEBUG, the request/response hooks logged every header in full, including `loginToken`, and URLs, parameters and bodies with the gateway serial. Credential headers (`loginToken`, `Authorization`, `Cookie`, ...) and secret fields (`password`, `token`, ...) are now logged as `***`; serials (`gatewayId`, `equipNo`, `sn`, ..., plus the client's own serial anywhere in a hook line) show only the last 4 (`***0042`). The `params=`/URL debug lines in `_get`/`_post` and the serial in mixin log messages are masked the same way. Helpers live in the new `franklinwh_cloud/log_redaction.py`. Reported by the Direct Connect bridge (HAOS test VM log; no public exposure).
+
+### Fixed
+- In DEBUG mode the client replaced its HTTP session to add the debug hooks, dropping the CloudFront edge-tracker hook and the default client headers. The hooks are now added to the existing session. Tests: `tests/test_log_redaction.py` (+4).
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
