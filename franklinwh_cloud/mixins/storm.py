@@ -2,6 +2,8 @@
 
 import logging
 
+from franklinwh_cloud.log_redaction import _redact_url, _redact_secrets
+
 logger = logging.getLogger("franklinwh_cloud")
 
 
@@ -30,7 +32,7 @@ class StormMixin:
         """
         url = self.url_base + "hes-gateway/terminal/weather/getStormList"
         params = {"equipNo": self.gateway, "pageNum": pageNum, "pageSize": pageSize, "lang": "en_US"}
-        logger.debug(f"get_storm_list: url={url}, params={params}")
+        logger.debug(f"get_storm_list: url={_redact_url(url)}, params={_redact_secrets(params)}")
         data = await self._get(url, params=params)
         return data
 

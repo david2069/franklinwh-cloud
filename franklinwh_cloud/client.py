@@ -54,32 +54,11 @@ from franklinwh_cloud.mixins.force import ForceMixin
 from franklinwh_cloud.mixins.network import NetworkMixin
 from franklinwh_cloud.force_state import ForceStateStore, ForceAuditLog
 
+from franklinwh_cloud.log_redaction import (  # noqa: F401  (_SECRET_KEY_RE re-exported)
+    _SECRET_KEY_RE, _mask_serial, _redact_headers, _redact_secrets, _redact_url, _scrub_serial,
+)
+
 logger = logging.getLogger(__name__)
-
-# Field names whose values must never reach a log: wifi_Pw, ap_Pw, password,
-# token, secret, ... Matched case-insensitively on the end of the key.
-_SECRET_KEY_RE = re.compile(r"(pw|pwd|pass|password|passwd|psk|secret|token)$", re.IGNORECASE)
-
-
-def _redact_secrets(value):
-    """Return a copy of ``value`` with secret-looking fields masked, for logging.
-
-    Walks dicts and lists, and also JSON held in strings (gateway commands carry
-    their body as a JSON string in ``dataArea``). Non-JSON strings pass through.
-    """
-    if isinstance(value, dict):
-        return {k: ("***" if isinstance(k, str) and _SECRET_KEY_RE.search(k) and v not in (None, "")
-                    else _redact_secrets(v))
-                for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_redact_secrets(v) for v in value]
-    if isinstance(value, str) and value[:1] in ("{", "["):
-        try:
-            return json.dumps(_redact_secrets(json.loads(value)))
-        except ValueError:
-            return value
-    return value
-
 
 class AccessoryType(Enum):
     """Represents the type of accessory connected to the FranklinWH gateway.
@@ -398,41 +377,46 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
         logger = logging.getLogger("franklinwh_cloud")
         if logger.isEnabledFor(logging.DEBUG):
+            # Added to the session above (not a new session) so the edge tracker
+            # and client headers stay. Tokens and serials are masked (issue #25).
 
             async def debug_request(request: httpx.Request):
                 body = request.content
                 if body and request.headers.get("Content-Type", "").startswith(
                     "application/json"
                 ):
-                    body = json.dumps(json.loads(body), ensure_ascii=False)
-                self.logger.debug(
-                    "Request: %s %s %s %s",
+                    body = json.dumps(_redact_secrets(json.loads(body)), ensure_ascii=False)
+                elif body:
+                    body = _redact_secrets(body.decode("utf-8", "replace"))
+                msg = "Request: %s %s %s %s" % (
                     request.method,
-                    request.url,
-                    request.headers,
+                    _redact_url(request.url),
+                    _redact_headers(request.headers),
                     body,
                 )
+                self.logger.debug("%s", _scrub_serial(msg, getattr(self, "gateway", None)))
                 return request
 
             async def debug_response(response: httpx.Response):
                 await response.aread()
-                self.logger.debug(
-                    "Response: %s %s %s %s",
+                try:
+                    body = _redact_secrets(response.json())
+                except ValueError:
+                    body = _redact_secrets(response.text)
+                msg = "Response: %s %s %s %s" % (
                     response.status_code,
-                    response.url,
-                    response.headers,
-                    response.json(),
+                    _redact_url(response.url),
+                    _redact_headers(response.headers),
+                    body,
                 )
+                self.logger.debug("%s", _scrub_serial(msg, getattr(self, "gateway", None)))
                 return response
 
             self.logger = logger
-            self.session = httpx.AsyncClient(
-                http2=True,
-                event_hooks={
-                    "request": [debug_request],
-                    "response": [debug_response],
-                },
-            )
+            hooks = self.session.event_hooks
+            hooks["request"].append(debug_request)
+            hooks["response"].append(debug_response)
+            self.session.event_hooks = hooks
 
 
 
@@ -522,7 +506,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
 
     async def _post(self, url, payload, params: dict = None, **kwargs):
 
-        logger.debug(f"_post: url={url} params={_redact_secrets(params)} "
+        logger.debug(f"_post: url={_redact_url(url)} params={_redact_secrets(params)} "
                      f"payload={_redact_secrets(payload)} kwargs={_redact_secrets(kwargs)}")
 
         from urllib.parse import urlparse, parse_qs
@@ -574,7 +558,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         gateway_params = {tag: str(self.gateway), "lang": "en_US"}
         suppress_params = kwargs.get("suppress_params") in (True, "Y")
         suppress_gateway = kwargs.get("suppress_gateway") in (True, "Y")
-        logger.debug(f"suppress_params={suppress_params} suppress_gateway={suppress_gateway} params={params} gateway_params={gateway_params}")
+        logger.debug(f"suppress_params={suppress_params} suppress_gateway={suppress_gateway} params={_redact_secrets(params)} gateway_params={_redact_secrets(gateway_params)}")
         if suppress_params is True:
             params = {} if suppress_gateway is False else None
             if suppress_gateway is False:
@@ -584,7 +568,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         if suppress_gateway is False and params is not None:
             params.update(gateway_params)
 
-        logger.debug(f"params={params}")
+        logger.debug(f"params={_redact_secrets(params)}")
 
         async def __post():
             headers["loginToken"] = str(self.token)
@@ -650,7 +634,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             if params is None: params = {}
             params.update({tag: self.gateway, "lang": "en_US"})
     
-        logger.debug(f"params={params}")
+        logger.debug(f"params={_redact_secrets(params)}")
 
         async def __get():
             try:

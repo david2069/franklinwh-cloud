@@ -5,6 +5,8 @@ import logging
 
 from franklinwh_cloud.models import GridStatus
 
+from franklinwh_cloud.log_redaction import _redact_url, _redact_secrets
+
 logger = logging.getLogger("franklinwh_cloud")
 
 
@@ -102,7 +104,7 @@ class PowerMixin:
             "globalGridDischargeMax": globalGridDischargeMax,
             "globalGridChargeMax": globalGridChargeMax,
         }
-        logger.debug(f"setPowerControlSetting: Sending request to set PCS Power Control settings URL: {url} with payload: {payload}")
+        logger.debug(f"setPowerControlSetting: Sending request to set PCS Power Control settings URL: {_redact_url(url)} with payload: {_redact_secrets(payload)}")
         data = await self._post(url, payload)
         return data
 

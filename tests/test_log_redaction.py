@@ -44,3 +44,58 @@ async def test_post_debug_log_does_not_contain_wifi_password(caplog):
             await c._post("https://example.invalid/x", payload)
     assert "_post:" in caplog.text
     assert SECRET not in caplog.text
+
+
+# --- issue #25: DEBUG request/response hooks must not log the token or the serial ---
+
+import httpx
+
+from franklinwh_cloud.client import _mask_serial, _redact_url
+
+TOKEN = "tok-abcdef0123456789-not-real"
+SERIAL = "99900000000000009999"        # mock serial (PII policy)
+
+
+def test_redact_url_masks_serial_and_token_in_query():
+    out = _redact_url(f"https://example.invalid/hes-gateway/x?gatewayId={SERIAL}&lang=en_US&token={TOKEN}")
+    assert SERIAL not in out and TOKEN not in out
+    assert "gatewayId=***9999" in out and "lang=en_US" in out
+
+
+def test_mask_serial_keeps_last_four():
+    assert _mask_serial(SERIAL) == "***9999"
+    assert _mask_serial("123") == "***"
+
+
+async def test_debug_hooks_log_no_token_or_serial(caplog):
+    def handler(request):
+        return httpx.Response(200, json={"code": 200, "result": {"gatewayId": SERIAL, "token": TOKEN,
+                                                                "note": f"gw {SERIAL}"}})
+
+    with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
+        c = Client.__new__(Client)
+        Client.__init__(c, _TokenFetcher(), SERIAL)
+        hooks = c.session.event_hooks
+        c.session = httpx.AsyncClient(transport=httpx.MockTransport(handler), event_hooks=hooks)
+        await c.session.get(f"https://example.invalid/x?gatewayId={SERIAL}",
+                            headers={"loginToken": TOKEN})
+        await c.session.post("https://example.invalid/y", headers={"loginToken": TOKEN},
+                             json={"equipNo": SERIAL, "password": TOKEN})
+    assert "Request:" in caplog.text and "Response:" in caplog.text
+    assert TOKEN not in caplog.text
+    assert SERIAL not in caplog.text
+    assert "***9999" in caplog.text
+
+
+def test_debug_mode_keeps_edge_tracker_hook(caplog):
+    with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
+        c = Client(_TokenFetcher(), SERIAL)
+    assert len(c.session.event_hooks["response"]) == 2   # edge tracker + debug
+    assert len(c.session.event_hooks["request"]) == 1
+
+
+class _TokenFetcher:
+    info = {}
+
+    async def get_token(self):
+        return TOKEN
