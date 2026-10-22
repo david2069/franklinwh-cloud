@@ -212,6 +212,16 @@ franklinwh-cli status --api-trace # per-call timing
 franklinwh-cli status -vv --log-file debug.log
 ```
 
+DEBUG logs from `franklinwh_cloud` mask the login token (`***`) and gateway serials (last 4).
+The HTTP libraries underneath log on their own: `httpx` at INFO writes request URLs (with
+`gatewayId=`), and `httpcore`/`hpack` at DEBUG write the `loginToken` header. Keep those at
+WARNING when you turn on DEBUG for the root logger:
+
+```python
+for name in ("httpx", "httpcore", "hpack"):
+    logging.getLogger(name).setLevel(logging.WARNING)
+```
+
 ## 🏗️ Architecture
 
 ```mermaid

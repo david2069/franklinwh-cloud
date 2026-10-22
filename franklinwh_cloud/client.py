@@ -380,6 +380,8 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
             # Added to the session above (not a new session) so the edge tracker
             # and client headers stay. Tokens and serials are masked (issue #25).
 
+            log_serials: set[str] = set()   # serials seen in gateway-list responses
+
             async def debug_request(request: httpx.Request):
                 body = request.content
                 if body and request.headers.get("Content-Type", "").startswith(
@@ -394,22 +396,28 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
                     _redact_headers(request.headers),
                     body,
                 )
-                self.logger.debug("%s", _scrub_serial(msg, getattr(self, "gateway", None)))
+                self.logger.debug("%s", _scrub_serial(msg, [getattr(self, "gateway", None), *log_serials]))
                 return request
 
             async def debug_response(response: httpx.Response):
                 await response.aread()
                 try:
-                    body = _redact_secrets(response.json())
+                    raw = response.json()
+                    body = _redact_secrets(raw)
                 except ValueError:
+                    raw = None
                     body = _redact_secrets(response.text)
+                # The gateway list holds every serial on the account under "id" (#27).
+                if response.url.path.endswith("getHomeGatewayList") and isinstance(raw, dict):
+                    entries = raw.get("result") or []
+                    log_serials.update(str(e["id"]) for e in entries if isinstance(e, dict) and e.get("id"))
                 msg = "Response: %s %s %s %s" % (
                     response.status_code,
                     _redact_url(response.url),
                     _redact_headers(response.headers),
                     body,
                 )
-                self.logger.debug("%s", _scrub_serial(msg, getattr(self, "gateway", None)))
+                self.logger.debug("%s", _scrub_serial(msg, [getattr(self, "gateway", None), *log_serials]))
                 return response
 
             self.logger = logger

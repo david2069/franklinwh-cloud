@@ -99,3 +99,23 @@ class _TokenFetcher:
 
     async def get_token(self):
         return TOKEN
+
+
+# --- issue #27: the gateway list's "id" serials must be masked too ---
+
+async def test_debug_log_masks_gateway_list_serials(caplog):
+    other = "99900000000000008888"
+
+    def handler(request):
+        return httpx.Response(200, json={"code": 200, "result": [{"id": SERIAL, "name": "Home"},
+                                                                 {"id": other, "name": "Shed"}]})
+
+    with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
+        c = Client(_TokenFetcher(), "placeholder")
+        hooks = c.session.event_hooks
+        c.session = httpx.AsyncClient(transport=httpx.MockTransport(handler), event_hooks=hooks)
+        await c.session.get("https://example.invalid/hes-gateway/terminal/getHomeGatewayList")
+        await c.session.get(f"https://example.invalid/x?note=gw-{other}")
+    assert "getHomeGatewayList" in caplog.text
+    assert SERIAL not in caplog.text and other not in caplog.text
+    assert "***9999" in caplog.text and "***8888" in caplog.text
