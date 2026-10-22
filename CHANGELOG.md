@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-23
+
+### Security
+- **`DEF-DEBUG-LOG-GATEWAY-LIST` (#27)** — the DEBUG response log of `getHomeGatewayList` still showed every gateway serial, under `id`: `list_gateway_serials()`/`resolve_gateway()` use a placeholder client serial, so the #25 scrub had nothing to match. The debug hooks now collect the serials from gateway-list responses and mask them (last 4) in that line and every later one. README: keep `httpx`, `httpcore` and `hpack` loggers at WARNING when the root logger is at DEBUG — they log `gatewayId=` URLs and the `loginToken` header themselves. Reported by the Direct Connect bridge. Test: `tests/test_log_redaction.py` (+1).
+
 ## [0.6.1] - 2026-10-21
 
 ### Security

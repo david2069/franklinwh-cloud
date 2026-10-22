@@ -63,8 +63,11 @@ def _redact_headers(headers) -> dict:
     return {k: ("***" if _SECRET_HEADER_RE.search(k) else v) for k, v in dict(headers).items()}
 
 
-def _scrub_serial(text: str, serial) -> str:
-    """Mask any remaining occurrence of the client's own gateway serial in ``text``."""
-    if serial and len(str(serial)) > 4:
-        return text.replace(str(serial), _mask_serial(serial))
+def _scrub_serial(text: str, serials) -> str:
+    """Mask any remaining occurrence of the given serial(s) in ``text``."""
+    if isinstance(serials, (str, int)) or serials is None:
+        serials = [serials]
+    for serial in serials:
+        if serial and len(str(serial)) > 4:
+            text = text.replace(str(serial), _mask_serial(serial))
     return text
