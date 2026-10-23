@@ -125,11 +125,11 @@ async def test_debug_log_masks_gateway_list_serials(caplog):
 # --- issue #29: personal data in bodies must not reach the DEBUG log ---
 
 PII = {
-    "email": "someone@example.invalid", "userName": "Pat Example", "firstName": "Pat",
+    "email": "nobody@example.invalid", "userName": "Pat Example", "firstName": "Pat",
     "lastName": "Example", "address1": "1 Example Street", "completeAddress": "1 Example St, Exampletown",
     "city": "Exampletown", "postCode": "9999", "latitude": -36.1234, "longitude": 174.5678,
     "siteName": "Example Home", "gatewayName": "Garage aGate", "Sw1Name": "Pool pump",
-    "installerCompanyEmail": "installer@example.invalid", "userPhoneNumber": "+64000000000",
+    "installerCompanyEmail": "installer@company.com", "userPhoneNumber": "+64000000000",
     "wifi_SSID": "ExampleNet",
 }
 
@@ -146,7 +146,7 @@ def test_redact_masks_pii_fields_and_keeps_others():
 async def test_debug_log_has_no_pii_from_response_body(caplog):
     def handler(request):
         return httpx.Response(200, json={"code": 200, "result": PII,
-                                         "message": "sent to someone@example.invalid"})
+                                         "message": "sent to nobody@example.invalid"})
 
     with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
         c = Client(_TokenFetcher(), SERIAL)
@@ -156,4 +156,4 @@ async def test_debug_log_has_no_pii_from_response_body(caplog):
     assert "Response:" in caplog.text
     for v in PII.values():
         assert str(v) not in caplog.text
-    assert "someone@example.invalid" not in caplog.text
+    assert "nobody@example.invalid" not in caplog.text
