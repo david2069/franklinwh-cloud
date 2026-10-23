@@ -1,3 +1,4 @@
+from franklinwh_cloud.log_redaction import _mask_serial
 import asyncio
 import logging
 import uuid
@@ -69,7 +70,7 @@ class ForceMixin:
     async def _force_activate(self, action: str, session: ForceSession) -> bool:
         """Takes a snapshot, pushes the TOU schedule, and spawns the watchdog."""
         if self._force_state.has_active(self.gateway):
-            raise ForceSessionActiveError(f"Gateway {self.gateway} already has an active force session.")
+            raise ForceSessionActiveError(f"Gateway {_mask_serial(self.gateway)} already has an active force session.")
 
         # 1. Take state snapshot
         composite = await self.get_device_composite_info()

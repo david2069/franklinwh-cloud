@@ -1789,7 +1789,7 @@ class TouMixin:
         See also: docs/TOU_SCHEDULE_GUIDE.md, docs/API_COOKBOOK.md
         """
         logger.debug(
-            f"set_tou_schedule_multi: {len(strategy_list)} seasons for aGate {self.gateway}"
+            f"set_tou_schedule_multi: {len(strategy_list)} seasons for aGate {_mask_serial(self.gateway)}"
         )
 
         # Validate months cover all 12

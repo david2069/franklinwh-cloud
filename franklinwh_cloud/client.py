@@ -451,7 +451,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         else:
             message = body.get("message") or "rate limited (code 429)"
         logger.warning(
-            f"{method} {url} rate limited (HTTP {resp.status_code}, code 429), "
+            f"{method} {_redact_url(url)} rate limited (HTTP {resp.status_code}, code 429), "
             f"retry after {retry_after}s"
         )
         return {"code": 429, "message": message, "result": None,
