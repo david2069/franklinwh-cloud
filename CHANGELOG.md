@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-23
+
+### Security
+- **`DEF-DEBUG-LOG-PII` (#29)** — DEBUG request/response logs masked credentials and serials but still wrote personal data from bodies. E-mail, names, phone numbers, addresses, postcode, coordinates, site, gateway and smart-circuit names, Wi-Fi SSIDs, MAC and IP fields are now logged as `***`, and any e-mail address left in free text as `***@***`. Field names are taken from the OpenAPI field list. Plain `name` is masked too, so mode/programme names show as `***` in raw DEBUG bodies. Reported by the fwhai integration. Tests: `tests/test_log_redaction.py` (+2; the SSID in an existing test is now masked).
+
 ## [0.6.2] - 2026-10-23
 
 ### Security

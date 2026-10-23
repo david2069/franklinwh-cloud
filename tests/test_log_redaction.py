@@ -20,7 +20,8 @@ def test_redacts_top_level_and_nested_json_string():
     }
     out = json.dumps(_redact_secrets(payload))
     assert SECRET not in out
-    assert "MyNet" in out and "visible" in out      # non-secrets kept
+    assert "visible" in out                         # non-secrets kept
+    assert "MyNet" not in out                       # SSID is personal data (#29)
 
 
 def test_empty_secret_values_are_left_alone():
@@ -119,3 +120,40 @@ async def test_debug_log_masks_gateway_list_serials(caplog):
     assert "getHomeGatewayList" in caplog.text
     assert SERIAL not in caplog.text and other not in caplog.text
     assert "***9999" in caplog.text and "***8888" in caplog.text
+
+
+# --- issue #29: personal data in bodies must not reach the DEBUG log ---
+
+PII = {
+    "email": "nobody@example.invalid", "userName": "Pat Example", "firstName": "Pat",
+    "lastName": "Example", "address1": "1 Example Street", "completeAddress": "1 Example St, Exampletown",
+    "city": "Exampletown", "postCode": "9999", "latitude": -36.1234, "longitude": 174.5678,
+    "siteName": "Example Home", "gatewayName": "Garage aGate", "Sw1Name": "Pool pump",
+    "installerCompanyEmail": "installer@company.com", "userPhoneNumber": "+64000000000",
+    "wifi_SSID": "ExampleNet",
+}
+
+
+def test_redact_masks_pii_fields_and_keeps_others():
+    out = _redact_secrets({"code": 200, "result": {**PII, "soc": 88.5, "list": [{"name": "Garage"}]}})
+    text = json.dumps(out)
+    for v in PII.values():
+        assert str(v) not in text
+    assert "Garage" not in text
+    assert out["result"]["soc"] == 88.5 and out["code"] == 200
+
+
+async def test_debug_log_has_no_pii_from_response_body(caplog):
+    def handler(request):
+        return httpx.Response(200, json={"code": 200, "result": PII,
+                                         "message": "sent to nobody@example.invalid"})
+
+    with caplog.at_level(logging.DEBUG, logger="franklinwh_cloud"):
+        c = Client(_TokenFetcher(), SERIAL)
+        hooks = c.session.event_hooks
+        c.session = httpx.AsyncClient(transport=httpx.MockTransport(handler), event_hooks=hooks)
+        await c.session.get("https://example.invalid/hes-gateway/terminal/getEquipmentLocation")
+    assert "Response:" in caplog.text
+    for v in PII.values():
+        assert str(v) not in caplog.text
+    assert "nobody@example.invalid" not in caplog.text
