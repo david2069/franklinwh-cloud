@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-10-23
+
+### Security
+- **`DEF-LOG-SERIAL-MESSAGES`** — some messages outside the DEBUG hooks still carried the full gateway serial: the rate-limit WARNING (`GET <url> rate limited ...`, URL with `gatewayId=`), two DEBUG lines in `get_mode` and `set_tou_schedule_multi`, and the text of `FranklinWHTimeoutError`, `ForceSessionActiveError` and `GatewaySelectionError`. They now show the last 4. `GatewaySelectionError.serials` still holds the full serials for code. Seen live in the rate-limit WARNING, 2026-10-23. Tests: `tests/test_log_redaction.py` (+2, both fail without the fix).
+
+### Notes
+- The `DEF-429-BODY-CODE` case is now observed live: `getDeviceCompositeInfo` returned HTTP 200 with body `code: 429` (2026-10-23 04:40:14Z, one sample), answering the INFERRED note in 0.6.0.
+
 ## [0.6.3] - 2026-10-23
 
 ### Security

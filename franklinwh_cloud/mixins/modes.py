@@ -348,7 +348,7 @@ class ModesMixin:
         )
 
         logger.debug(
-            f"get_mode: aGate {self.gateway} currentWorkMode={current_work_mode} "
+            f"get_mode: aGate {_mask_serial(self.gateway)} currentWorkMode={current_work_mode} "
             f"({OPERATING_MODES.get(current_work_mode)}), targetMode={target_mode}, "
             f"run_status={run_status} ({run_desc}), deviceStatus={device_status}"
         )

@@ -172,7 +172,8 @@ class FranklinWHTimeoutError(Exception):
     def __init__(self, url: str, timeout_s: int = 30):
         self.url = url
         self.timeout_s = timeout_s
-        super().__init__(f"API request timed out after {timeout_s}s: {url}")
+        from franklinwh_cloud.log_redaction import _redact_url
+        super().__init__(f"API request timed out after {timeout_s}s: {_redact_url(url)}")
 
 
 class ForceSessionError(Exception):

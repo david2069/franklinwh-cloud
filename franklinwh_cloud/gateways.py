@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from franklinwh_cloud.auth import BaseAuth
 from franklinwh_cloud.exceptions import GatewaySelectionError
+from franklinwh_cloud.log_redaction import _mask_serial
 
 
 async def list_gateway_serials(auth: BaseAuth) -> list[str]:
@@ -43,7 +44,8 @@ async def resolve_gateway(auth: BaseAuth, serial: str | None = None) -> str:
             if s.upper() == serial.strip().upper():
                 return s
         raise GatewaySelectionError(
-            f"Gateway {serial} is not on this account (found: {', '.join(serials) or 'none'})",
+            f"Gateway {_mask_serial(serial)} is not on this account "
+            f"(found: {', '.join(_mask_serial(s) for s in serials) or 'none'}; full serials in .serials)",
             serials=serials,
         )
     if len(serials) == 1:

@@ -157,3 +157,34 @@ async def test_debug_log_has_no_pii_from_response_body(caplog):
     for v in PII.values():
         assert str(v) not in caplog.text
     assert "nobody@example.invalid" not in caplog.text
+
+
+# --- WARNING-level messages must not carry the full serial either ---
+
+async def test_rate_limit_warning_masks_serial(caplog):
+    def handler(request):
+        return httpx.Response(200, json={"code": 429, "message": "Too Many Requests"})
+
+    c = Client(_TokenFetcher(), SERIAL)
+    c.session = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with caplog.at_level(logging.WARNING, logger="franklinwh_cloud"):
+        res = await c._get(f"https://example.invalid/hes-gateway/terminal/getDeviceCompositeInfo?gatewayId={SERIAL}")
+    assert res["code"] == 429
+    assert "rate limited" in caplog.text
+    assert SERIAL not in caplog.text and "***9999" in caplog.text
+
+
+async def test_error_messages_mask_serials(monkeypatch):
+    from franklinwh_cloud import gateways
+    from franklinwh_cloud.exceptions import FranklinWHTimeoutError
+
+    async def fake_list(auth):
+        return [SERIAL]
+
+    monkeypatch.setattr(gateways, "list_gateway_serials", fake_list)
+    with pytest.raises(gateways.GatewaySelectionError) as ei:
+        await gateways.resolve_gateway(object(), "99900000000000000000")
+    assert SERIAL not in str(ei.value) and "***9999" in str(ei.value)
+    assert ei.value.serials == [SERIAL]               # full serials stay available to code
+    t = FranklinWHTimeoutError(f"https://example.invalid/x?gatewayId={SERIAL}")
+    assert SERIAL not in str(t)
