@@ -1,6 +1,6 @@
 """Helpers for interating with the FranklinWH Python Client Library"""
 
-__version__ = "0.6.2"
+__version__ = "0.6.3"
 
 from .client import Client
 from .wrapper import FranklinWHCloud
