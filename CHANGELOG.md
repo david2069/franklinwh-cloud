@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-11-03
+
 ### Added
 - **Home Assistant device identity** — `docs/HA_DEVICE_IDENTITY.md`: one Home Assistant device per integration per aGate (`FranklinWH Cloud <short8>`, `<prefix>_cloud_<FULL_SERIAL>`), for integrations built on this library. The source of truth is franklinwh-modbus-bridge `docs/ha-device-identity.md`.
 
