@@ -458,9 +458,10 @@ MIT, plus **Additional Terms** — unofficial and not affiliated with or endorse
 FranklinWH, with a compliance and anti-circumvention clause. See [`LICENSE`](LICENSE) for the
 authoritative text and [Disclaimer](#️-disclaimer) for the readable version.
 
-This project is derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python):
-it shares the same API knowledge but is an independent implementation that reuses none of its
-code. The same Additional
+This project is derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python),
+earlier work against the same FranklinWH cloud API. It is an independent implementation and
+reuses none of its code; the endpoints, paths and field names both use belong to FranklinWH's API.
+The same Additional
 Terms are used by the companion projects
 [franklinwh-direct-connect-api](https://github.com/david2069/franklinwh-direct-connect-api) and
 [franklinwh-direct-connect-bridge](https://github.com/david2069/franklinwh-direct-connect-bridge).
