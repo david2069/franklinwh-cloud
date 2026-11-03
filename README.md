@@ -448,11 +448,9 @@ See [ISSUES.md](ISSUES.md) for how to report bugs and request features.
 
 ## 🔒 Telemetry & Privacy
 
-**Telemetry is not implemented.** The library and CLI send no usage data. It wasn't completed
-because of potential Home Assistant compliance issues. An unfinished opt-in hook remains in
-the CLI: it does nothing unless explicitly enabled in `franklinwh.ini`, and it isn't connected to
-a live analytics project. The original design is kept in
-[docs/TELEMETRY.md](docs/TELEMETRY.md) for reference.
+This library collects **no telemetry** and sends no usage data. Usage is gauged from GitHub
+traffic and Home Assistant's own opt-in analytics instead. See
+[docs/TELEMETRY.md](docs/TELEMETRY.md).
 
 ## 📝 License
 
