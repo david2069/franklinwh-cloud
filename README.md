@@ -410,9 +410,9 @@ See [ISSUES.md](ISSUES.md) for how to report bugs and request features.
 
 ### 🔒 Telemetry & Privacy
 
-This project strictly enforces **opt-in** telemetry to understand community usage patterns through [Scarf](#) and [PostHog](#) when actively configured. Because the gateway holds sensitive credentials and hardware mapping, we mathematically **never log** PII, serial numbers, IP addresses, or gateway configurations. 
-
-See the explicitly audited [Telemetry & Privacy Policy](TELEMETRY.md) for full compliance details on PyPI and Home Assistant integrations.
+This library collects **no telemetry** and sends no usage data. Usage is gauged from GitHub
+traffic and Home Assistant's own opt-in analytics instead. See
+[docs/TELEMETRY.md](docs/TELEMETRY.md).
 
 ---
 
