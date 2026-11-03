@@ -462,7 +462,8 @@ This project is derived from [richo/franklinwh-python](https://github.com/richo/
 Its `get_stats()` and the `Stats` / `Current` / `Totals` data model, including field names such
 as `solar_production`, `battery_use`, `grid_use`, `home_load` and `battery_soc`, are modelled on
 richo's originals and significantly expanded: from 13 fields to about 140. The implementation
-is independent and reuses none of its code. The cloud endpoints, paths and API field names
+is independent and reuses none of its code. Because the data model is derived from his design, richo's MIT
+copyright notice is retained in [`LICENSE`](LICENSE). The cloud endpoints, paths and API field names
 belong to FranklinWH's API, not to either project.
 The same Additional
 Terms are used by the companion projects
