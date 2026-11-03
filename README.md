@@ -6,7 +6,7 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 > 📦 **Package**: `franklinwh-cloud` — `pip install franklinwh-cloud` | **import**: `from franklinwh_cloud import Client`
 
-> 📊 **Derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python)**: an independent implementation that reuses none of its code. See [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
+> 📊 **Derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python)**: its `get_stats()` and `Stats` data model are modelled on richo's originals and significantly expanded, with an independent implementation. See [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
 
 > 🔒 **API Citizenship**: See [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) for rate limiting strategies, client identity headers, and how to prepare for authentication changes.
 
@@ -458,9 +458,12 @@ MIT, plus **Additional Terms** — unofficial and not affiliated with or endorse
 FranklinWH, with a compliance and anti-circumvention clause. See [`LICENSE`](LICENSE) for the
 authoritative text and [Disclaimer](#️-disclaimer) for the readable version.
 
-This project is derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python),
-earlier work against the same FranklinWH cloud API. It is an independent implementation and
-reuses none of its code; the endpoints, paths and field names both use belong to FranklinWH's API.
+This project is derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python).
+Its `get_stats()` and the `Stats` / `Current` / `Totals` data model, including field names such
+as `solar_production`, `battery_use`, `grid_use`, `home_load` and `battery_soc`, are modelled on
+richo's originals and significantly expanded: from 13 fields to about 140. The implementation
+is independent and reuses none of its code. The cloud endpoints, paths and API field names
+belong to FranklinWH's API, not to either project.
 The same Additional
 Terms are used by the companion projects
 [franklinwh-direct-connect-api](https://github.com/david2069/franklinwh-direct-connect-api) and
