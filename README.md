@@ -448,9 +448,11 @@ See [ISSUES.md](ISSUES.md) for how to report bugs and request features.
 
 ## 🔒 Telemetry & Privacy
 
-This project strictly enforces **opt-in** telemetry to understand community usage patterns through [Scarf](#) and [PostHog](#) when actively configured. Because the gateway holds sensitive credentials and hardware mapping, the library is designed not to log personal data, serial numbers, IP addresses or gateway configuration; where a leak has been found it has been fixed and recorded in the [CHANGELOG](CHANGELOG.md). 
-
-See the explicitly audited [Telemetry & Privacy Policy](docs/TELEMETRY.md) for full compliance details on PyPI and Home Assistant integrations.
+**Telemetry is not implemented.** The library and CLI send no usage data. It wasn't completed
+because of potential Home Assistant compliance issues. An unfinished opt-in hook remains in
+the CLI: it does nothing unless explicitly enabled in `franklinwh.ini`, and it isn't connected to
+a live analytics project. The original design is kept in
+[docs/TELEMETRY.md](docs/TELEMETRY.md) for reference.
 
 ## 📝 License
 

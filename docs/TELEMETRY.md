@@ -1,5 +1,9 @@
 # Telemetry & Privacy Policy
 
+> **Status: not implemented.** This page describes a design that was not completed, because of
+> potential Home Assistant compliance issues. The library and CLI send no usage data. The opt-in hook in
+> the CLI does nothing unless explicitly enabled in `franklinwh.ini`, and it isn't connected to a live project.
+
 The `franklinwh-cloud` library and CLI prioritize user privacy. Because this integration handles critical smart home appliances and cloud credentials, strict privacy boundaries are mathematically enforced. 
 
 This document outlines an end-to-end explanation of our telemetry philosophy, strictly bounded by a "Need to Know" basis.
