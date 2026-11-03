@@ -100,7 +100,7 @@ nav:
     - Scheduling Nettest: SCHEDULING.md
     - Logging Strategy: LOGGING.md
     - Rate Limiting & Good Citizenship: RATE_LIMITING.md
-    - Telemetry & Privacy: TELEMETRY.md
+    - Telemetry & Usage Metrics: TELEMETRY.md
     - Serial Numbers Format: SERIAL_NUMBERS.md
   - CLI:
     - Command Reference (all commands): CLI_COMMAND_REFERENCE.md

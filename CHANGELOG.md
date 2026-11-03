@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+- **Telemetry (PostHog)** — the unfinished opt-in analytics hook is removed: `franklinwh_cloud/telemetry.py`, the CLI's `[telemetry]` ini handling, its tests and `docs/POSTHOG_POC.md`. It was never connected to a live project. The chaos test harness (`scripts/run_chaos_harness.sh`) no longer posts results to PostHog. The library now sends no usage data at all. Usage is measured from GitHub traffic and Home Assistant analytics instead (`docs/TELEMETRY.md`). If your `franklinwh.ini` has a `[telemetry]` section, it's now ignored.
+
 ## [0.6.5] - 2026-11-03
 
 ### Added
