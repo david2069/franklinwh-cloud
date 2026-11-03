@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Home Assistant device identity** — `docs/HA_DEVICE_IDENTITY.md`: one Home Assistant device per integration per aGate (`FranklinWH Cloud <short8>`, `<prefix>_cloud_<FULL_SERIAL>`), for integrations built on this library. The source of truth is franklinwh-modbus-bridge `docs/ha-device-identity.md`.
+
+### Fixed
+- **`DEF-PACKAGE-DEVICE-CATALOG`** — `discover()` raised `FileNotFoundError` on every normal install (v0.4.9–v0.6.4): `const/device_catalog.json` was never put in the wheel, because `pyproject.toml` declared no package data. It only worked from a source checkout. Now declared under `[tool.setuptools.package-data]`, and `get_catalog()` works on a pip install. `tests/test_packaging.py` fails if any tracked data file is left undeclared. Reported by the fwhai integration.
+
 ## [0.6.4] - 2026-10-23
 
 ### Security

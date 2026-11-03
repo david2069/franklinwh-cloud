@@ -61,6 +61,10 @@ franklinwh-cli = "franklinwh_cloud.cli:main"
 [tool.setuptools.packages.find]
 include = ["franklinwh_cloud*"]
 
+# Data files the package reads at runtime (discover() loads the device catalog).
+[tool.setuptools.package-data]
+franklinwh_cloud = ["const/*.json"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -77,6 +77,7 @@ nav:
     - Installation: getting-started.md
     - Sandbox Setup: SANDBOX_SETUP.md
     - Test Quick Reference: TEST_QUICK_REFERENCE.md
+    - Home Assistant Device Identity: HA_DEVICE_IDENTITY.md
   - Guides:
     - API Cookbook: API_COOKBOOK.md
     - Cloud API vs Modbus TCP: MODBUS_CLOUD_COMPARISON.md
