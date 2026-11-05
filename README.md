@@ -1,6 +1,14 @@
 # FranklinWH Cloud Client
 
-![Tests](https://github.com/david2069/franklinwh-cloud/actions/workflows/test.yml/badge.svg)
+[![PyPI](https://img.shields.io/pypi/v/franklinwh-cloud?label=pypi)](https://pypi.org/project/franklinwh-cloud/)
+[![downloads](https://img.shields.io/pypi/dm/franklinwh-cloud)](https://pypi.org/project/franklinwh-cloud/)
+[![tests](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-cloud/test.yml?branch=main&label=tests)](https://github.com/david2069/franklinwh-cloud/actions/workflows/test.yml)
+[![docs](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-cloud/docs.yml?branch=main&label=docs)](https://github.com/david2069/franklinwh-cloud/actions/workflows/docs.yml)
+[![pii-check](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-cloud/pii-check.yml?branch=main&label=pii-check)](https://github.com/david2069/franklinwh-cloud/actions/workflows/pii-check.yml)
+[![publish](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-cloud/publish.yml?branch=main&label=publish)](https://github.com/david2069/franklinwh-cloud/actions/workflows/publish.yml)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://github.com/david2069/franklinwh-cloud/blob/main/pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/david2069/franklinwh-cloud/blob/main/LICENSE)
+[![commit activity](https://img.shields.io/github/commit-activity/y/david2069/franklinwh-cloud)](https://github.com/david2069/franklinwh-cloud/commits/main)
 
 A Python client library for interacting with FranklinWH energy storage systems via the cloud API.
 
