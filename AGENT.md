@@ -59,6 +59,15 @@ If a change requires a downstream user to rewrite their integration code, you mu
 
 ---
 
+## ⚖️ Shared Legal Text
+
+`LICENSE` (MIT plus **Additional Terms**) and the README **⚖️ Disclaimer** /
+**Compliance & anti-circumvention** sections use one template shared with
+`franklinwh-direct-connect-api` and `franklinwh-direct-connect-bridge`. Only Additional
+Terms clause 1 differs per repo: which API the project uses, and its issues link. Never
+edit the shared wording here alone; propose the change for all three repos. Changes to
+`LICENSE` need user sign-off.
+
 ## 🚫 Approval Requirements
 
 > **No auto-proceed without explicit user approval for plan documents.**

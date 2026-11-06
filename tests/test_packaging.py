@@ -7,8 +7,11 @@ discover() raised FileNotFoundError on every pip install of v0.4.9–v0.5.0).
 
 import fnmatch
 import subprocess
-import tomllib
 from pathlib import Path
+
+import pytest
+
+tomllib = pytest.importorskip("tomllib")  # stdlib from Python 3.11; skipped on 3.10
 
 REPO = Path(__file__).resolve().parent.parent
 # Tracked files that are deliberately NOT shipped

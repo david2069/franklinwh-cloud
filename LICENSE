@@ -1,5 +1,6 @@
 MIT License
 
+Copyright (c) 2024 Richo Healey
 Copyright (c) 2026 david2069
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,31 +21,51 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
 
+================================================================================
 ADDITIONAL TERMS
+================================================================================
 
-This software interacts with FranklinWH's undocumented cloud API. By using
-this software, you acknowledge and agree that:
+These Additional Terms accompany and supplement the MIT License above. By using,
+copying, modifying, or distributing the Software you accept them.
 
-1. This is UNOFFICIAL software, NOT affiliated with, endorsed by, or
-   supported by FranklinWH Inc. or any of its subsidiaries.
+1. UNOFFICIAL — NO AFFILIATION
+   This is UNOFFICIAL software, NOT affiliated with, endorsed by, or supported by
+   FranklinWH. It interfaces with FranklinWH's undocumented cloud API —
+   technically the same private API the official FranklinWH mobile app and the
+   FleetView installer portal use, intended for those apps and not for
+   third-party use. It may change, break, or become unavailable without notice.
+   Do NOT contact FranklinWH support about this Software — raise issues, defects,
+   or feature requests on GitHub:
+   https://github.com/david2069/franklinwh-cloud/issues
 
-2. The FranklinWH cloud API is undocumented and may change, break, or become
-   unavailable without notice. The authors accept no responsibility for
-   service interruptions, API changes, or authentication modifications by
-   FranklinWH.
+2. COMPLIANCE & ANTI-CIRCUMVENTION
+   You agree to keep your gateway and battery settings, controls, and operation
+   compliant with the configuration set through the official FranklinWH Mobile App
+   and the installer/support FleetView portal.
 
-3. You assume ALL RISK associated with using this software, including but
-   not limited to: equipment damage, data loss, service disruption, warranty
-   implications, and any financial consequences.
+   FranklinWH-managed settings may exist to, among other things:
+     - protect the safety and longevity of the battery and gateway;
+     - apply automatic software updates and restrict your ability to view or change
+       battery, grid-import, or grid-export controls;
+     - enforce your local electricity grid profile and any import/export limits or
+       prohibitions;
+     - enforce restrictions tied to contractual incentives, subsidies, or VPP/grid
+       programmes.
 
-4. You are solely responsible for compliance with FranklinWH's terms of
-   service and any applicable laws or regulations in your jurisdiction.
+   If you use this Software to bypass or override any such control, restriction, or
+   compliance measure — deliberately or inadvertently — you do so entirely at your
+   own risk. This is neither condoned nor encouraged by the authors or any other
+   party.
 
-5. The authors provide no guarantee of continued maintenance, updates, or
-   compatibility with future FranklinWH API versions.
+3. INTENT & RISK
+   This Software is provided for informational and educational purposes, AS-IS,
+   with no warranty of fitness for any purpose. Any use — personal or commercial
+   — is permitted under the MIT License above and is entirely at your own risk.
 
-6. This software controls energy storage equipment. Improper use may affect
-   electrical systems, battery health, grid interconnection, or building
-   safety. You should understand what each API call does before using it.
+4. NOTICE
+   As the MIT License above requires, the copyright notice and this permission
+   notice (including these Additional Terms) shall be included in all copies or
+   substantial portions of the Software. Retaining it in copies, forks, derivatives,
+   and AI-assisted works keeps the unofficial-app, compliance, and support context
+   travelling with the code.

@@ -14,11 +14,51 @@ A Python client library for interacting with FranklinWH energy storage systems v
 
 > 📦 **Package**: `franklinwh-cloud` — `pip install franklinwh-cloud` | **import**: `from franklinwh_cloud import Client`
 
-> 📊 **Fork of [richo/franklinwh-python](https://github.com/richo/franklinwh-python)** — see [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
+> 📊 **Derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python)**: its `get_stats()` and `Stats` data model are modelled on richo's originals and significantly expanded, with an independent implementation. See [FORK_ANALYSIS.md](FORK_ANALYSIS.md) for a detailed comparison of additions (60+ API methods, 45+ sensor fields, TOU scheduling, power control, and more).
 
 > 🔒 **API Citizenship**: See [API_CLIENT_GUIDE.md](API_CLIENT_GUIDE.md) for rate limiting strategies, client identity headers, and how to prepare for authentication changes.
 
-> ⚠️ **Disclaimer**: This library is **unofficial** and not endorsed by FranklinWH. It interfaces with a proprietary Cloud API designed exclusively for the official FranklinWH mobile app and authorised installer portal — not for third-party use. It is provided **"AS IS"** for educational and informational purposes only, with **no warranty of fitness for any purpose**. Use at your own risk. See the [full disclaimer](https://david2069.github.io/franklinwh-cloud/#about-this-library) for details.
+> ⚖️ **Unofficial software** — not affiliated with or endorsed by FranklinWH. Read the [Disclaimer](#️-disclaimer) and [LICENSE](LICENSE) before use.
+
+## ⚖️ Disclaimer
+
+> **UNOFFICIAL SOFTWARE — NOT AFFILIATED WITH OR ENDORSED BY FRANKLINWH.**
+>
+> This library talks to FranklinWH's undocumented **cloud** API — technically the **same private
+> API the official FranklinWH mobile app** and the FleetView installer portal use, intended for
+> those apps and not for third-party use. It may change, break, or become unavailable without
+> notice. It is provided **AS-IS**, without warranty of any kind, express or implied — use
+> entirely at your own risk. The authors accept no liability for service interruptions, data
+> loss, equipment damage, or any other consequences of using this software.
+>
+> **Do NOT contact FranklinWH support** about this library. Raise issues, defects, or feature
+> requests on GitHub instead: <https://github.com/david2069/franklinwh-cloud/issues>
+>
+> **MIT License** with Additional Terms. The disclaimer is also logged once at startup by the
+> library for the audit trail.
+
+### Compliance & anti-circumvention
+
+> You agree to keep your gateway and battery settings, controls, and operation compliant with the
+> configuration set through the official FranklinWH Mobile App and the installer/support FleetView portal.
+>
+> FranklinWH-managed settings may exist to, among other things: protect the **safety and longevity** of the
+> battery and gateway; apply **automatic software updates** and restrict your ability to view or change
+> battery, grid-import, or grid-export controls; enforce your **local grid profile** and any import/export
+> limits or prohibitions; and enforce restrictions tied to **contractual incentives, subsidies, or VPP/grid
+> programmes**.
+>
+> If you use this software to bypass or override any such control, restriction, or compliance measure —
+> deliberately or inadvertently — you do so **entirely at your own risk**. This is neither condoned nor
+> encouraged by the authors or any other party.
+>
+> This software is provided for **informational and educational purposes**, **AS-IS**, with no warranty of
+> fitness for any purpose. Any use — personal or commercial — is permitted under the MIT Licence and is
+> entirely at your own risk.
+>
+> As the MIT Licence requires, the copyright notice and this notice (including the Additional Terms) should
+> be included in copies or substantial portions of the software — in forks, derivatives, and AI-assisted
+> works alike, so the unofficial-app and compliance context travels with the code. See [`LICENSE`](LICENSE).
 
 ## ✨ Features
 
@@ -321,7 +361,7 @@ franklinwh_cloud/
 | [docs/cli-energy.md](docs/cli-energy.md) | `energy` command: kWh/kW history as CSV/JSON, and the field dictionary for every energy array |
 | [franklinwh_openapi.json](docs/franklinwh_openapi.json) | Unofficial Swagger v3 schema mapped from 123+ raw HTTP `.har` intercepts |
 | [FORK_ANALYSIS.md](FORK_ANALYSIS.md) | Detailed comparison with upstream `richo/franklinwh-python` |
-| [HISTORY.md](HISTORY.md) | Project timeline from fork to independence |
+| [HISTORY.md](HISTORY.md) | Project timeline |
 | [UPSTREAM_STRATEGY.md](UPSTREAM_STRATEGY.md) | Contributing back to upstream — the trust ladder |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code standards, PR process |
@@ -414,44 +454,32 @@ API citizenship requirements, and pull request process.
 
 See [ISSUES.md](ISSUES.md) for how to report bugs and request features.
 
-## 📝 License
-
-### 🔒 Telemetry & Privacy
+## 🔒 Telemetry & Privacy
 
 This library collects **no telemetry** and sends no usage data. Usage is gauged from GitHub
 traffic and Home Assistant's own opt-in analytics instead. See
 [docs/TELEMETRY.md](docs/TELEMETRY.md).
 
----
+## 📝 License
 
-MIT License with Additional Terms — see [LICENSE](LICENSE) for details.
+MIT, plus **Additional Terms** — unofficial and not affiliated with or endorsed by
+FranklinWH, with a compliance and anti-circumvention clause. See [`LICENSE`](LICENSE) for the
+authoritative text and [Disclaimer](#️-disclaimer) for the readable version.
 
-The Additional Terms address the specific risks of interacting with
-undocumented energy equipment APIs. **You must read and understand the
-LICENSE before using this software.**
+This project is derived from [richo/franklinwh-python](https://github.com/richo/franklinwh-python).
+Its `get_stats()` and the `Stats` / `Current` / `Totals` data model, including field names such
+as `solar_production`, `battery_use`, `grid_use`, `home_load` and `battery_soc`, are modelled on
+richo's originals and significantly expanded: from 13 fields to about 140. The implementation
+is independent and reuses none of its code. Because the data model is derived from his design, richo's MIT
+copyright notice is retained in [`LICENSE`](LICENSE). The cloud endpoints, paths and API field names
+belong to FranklinWH's API, not to either project.
+The same Additional
+Terms are used by the companion projects
+[franklinwh-direct-connect-api](https://github.com/david2069/franklinwh-direct-connect-api) and
+[franklinwh-direct-connect-bridge](https://github.com/david2069/franklinwh-direct-connect-bridge).
 
 ## 🙏 Acknowledgments
 
 - **[FranklinWH](https://www.franklinwh.com)** - For innovative energy storage systems
-- **[richo](https://github.com/richo/franklinwh-python)** - Original library foundation
+- **[richo](https://github.com/richo/franklinwh-python)** - Prior work this project is derived from
 - This project was developed with AI assistance (Claude, Gemini)
-
-## ⚖️ Disclaimer
-
-> **UNOFFICIAL SOFTWARE — NOT AFFILIATED WITH FRANKLINWH**
->
-> By using this software, you confirm that you have read and understood the
-> [LICENSE](LICENSE) and its Additional Terms.
->
-> This software is provided **AS-IS**, without warranty of any kind, express or implied,
-> including but not limited to the warranties of merchantability, fitness for a particular
-> purpose, and non-infringement. Use entirely at your own risk.
->
-> This library interacts with FranklinWH's undocumented cloud API, which may change,
-> break, or become unavailable without notice. The authors accept no liability for
-> service interruptions, data loss, equipment damage, or any other consequences
-> arising from the use of this software.
->
-> **MIT License** — see [LICENSE](LICENSE) for details.
-
-This disclaimer is also logged once at startup by the library for audit trail purposes.
