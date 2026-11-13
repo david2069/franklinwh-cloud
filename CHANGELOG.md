@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Login follows `url_base` (#39)** — `PasswordAuth` always logged in at `energy.franklinwh.com`, so `Client(..., url_base=...)` pointed at another server (such as the cloud emulator) still sent the account and password hash to the real cloud, and so did the re-login after a 401/10009. `PasswordAuth` (and `login`/`_login`) now take `url_base`, and a `Client` with a non-default `url_base` passes it to its fetcher before logging in. A default `Client` leaves a fetcher's own `url_base` alone.
 
 ### Removed
+- **`emulator/` stub** — the 4-route FastAPI stub never ran (its login path didn't match `auth.py`). The FranklinWH Cloud emulator is now a module in franklinwh-gateway-emulator (`--cloud-port`); point `url_base` at it.
 - **Telemetry (PostHog)** — the unfinished opt-in analytics hook is removed: `franklinwh_cloud/telemetry.py`, the CLI's `[telemetry]` ini handling, its tests and `docs/POSTHOG_POC.md`. It was never connected to a live project. The chaos test harness (`scripts/run_chaos_harness.sh`) no longer posts results to PostHog. The library now sends no usage data at all. Usage is measured from GitHub traffic and Home Assistant analytics instead (`docs/TELEMETRY.md`). If your `franklinwh.ini` has a `[telemetry]` section, it's now ignored.
 
 ## [0.6.5] - 2026-11-03

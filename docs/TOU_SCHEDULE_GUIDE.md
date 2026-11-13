@@ -240,11 +240,8 @@ When integrating a client (such as Home Assistant, Node-RED, or custom scripts),
 1. **Local OpenAPI Specification**:
    * The repository ships with a complete OpenAPI 3.0 specification file: **[franklinwh_openapi.json](file://~/dev/franklinwh-cloud/docs/franklinwh_openapi.json)**. This file describes every endpoint, request body schema, and model representation in detail.
 
-2. **FastAPI Emulator Docs Endpoint**:
-   * When running the local **FastAPI Cloud API Emulator** (located in `emulator/main.py`), you can access the interactive Swagger/ReDoc documentation UI directly in your browser:
-     * **Swagger UI:** `http://localhost:8080/docs`
-     * **ReDoc UI:** `http://localhost:8080/redoc`
-   * This provides a live playground to inspect parameter types, view validation rules, and test requests.
+2. **Local Cloud API emulator**:
+   * The FranklinWH Cloud emulator lives in [franklinwh-gateway-emulator](https://github.com/david2069/franklinwh-gateway-emulator) (`franklinwh-emulator ui fleet.yaml --cloud-port 8503`; see its `docs/cloud-api.md`). Point the client at it with `Client(..., url_base="http://127.0.0.1:8503/")`; login follows `url_base` from the release after 0.6.5.
 
 3. **FHAI (FranklinWH Home Assistant Integrator) Docs Endpoint**:
    * When running the **FHAI** integration gateway service, it hosts a local FastAPI web server exposing a dedicated **`/docs` API endpoint** directly at:
