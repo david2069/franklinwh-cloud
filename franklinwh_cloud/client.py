@@ -286,6 +286,7 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         self.fetcher = fetcher
         self.gateway = gateway
         self.url_base = url_base
+        self._login_follows_url_base()
         self.token = self.fetcher.info.get("token", "") if self.fetcher.info else ""
         self.snno = 0
         self.info = self.fetcher.info
@@ -676,9 +677,19 @@ class Client(StatsMixin, ModesMixin, TouMixin, StormMixin, PowerMixin, DevicesMi
         return final_res
 
 
+    def _login_follows_url_base(self):
+        """Log in at this client's url_base when it isn't the default (#39).
+
+        Only a non-default url_base is passed on, so a fetcher built with its
+        own url_base is never sent back to the real cloud.
+        """
+        if self.url_base != DEFAULT_URL_BASE and hasattr(self.fetcher, "url_base"):
+            self.fetcher.url_base = self.url_base
+
     async def refresh_token(self):
         """Refresh the authentication token using the TokenFetcher."""
         self.metrics.record_token_refresh()
+        self._login_follows_url_base()
         self.token = await self.fetcher.get_token(force_refresh=True)
         # Telemetry: capture the backend echoed software version
         if getattr(self.fetcher, "info", None):
