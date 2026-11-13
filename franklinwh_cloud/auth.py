@@ -58,26 +58,32 @@ class BaseAuth(ABC):
 class PasswordAuth(BaseAuth):
     """Authenticates using email and password against the Cloud API."""
     
-    def __init__(self, username: str, password: str, login_type: int = LOGIN_TYPE_USER, emulate_app_version: str = "APP2.4.1") -> None:
+    def __init__(self, username: str, password: str, login_type: int = LOGIN_TYPE_USER, emulate_app_version: str = "APP2.4.1",
+                 url_base: str = DEFAULT_URL_BASE) -> None:
         """Initialize the PasswordAuth fetcher.
 
         Parameters
         ----------
         login_type : int
             0 = App user (homeowner), 1 = Installer.
+        url_base : str
+            Server to log in to. A ``Client`` with a different ``url_base``
+            sets this, so login follows the client (#39).
         """
         super().__init__()
         self.username = username
         self.password = password
         self.login_type = login_type
         self.emulate_app_version = emulate_app_version
+        self.url_base = url_base
         
     async def get_token(self, force_refresh=False) -> str:
         """Fetch a new authentication token using the stored credentials."""
         if self.info and self.info.get("token") and not force_refresh:
             return self.info["token"]
             
-        result = await self._login(self.username, self.password, self.login_type, self.emulate_app_version)
+        result = await self._login(self.username, self.password, self.login_type, self.emulate_app_version,
+                                   url_base=self.url_base)
         if not result or "token" not in result:
              raise InvalidCredentialsException("Login failed: No token returned in response")
              
@@ -85,14 +91,17 @@ class PasswordAuth(BaseAuth):
         return self.info["token"]
 
     @staticmethod
-    async def login(username: str, password: str, login_type: int = 0, emulate_app_version: str = "APP2.4.1"):
+    async def login(username: str, password: str, login_type: int = 0, emulate_app_version: str = "APP2.4.1",
+                    url_base: str = DEFAULT_URL_BASE):
         """Log in to the FranklinWH API and retrieve an authentication token."""
-        return (await PasswordAuth._login(username, password, login_type, emulate_app_version))["token"]
+        return (await PasswordAuth._login(username, password, login_type, emulate_app_version,
+                                          url_base=url_base))["token"]
 
     @staticmethod
-    async def _login(username: str, password: str, login_type: int = 0, emulate_app_version: str = "APP2.4.1") -> dict:
+    async def _login(username: str, password: str, login_type: int = 0, emulate_app_version: str = "APP2.4.1",
+                     url_base: str = DEFAULT_URL_BASE) -> dict:
         """Log in to the FranklinWH API and retrieve account information."""
-        url = DEFAULT_URL_BASE + "hes-gateway/terminal/initialize/appUserOrInstallerLogin"
+        url = url_base + "hes-gateway/terminal/initialize/appUserOrInstallerLogin"
         form = {
             "account": username,
             "password": hashlib.md5(bytes(password, "ascii")).hexdigest(),
