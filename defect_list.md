@@ -200,7 +200,7 @@ It **reads back and diffs**, returning `{ack, verified, mismatches, note}` with 
 | DEF-RELAY-INV | CLI / Mixin | Relay states inverted in `diag` and `discover`: firmware encodes `1=OPEN`, code displayed `1` as CLOSED. Fixed `fmt_relay`, `main_sw` index comment, `bool(val)→not bool(val)` storage, `stats.grid_relay2` attr path, and `ON/OFF→OPEN/CLOSED` labels. | Unreleased | `pending` |
 | DEF-GRID-PROFILE-DYNAMIC-ID | Mixins | `get_grid_profile_info(2)` hardcoded `systemId=0` returning empty payloads; CLI crashed with `UnboundLocalError` due to string `requestType` | Unreleased | `pending` |
 | FEAT-TEST-INTEGRATION | Tests | Live gateway integration test suite (read-only endpoints) with JSON schema validation against `franklinwh_openapi.json` | Unreleased | `pending` |
-| FEAT-TEST-API-PROXY | Tests | FastAPI-based local proxy emulator (`emulator/`) intercepting requests and returning synthetic responses for offline structural testing | Unreleased | `pending` |
+| FEAT-TEST-API-PROXY | Tests | ~~FastAPI-based local proxy emulator (`emulator/`)~~ — superseded: the stub never ran and is removed; the Cloud API emulator is a module in franklinwh-gateway-emulator (#297 there) | Unreleased | `superseded` |
 | DEF-STATS-DOUBLE-SLASH | Mixins | `get_power_details` and `get_power_by_day` prepend `/hes-gateway/` to `self.url_base` causing 404 from CloudFront due to double slash `//` | 2026-03-26 | `pending` |
 | DEF-CLIENT-URL-BASE | Client / API Core | 34 methods used hardcoded `DEFAULT_URL_BASE` instead of `self.url_base`; base URL not configurable | 2026-03-21 | `4bd1b20` |
 | DEF-AUTH-LOGIN-TYPE | Client / API Core | `_login()` hardcoded `type: 1` (installer) — should be `type: 0` (user) for homeowner accounts | 2026-03-21 | `d99a2b4` |
