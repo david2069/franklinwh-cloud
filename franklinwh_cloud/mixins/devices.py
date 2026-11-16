@@ -89,7 +89,7 @@ class DevicesMixin:
         Parameters
         ----------
         option : int
-            1 = Common accessory list (default)
+            1 = Common accessory list, by gateway (default)
             2 = IoT accessory list
             3 = Equipment list (by gateway)
             4 = IoT accessory list (by gateway)
@@ -110,7 +110,9 @@ class DevicesMixin:
                 url = self.url_base + "hes-gateway/terminal/getIotAccessoryList"
                 params = {"gatewayId": self.gateway}
             case _:
+                # The app sends gatewayId and lang (217 calls in the owner's HTTP Toolkit captures)
                 url = self.url_base + "hes-gateway/common/getAccessoryList"
+                params = {"gatewayId": self.gateway, "lang": "en_US"}
         return await self._get(url, params=params)
 
     async def get_power_cap_config_list(self):

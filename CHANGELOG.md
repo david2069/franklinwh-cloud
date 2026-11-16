@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **`get_accessories(option=1)`** — now sends `gatewayId` and `lang` with `common/getAccessoryList`, as the official app does (217 calls in the owner's HTTP Toolkit captures). Before, it sent no gateway, so on an account with more than one aGate the list might not be the client's gateway (INFERRED; not seen on a multi-gateway account).
+
 ### Removed
 - **Telemetry (PostHog)** — the unfinished opt-in analytics hook is removed: `franklinwh_cloud/telemetry.py`, the CLI's `[telemetry]` ini handling, its tests and `docs/POSTHOG_POC.md`. It was never connected to a live project. The chaos test harness (`scripts/run_chaos_harness.sh`) no longer posts results to PostHog. The library now sends no usage data at all. Usage is measured from GitHub traffic and Home Assistant analytics instead (`docs/TELEMETRY.md`). If your `franklinwh.ini` has a `[telemetry]` section, it's now ignored.
 
