@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **Login follows `url_base` (#39)** — `PasswordAuth` always logged in at `energy.franklinwh.com`, so `Client(..., url_base=...)` pointed at another server (such as the cloud emulator) still sent the account and password hash to the real cloud, and so did the re-login after a 401/10009. `PasswordAuth` (and `login`/`_login`) now take `url_base`, and a `Client` with a non-default `url_base` passes it to its fetcher before logging in. A default `Client` leaves a fetcher's own `url_base` alone.
+- **`get_accessories(option=1)`** — now sends `gatewayId` and `lang` with `common/getAccessoryList`, as the official app does (217 calls in the owner's HTTP Toolkit captures). Before, it sent no gateway, so on an account with more than one aGate the list might not be the client's gateway (INFERRED; not seen on a multi-gateway account).
 
 ### Removed
 - **`emulator/` stub** — the 4-route FastAPI stub never ran (its login path didn't match `auth.py`). The FranklinWH Cloud emulator is now a module in franklinwh-gateway-emulator (`--cloud-port`); point `url_base` at it.
