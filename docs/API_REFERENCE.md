@@ -252,7 +252,7 @@ These endpoints support the template-based tariff setup workflow used by the Fra
 
 | Method | Arguments | Returns | Description |
 |--------|-----------|---------|-------------|
-| `get_accessories(option=1)` | `option: int` 1=common, 2=IoT, 3=equipment, 4=IoT+gateway | `dict` | List of connected accessories |
+| `get_accessories(option=1)` | `option: int` 1=common, 2=IoT, 3=equipment, 4=IoT+gateway | `dict` | List of connected accessories. Every option except 2 is for the client's gateway. |
 | `get_device_composite_info()` | — | `dict` | Master data: runtime, mode, solar, alarms (used by `get_stats`) |
 | `get_agate_info()` | — | `dict` | aGate firmware version, serial, network |
 | `get_apower_info()` | — | `dict` | aPower battery details (capacity, serial, firmware) |
